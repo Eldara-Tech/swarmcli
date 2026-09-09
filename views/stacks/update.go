@@ -1285,13 +1285,11 @@ func (m *Model) setStacks(stacks []docker.StackEntry) {
 					svcToStack[svc.ID] = stackName
 				}
 			}
-			desired := 1
-			if svc.Spec.Mode.Replicated != nil && svc.Spec.Mode.Replicated.Replicas != nil {
-				desired = int(*svc.Spec.Mode.Replicated.Replicas)
-			} else if svc.Spec.Mode.Global != nil {
-				desired = len(snap.Nodes)
-			}
-			svcDesired[svc.ID] = desired
+			// Shared with the loaders rather than duplicated: counting every
+			// node as a global service's target painted an error badge on a
+			// healthy service for as long as one node stayed drained, and on
+			// every service pinned by a placement constraint (issues #480, #643).
+			svcDesired[svc.ID] = snap.DesiredReplicas(svc)
 			// Initialize svcRunning with 0 for all services
 			svcRunning[svc.ID] = 0
 		}
