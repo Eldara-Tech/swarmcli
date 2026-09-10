@@ -198,6 +198,8 @@ func ServiceStatesFrom(snap *docker.SwarmSnapshot, name string) []ServiceState {
 			st.UpdateState = c.UpdateState
 			st.Monitor = c.Monitor
 			st.NewestTaskAge = c.NewestTaskAge
+			st.DeadTask = c.DeadTask
+			st.DeadTaskReason = c.DeadTaskReason
 			// A finished job has no running task, so the replica ratio built
 			// from ServiceEntry reads 0/N and the release looks degraded when
 			// it is complete. Count the completed tasks toward the target and

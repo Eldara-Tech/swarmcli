@@ -34,7 +34,7 @@ services:
     deploy:
       replicas: 1
       restart_policy:
-        condition: none
+        condition: %s
       update_config:
         monitor: %s
         failure_action: %s
@@ -47,8 +47,21 @@ services:
 // reaches the state these tests are about.
 const oneShotMonitor = 12 * time.Second
 
-func oneShotManifest(marker string, exitCode int, failureAction string) string {
-	return fmt.Sprintf(oneShotStack, marker, exitCode, oneShotMonitor, failureAction)
+// restartNone leaves a task that ended exactly where it is — the shape a
+// migration step wants, and the only one under which a failed run is terminal.
+// restartOnFailure is a job to swarmcli all the same (isJobService accepts
+// both), but swarm replaces a task that did not run, which is what lets a test
+// ride out the DinD swarm's occasional refusal to attach a fresh overlay
+// ("invalid pool request: Pool overlaps with other one on this address space" —
+// uninstall frees a /24 and the next install is handed it back before the node
+// has torn the old one down).
+const (
+	restartNone      = "none"
+	restartOnFailure = "on-failure"
+)
+
+func oneShotManifest(marker string, exitCode int, restartCondition, failureAction string) string {
+	return fmt.Sprintf(oneShotStack, marker, exitCode, restartCondition, oneShotMonitor, failureAction)
 }
 
 // awaitRelease polls a release's single service until cond holds, and fails the
@@ -89,6 +102,8 @@ func updateStateIs(want string) func([]charts.ServiceState) bool {
 	return func(s []charts.ServiceState) bool { return s[0].UpdateState == want }
 }
 
+func converged(s []charts.ServiceState) bool { return charts.Rollup(s).Phase == charts.PhaseConverged }
+
 // A one-shot that did its work must not be reported as a stack needing manual
 // recovery.
 //
@@ -107,13 +122,18 @@ func TestWaitAcceptsAOneShotSwarmPausedForFinishing(t *testing.T) {
 	eng := charts.NewEngine()
 	defer func() { _, _ = eng.Uninstall(ctx, release, true) }()
 
-	_, err := eng.Install(ctx, release, chart, nil, oneShotManifest("first", 0, "pause"),
-		charts.InstallOptions{Wait: true, Timeout: 90 * time.Second})
-	require.NoError(t, err, "a job that runs to completion converges on a first deploy; swarm records no UpdateStatus yet")
+	// Deployed without Wait and waited for here instead: the engine's timeout
+	// reports only that a release did not converge, and when this failed on a CI
+	// runner and not locally there was nothing in the message to say why.
+	// awaitRelease names the state it last saw.
+	_, err := eng.Install(ctx, release, chart, nil, oneShotManifest("first", 0, restartOnFailure, "pause"),
+		charts.InstallOptions{})
+	require.NoError(t, err, "the deploy itself must succeed")
+	awaitRelease(t, eng, release, 120*time.Second, "converged after a first deploy", converged)
 
 	// The redeploy is the case. Same service, different spec, so swarm runs an
 	// update and watches the task it creates.
-	_, err = eng.Upgrade(ctx, release, chart, nil, oneShotManifest("second", 0, "pause"),
+	_, err = eng.Upgrade(ctx, release, chart, nil, oneShotManifest("second", 0, restartOnFailure, "pause"),
 		charts.InstallOptions{Wait: true, Timeout: 90 * time.Second})
 	require.NoError(t, err, "the second run also exited 0; --wait must not report the release wedged")
 
@@ -124,9 +144,7 @@ func TestWaitAcceptsAOneShotSwarmPausedForFinishing(t *testing.T) {
 	// Converging is not instant even once the job is done: the task still has to
 	// outlive the monitor window, which is the same window that got it paused.
 	// Before the fix this poll never finished — a paused rollout was terminal.
-	states = awaitRelease(t, eng, release, 60*time.Second, "converged", func(s []charts.ServiceState) bool {
-		return charts.Rollup(s).Phase == charts.PhaseConverged
-	})
+	states = awaitRelease(t, eng, release, 60*time.Second, "converged", converged)
 	require.Equal(t, "paused", states[0].UpdateState,
 		"it has to converge WHILE paused; swarm never clears the state, and a cleared one would prove nothing")
 }
@@ -152,22 +170,26 @@ func TestWaitRefusesAOneShotWhoseLatestRunFailed(t *testing.T) {
 	eng := charts.NewEngine()
 	defer func() { _, _ = eng.Uninstall(ctx, release, true) }()
 
-	_, err := eng.Install(ctx, release, chart, nil, oneShotManifest("good", 0, "continue"),
-		charts.InstallOptions{Wait: true, Timeout: 90 * time.Second})
-	require.NoError(t, err, "the first run exits 0 and must converge, or the test proves nothing about the second")
+	_, err := eng.Install(ctx, release, chart, nil, oneShotManifest("good", 0, restartNone, "continue"),
+		charts.InstallOptions{})
+	require.NoError(t, err, "the deploy itself must succeed")
+	awaitRelease(t, eng, release, 120*time.Second, "converged after a first deploy", converged)
 
 	// Not Wait: the verdict is asserted below against a state swarm has finished
 	// moving to, rather than against whatever a poll caught mid-update.
-	_, err = eng.Upgrade(ctx, release, chart, nil, oneShotManifest("bad", 3, "continue"),
+	_, err = eng.Upgrade(ctx, release, chart, nil, oneShotManifest("bad", 3, restartNone, "continue"),
 		charts.InstallOptions{})
 	require.NoError(t, err, "the deploy itself succeeds; it is the task that fails")
 
-	// "completed" is swarm having watched the new task for the whole monitor
-	// window and stopped: the failing generation is the current one and nothing
-	// further is coming.
-	states := awaitRelease(t, eng, release, 90*time.Second, `UpdateStatus "completed"`, updateStateIs("completed"))
-	s := states[0]
-	require.Zero(t, s.Completed, "the newest task failed; its predecessors are history, not progress")
-	require.NotEqual(t, charts.PhaseConverged, charts.Rollup(states).Phase,
-		"a job whose latest run exited 3 has not converged, whatever its earlier runs did")
+	states := awaitRelease(t, eng, release, 90*time.Second, "wedged on the run that failed", func(s []charts.ServiceState) bool {
+		return charts.Rollup(s).Phase == charts.PhaseWedged
+	})
+	require.Zero(t, states[0].Completed, "the newest task failed; its predecessors are history, not progress")
+
+	// Naming the exit status is what keeps this honest. A node that refused the
+	// task outright also leaves the release wedged with Completed 0, and that
+	// would pass an assertion that only said "not converged" while testing
+	// nothing about task history.
+	require.Contains(t, charts.Rollup(states).Reason, "non-zero exit (3)",
+		"the release must be wedged on the run that exited 3, not on a node that would not run it")
 }

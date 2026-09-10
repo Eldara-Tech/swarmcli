@@ -50,6 +50,20 @@ type ServiceConvergence struct {
 	// checks that followed have already consumed part of the window, and
 	// sometimes all of it. Zero when nothing is running.
 	NewestTaskAge time.Duration
+	// DeadTask reports a one-shot whose current task ended without completing
+	// and that swarm will not try again: a restart condition of "none" leaves
+	// the slot exactly as it is. Nothing about such a release will ever change,
+	// so waiting on it only delays the report.
+	//
+	// Restricted to condition "none" on purpose. Under "on-failure" swarm
+	// replaces the task — which is what makes a rejected task survivable there —
+	// so a failure is not yet terminal and this stays false.
+	DeadTask bool
+	// DeadTaskReason is what swarm said about that task: the container's exit
+	// status, or why a node would not run it at all ("invalid pool request: Pool
+	// overlaps with other one on this address space"). Empty when swarm recorded
+	// no message.
+	DeadTaskReason string
 }
 
 // schedulableNodes returns the nodes that can currently run tasks. A task pinned
@@ -111,7 +125,11 @@ func (snap *SwarmSnapshot) StackConvergence(stackName string) []ServiceConvergen
 
 		job := isJobService(svc)
 
-		running, completed := 0, 0
+		running, completed, dead := 0, 0, 0
+		deadReason := ""
+		// Only a restart condition of "none" makes a failed task terminal;
+		// "on-failure" is a job too, but swarm replaces the task.
+		terminal := job && neverRestarts(svc)
 		var newest time.Time
 		// Only the newest task in each slot is judged. Swarm keeps terminal
 		// tasks in the list up to --task-history-limit, so a one-shot that has
@@ -131,6 +149,15 @@ func (snap *SwarmSnapshot) StackConvergence(stackName string) []ServiceConvergen
 				// Swarm sets DesiredState=shutdown once a job's task exits, so
 				// this is not reachable through the running arm above.
 				completed++
+			case terminal && isDeadTaskState(t.Status.State):
+				// A one-shot swarm will not retry, whose task did not complete:
+				// it exited non-zero, or a node refused it outright. The slot
+				// keeps this task forever, so the release is as finished as it
+				// is ever going to get (issue #651).
+				dead++
+				if deadReason == "" {
+					deadReason = t.Status.Err
+				}
 			default:
 				continue
 			}
@@ -144,15 +171,17 @@ func (snap *SwarmSnapshot) StackConvergence(stackName string) []ServiceConvergen
 		}
 
 		out = append(out, ServiceConvergence{
-			Name:          svc.Spec.Name,
-			Mode:          getServiceMode(svc),
-			Running:       running,
-			Completed:     completed,
-			Job:           job,
-			Desired:       desiredOverNodes(svc, schedulable),
-			UpdateState:   updateState(svc),
-			Monitor:       monitorWindow(svc),
-			NewestTaskAge: ageSince(newest),
+			Name:           svc.Spec.Name,
+			Mode:           getServiceMode(svc),
+			Running:        running,
+			Completed:      completed,
+			Job:            job,
+			Desired:        desiredOverNodes(svc, schedulable),
+			UpdateState:    updateState(svc),
+			Monitor:        monitorWindow(svc),
+			NewestTaskAge:  ageSince(newest),
+			DeadTask:       dead > 0,
+			DeadTaskReason: deadReason,
 		})
 	}
 	return out
@@ -188,6 +217,28 @@ func isJobService(svc swarm.Service) bool {
 	}
 	switch rp.Condition {
 	case swarm.RestartPolicyConditionNone, swarm.RestartPolicyConditionOnFailure:
+		return true
+	default:
+		return false
+	}
+}
+
+// neverRestarts reports a restart policy of "none": swarm leaves a task that
+// ended exactly where it is, whether it exited 0 or was rejected by every node.
+// "on-failure" is a job by isJobService's reckoning but not this one, because
+// swarm does replace its failed tasks.
+func neverRestarts(svc swarm.Service) bool {
+	rp := svc.Spec.TaskTemplate.RestartPolicy
+	return rp != nil && rp.Condition == swarm.RestartPolicyConditionNone
+}
+
+// isDeadTaskState reports the terminal states a task reaches without having done
+// its work. Complete is deliberately absent — that is success for a one-shot.
+// Shutdown is absent too: swarm stops a task deliberately, which is not a
+// failure of the task.
+func isDeadTaskState(state swarm.TaskState) bool {
+	switch state {
+	case swarm.TaskStateFailed, swarm.TaskStateRejected, swarm.TaskStateOrphaned:
 		return true
 	default:
 		return false
