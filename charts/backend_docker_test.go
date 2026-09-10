@@ -78,10 +78,14 @@ func stackService(id, stack string, replicas uint64) swarm.Service {
 	}
 }
 
-func runningTask(svcID, nodeID string) swarm.Task {
+// The slot is not decoration: swarm numbers a replicated service's replicas
+// from 1, and the convergence count keeps only the newest task in each slot, so
+// two tasks sharing slot 0 are two generations of one replica.
+func runningTask(svcID, nodeID string, slot int) swarm.Task {
 	return swarm.Task{
 		ServiceID:    svcID,
 		NodeID:       nodeID,
+		Slot:         slot,
 		DesiredState: swarm.TaskStateRunning,
 		Status:       swarm.TaskStatus{State: swarm.TaskStateRunning},
 	}
@@ -93,7 +97,7 @@ func TestServiceStatesFromCarriesBothHalves(t *testing.T) {
 	snap := &docker.SwarmSnapshot{
 		Nodes:    []swarm.Node{readyNode("n1")},
 		Services: []swarm.Service{stackService("api", "mystack", 2)},
-		Tasks:    []swarm.Task{runningTask("api", "n1"), runningTask("api", "n1")},
+		Tasks:    []swarm.Task{runningTask("api", "n1", 1), runningTask("api", "n1", 2)},
 	}
 
 	states := ServiceStatesFrom(snap, "mystack")
@@ -141,7 +145,7 @@ func TestServiceStatesFromIsScopedToTheStack(t *testing.T) {
 	snap := &docker.SwarmSnapshot{
 		Nodes:    []swarm.Node{readyNode("n1")},
 		Services: []swarm.Service{stackService("mine", "a", 1), stackService("theirs", "b", 1)},
-		Tasks:    []swarm.Task{runningTask("mine", "n1"), runningTask("theirs", "n1")},
+		Tasks:    []swarm.Task{runningTask("mine", "n1", 1), runningTask("theirs", "n1", 1)},
 	}
 
 	states := ServiceStatesFrom(snap, "a")

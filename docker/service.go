@@ -590,8 +590,22 @@ func hasIntendedTaskOnNode(serviceID, nodeID string, snap *SwarmSnapshot) bool {
 // task worth surfacing an error from. Here that preference would pick the
 // outgoing task and report the old generation as current.
 func countUpToDateTasks(serviceID string, snap *SwarmSnapshot) int {
+	count := 0
+	for _, t := range newestTaskPerSlot(serviceID, snap.Tasks) {
+		if t.Status.State == swarm.TaskStateRunning {
+			count++
+		}
+	}
+	return count
+}
+
+// newestTaskPerSlot indexes one service's tasks by replica, keeping the most
+// recent task in each — the current generation, by the rule countUpToDateTasks
+// documents above. Shared with StackConvergence, which asks the same question of
+// the same task list and must not answer it differently.
+func newestTaskPerSlot(serviceID string, tasks []swarm.Task) map[string]swarm.Task {
 	newest := make(map[string]swarm.Task)
-	for _, t := range snap.Tasks {
+	for _, t := range tasks {
 		if t.ServiceID != serviceID {
 			continue
 		}
@@ -605,14 +619,7 @@ func countUpToDateTasks(serviceID string, snap *SwarmSnapshot) int {
 			newest[key] = t
 		}
 	}
-
-	count := 0
-	for _, t := range newest {
-		if t.Status.State == swarm.TaskStateRunning {
-			count++
-		}
-	}
-	return count
+	return newest
 }
 
 // taskSlotKey identifies the replica a task belongs to: the slot for a
