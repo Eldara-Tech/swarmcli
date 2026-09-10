@@ -70,6 +70,11 @@ type ServiceState struct {
 	// NewestTaskAge is how much of that window the newest running task has
 	// already lived through, measured from task creation as swarm measures it.
 	NewestTaskAge time.Duration
+	// DeadTask reports a one-shot whose current task ended without completing
+	// and that swarm will not retry, and DeadTaskReason is what swarm said about
+	// it. Such a release is finished, not slow (issue #651).
+	DeadTask       bool
+	DeadTaskReason string
 }
 
 // DeployRequest is one deploy.
@@ -1209,6 +1214,17 @@ type Convergence struct {
 // Every rule here has been wrong once, which is why interpreting a ServiceState
 // belongs to this package rather than to each caller that holds one.
 func (s ServiceState) Convergence() Convergence {
+	// A one-shot swarm will not retry, whose task ended without completing, is
+	// as done as it will ever be: the slot keeps that task, so every later poll
+	// reads exactly the same. Reporting it as progressing spent the caller's
+	// whole timeout on a release that had already failed, and said "0/1 tasks
+	// running" rather than the exit status or the node's refusal (issue #651).
+	if s.DeadTask && s.Running+s.Completed < s.Desired {
+		if s.DeadTaskReason != "" {
+			return Convergence{PhaseWedged, fmt.Sprintf("the one-shot task did not complete and swarm will not retry it: %s", s.DeadTaskReason)}
+		}
+		return Convergence{PhaseWedged, "the one-shot task did not complete and swarm will not retry it"}
+	}
 	// A one-shot's task terminates inside the monitor window by design, and
 	// swarmkit counts any task that leaves RUNNING in that window as an update
 	// failure — a restart policy of none is not special-cased (its updater's

@@ -790,7 +790,34 @@ func TestConvergenceReportsAJobThatDidNotComplete(t *testing.T) {
 	require.Equal(t, "the one-shot task did not complete (0/1); swarm paused the rollout", c.Reason)
 }
 
-// A global service on a drained node lowers the target rather than leaving the
+// A one-shot swarm will not retry, whose task ended without completing, has
+// failed — and the reason belongs in the reason, since "0/1 tasks running" is
+// what a release that is merely slow says too (issue #651).
+func TestConvergenceReportsATaskSwarmWillNotRetry(t *testing.T) {
+	c := ServiceState{
+		Name:           "migrate",
+		Desired:        1,
+		Job:            true,
+		DeadTask:       true,
+		DeadTaskReason: "task: non-zero exit (3)",
+		NewestTaskAge:  stableAge,
+	}.Convergence()
+	require.Equal(t, PhaseWedged, c.Phase)
+	require.Equal(t, "the one-shot task did not complete and swarm will not retry it: task: non-zero exit (3)", c.Reason)
+
+	// Swarm records no message for every terminal state, so the verdict must not
+	// depend on having one.
+	silent := ServiceState{Desired: 1, Job: true, DeadTask: true, NewestTaskAge: stableAge}.Convergence()
+	require.Equal(t, PhaseWedged, silent.Phase)
+	require.Equal(t, "the one-shot task did not complete and swarm will not retry it", silent.Reason)
+
+	// A dead task from an earlier generation must not bury a job that has since
+	// met its target.
+	done := ServiceState{Desired: 1, Completed: 1, Job: true, DeadTask: true, NewestTaskAge: stableAge}
+	require.Equal(t, PhaseConverged, phaseOf(done))
+}
+
+// A global service on a drained node lowers the target rather than leaving the// A global service on a drained node lowers the target rather than leaving the
 // release permanently short of a replica that can never be scheduled.
 func TestConvergenceGlobalTracksActiveNodes(t *testing.T) {
 	require.Equal(t, PhaseConverged, phaseOf(ServiceState{Mode: "global", Running: 2, Desired: 2, NewestTaskAge: stableAge}))

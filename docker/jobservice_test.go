@@ -151,3 +151,45 @@ func TestStackConvergenceJudgesOnlyTheLatestJobRun(t *testing.T) {
 	conv = snap.StackConvergence("mystack")
 	require.Equal(t, 1, conv[0].Completed, "a job that ran four times has still done its work once")
 }
+
+// A one-shot whose task the swarm refused is finished, not slow: a restart
+// condition of "none" means the slot keeps that task and no later poll will read
+// differently. Reporting it as merely short of its target spent a caller's whole
+// timeout on a release that had already failed (issue #651).
+func TestStackConvergenceReportsATaskSwarmWillNotRetry(t *testing.T) {
+	const refusal = "invalid pool request: Pool overlaps with other one on this address space"
+
+	rejected := jobTaskAt("migrate", time.Now(), swarm.TaskStateRejected)
+	rejected.Status.Err = refusal
+
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{jobSvc("migrate", "mystack", swarm.RestartPolicyConditionNone)},
+		Tasks:    []swarm.Task{rejected},
+	}
+
+	conv := snap.StackConvergence("mystack")
+	require.Len(t, conv, 1)
+	require.True(t, conv[0].DeadTask)
+	require.Equal(t, refusal, conv[0].DeadTaskReason, "swarm's own words, so the reader is not left guessing")
+	require.Equal(t, 0, conv[0].Completed)
+}
+
+// "on-failure" is a job too, but swarm replaces its failed tasks — which is what
+// makes a rejected task survivable there. Calling that terminal would report a
+// release as dead while swarm was still working on it.
+func TestStackConvergenceDoesNotBuryARetryableFailure(t *testing.T) {
+	failed := jobTaskAt("migrate", time.Now(), swarm.TaskStateFailed)
+	failed.Status.Err = "task: non-zero exit (3)"
+
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{jobSvc("migrate", "mystack", swarm.RestartPolicyConditionOnFailure)},
+		Tasks:    []swarm.Task{failed},
+	}
+
+	conv := snap.StackConvergence("mystack")
+	require.Len(t, conv, 1)
+	require.True(t, conv[0].Job, "on-failure is still a job")
+	require.False(t, conv[0].DeadTask, "swarm will create a replacement, so nothing is settled yet")
+}
