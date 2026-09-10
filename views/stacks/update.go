@@ -26,7 +26,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/docker/docker/api/types/swarm"
 )
 
 const userActionTimeout = 15 * time.Second
@@ -1277,121 +1276,27 @@ func (m *Model) setStacks(stacks []docker.StackEntry) {
 	if snap != nil {
 		// map service ID -> stack name
 		svcToStack := make(map[string]string)
-		svcDesired := make(map[string]int)
-		svcRunning := make(map[string]int)
 		for _, svc := range snap.Services {
 			if svc.Spec.Labels != nil {
 				if stackName, ok := svc.Spec.Labels["com.docker.stack.namespace"]; ok {
 					svcToStack[svc.ID] = stackName
 				}
 			}
-			// Shared with the loaders rather than duplicated: counting every
-			// node as a global service's target painted an error badge on a
-			// healthy service for as long as one node stayed drained, and on
-			// every service pinned by a placement constraint (issues #480, #643).
-			svcDesired[svc.ID] = snap.DesiredReplicas(svc)
-			// Initialize svcRunning with 0 for all services
-			svcRunning[svc.ID] = 0
 		}
 
-		latestTasks := taskutil.LatestTasksByServiceKey(snap.Tasks)
-
-		for _, t := range latestTasks {
-			if t.DesiredState == swarm.TaskStateRunning && t.Status.State == swarm.TaskStateRunning {
-				svcRunning[t.ServiceID]++
-			}
-		}
-
-		for _, t := range latestTasks {
-			stackName := svcToStack[t.ServiceID]
-			if stackName == "" {
-				continue
-			}
-			desired := svcDesired[t.ServiceID]
-			running := svcRunning[t.ServiceID]
-			if desired == 0 || running >= desired {
-				continue
-			}
-			if t.DesiredState == swarm.TaskStateShutdown && t.Status.State == swarm.TaskStateComplete {
-				continue
-			}
-			hasError := false
-			// Only count explicit errors: Status.Err or Failed/Rejected states
-			if t.Status.Err != "" {
-				hasError = true
-			} else if t.Status.State == swarm.TaskStateFailed || t.Status.State == swarm.TaskStateRejected {
-				hasError = true
-			}
-			if !hasError {
-				continue
-			}
-			m.stackHasError[stackName] = true
-			if m.stackErrorText[stackName] == "" {
-				m.stackErrorText[stackName] = t.Status.Err
-			}
-		}
-
-		// If a service is under-replicated with no explicit error from latest task,
-		// check recent tasks for the most recent error
-		for serviceID, running := range svcRunning {
-			desired := svcDesired[serviceID]
-			if desired > 0 && running < desired {
-				stackName := svcToStack[serviceID]
-				if stackName == "" || m.stackErrorText[stackName] != "" {
-					continue
-				}
-				// Find most recent task timestamp for this service
-				var newestTaskTime time.Time
-				for _, t := range snap.Tasks {
-					if t.ServiceID != serviceID {
-						continue
-					}
-					at := t.Status.Timestamp
-					if at.IsZero() {
-						at = t.CreatedAt
-					}
-					if newestTaskTime.IsZero() || at.After(newestTaskTime) {
-						newestTaskTime = at
-					}
-				}
-
-				// Only check tasks within 5 minutes of the newest task
-				cutoff := newestTaskTime.Add(-5 * time.Minute)
-
-				// Find most recent task with an actual error (not just non-running)
-				var mostRecentErr string
-				var mostRecentErrTime time.Time
-				for _, t := range snap.Tasks {
-					if t.ServiceID != serviceID {
-						continue
-					}
-					if t.Status.Err == "" {
-						continue
-					}
-					at := t.Status.Timestamp
-					if at.IsZero() {
-						at = t.CreatedAt
-					}
-					if at.Before(cutoff) {
-						continue
-					}
-					if mostRecentErr == "" || at.After(mostRecentErrTime) {
-						mostRecentErr = t.Status.Err
-						mostRecentErrTime = at
-					}
-				}
-				if mostRecentErr != "" {
-					m.stackHasError[stackName] = true
-					m.stackErrorText[stackName] = mostRecentErr
-				}
-			}
-		}
-
-		// Also detect active deployment failures: slots where newest error task
-		// is more recent than the newest running task, even when service is at capacity.
-		for svcID, errMsg := range taskutil.ActiveDeploymentErrorsByService(snap.Tasks) {
-			stackName := svcToStack[svcID]
+		// The same rule the services view's ERROR column uses, so a stack and
+		// the service inside it cannot disagree about whether it is failing: a
+		// slot errors when its newest failure is newer than its last sign of
+		// life. Walk snap.Services rather than the returned map so a stack with
+		// more than one failing service names the same one on every refresh.
+		svcErrs := taskutil.ActiveDeploymentErrorsByService(snap.Tasks)
+		for _, svc := range snap.Services {
+			stackName := svcToStack[svc.ID]
 			if stackName == "" || m.stackHasError[stackName] {
+				continue
+			}
+			errMsg, failing := svcErrs[svc.ID]
+			if !failing {
 				continue
 			}
 			m.stackHasError[stackName] = true

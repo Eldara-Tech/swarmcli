@@ -75,3 +75,19 @@ func TestTaskRowStyle_ReturnsBaseUntouched(t *testing.T) {
 	got := TaskRowStyle(docker.TaskEntry{State: "running"}, base)
 	require.Equal(t, base.Render("web.1"), got.Render("web.1"))
 }
+
+// IsTerminal has to agree with the two classifiers it is built from, and cover
+// "complete", which belongs to neither: the services view uses it to decide
+// whether a container state is still telling an operator something (issue #616).
+func TestIsTerminal(t *testing.T) {
+	for _, state := range []string{
+		"complete", "shutdown", "remove", "failed", "rejected", "orphaned",
+	} {
+		require.True(t, IsTerminal(state), "%q is over", state)
+	}
+	for _, state := range []string{
+		"", "new", "pending", "assigned", "preparing", "starting", "running",
+	} {
+		require.False(t, IsTerminal(state), "%q may still be running", state)
+	}
+}

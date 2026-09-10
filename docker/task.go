@@ -48,7 +48,9 @@ type TaskEntry struct {
 	// decorator. Unlike State (the swarm task state) it reflects the
 	// container's `docker ps` state, which the remote Swarm API cannot report;
 	// the services view shows it as a fallback when Health is empty so container
-	// errors surface even for images without a healthcheck.
+	// errors surface even for images without a healthcheck — but only while the
+	// task could still be running, since a task that is over has an exited
+	// container by definition.
 	ContainerState string
 	// PullProgress summarizes the image pull the task's node is currently
 	// performing for it (e.g. "pulling · 3/12 layers · 412 MB"); "" when nothing

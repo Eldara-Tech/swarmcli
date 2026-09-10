@@ -15,6 +15,7 @@ func makeTask(serviceID string, slot int, desired, actual swarm.TaskState, ts ti
 		ServiceID:    serviceID,
 		Slot:         slot,
 		DesiredState: desired,
+		Meta:         swarm.Meta{CreatedAt: ts},
 		Status: swarm.TaskStatus{
 			State:     actual,
 			Timestamp: ts,
@@ -165,5 +166,102 @@ func TestActiveDeploymentErrors_NoRunningTask(t *testing.T) {
 	}
 	if result["svc1"] != "no suitable node" {
 		t.Errorf("got %q, want %q", result["svc1"], "no suitable node")
+	}
+}
+
+// A run-to-completion service (`..._init`) exits 0 and is never restarted, so it
+// never has a running task for a later attempt to be measured against. Its
+// successful run still has to clear the failure before it, or the service row
+// carries that error until the next time the service runs at all — which for a
+// stack deployed once a month is forever (PR #633 review).
+func TestActiveDeploymentErrors_CompletedRunSupersedesFailure(t *testing.T) {
+	now := time.Date(2026, 9, 9, 14, 0, 0, 0, time.UTC)
+	tasks := []swarm.Task{
+		makeTask("svc1", 1, swarm.TaskStateShutdown, swarm.TaskStateComplete, now, ""),
+		makeTask("svc1", 1, swarm.TaskStateShutdown, swarm.TaskStateFailed, now.Add(-time.Minute), "task: non-zero exit (1)"),
+		makeTask("svc1", 1, swarm.TaskStateShutdown, swarm.TaskStateComplete, now.Add(-7*24*time.Hour), ""),
+	}
+	if result := ActiveDeploymentErrorsByService(tasks); len(result) != 0 {
+		t.Errorf("expected the completed run to clear the earlier failure, got %v", result)
+	}
+}
+
+// The other direction: a completed run does not immunize the slot, it only
+// speaks for the moment it finished.
+func TestActiveDeploymentErrors_FailureAfterCompletedRun(t *testing.T) {
+	now := time.Date(2026, 9, 9, 14, 0, 0, 0, time.UTC)
+	tasks := []swarm.Task{
+		makeTask("svc1", 1, swarm.TaskStateShutdown, swarm.TaskStateComplete, now.Add(-time.Minute), ""),
+		makeTask("svc1", 1, swarm.TaskStateShutdown, swarm.TaskStateFailed, now, "task: non-zero exit (1)"),
+	}
+	result := ActiveDeploymentErrorsByService(tasks)
+	if result["svc1"] != "task: non-zero exit (1)" {
+		t.Errorf("got %q, want %q", result["svc1"], "task: non-zero exit (1)")
+	}
+}
+
+// The window follows the service rather than the cluster. A service that broke a
+// week ago and has not been rescheduled since is still broken, and a neighbour
+// that deployed a minute ago must not push it out of its own window.
+func TestActiveDeploymentErrors_WindowFollowsTheService(t *testing.T) {
+	now := time.Date(2026, 9, 9, 14, 0, 0, 0, time.UTC)
+	tasks := []swarm.Task{
+		makeTask("stale", 1, swarm.TaskStateRunning, swarm.TaskStateRejected, now.Add(-7*24*time.Hour), "no suitable node"),
+		makeTask("busy", 1, swarm.TaskStateRunning, swarm.TaskStateRunning, now, ""),
+	}
+	result := ActiveDeploymentErrorsByService(tasks)
+	if result["stale"] != "no suitable node" {
+		t.Errorf("got %q, want %q", result["stale"], "no suitable node")
+	}
+	if _, ok := result["busy"]; ok {
+		t.Errorf("the healthy neighbour reported an error: %v", result)
+	}
+}
+
+func TestAttemptOrder_PrefersCreatedAt(t *testing.T) {
+	created := time.Date(2026, 9, 9, 10, 0, 0, 0, time.UTC)
+	task := swarm.Task{
+		Meta:   swarm.Meta{CreatedAt: created},
+		Status: swarm.TaskStatus{Timestamp: created.Add(time.Hour)},
+	}
+	if got := AttemptOrder(task); !got.Equal(created) {
+		t.Errorf("got %v, want %v", got, created)
+	}
+}
+
+func TestAttemptOrder_FallsBackToStatusTimestamp(t *testing.T) {
+	ts := time.Date(2026, 9, 9, 10, 0, 0, 0, time.UTC)
+	task := swarm.Task{Status: swarm.TaskStatus{Timestamp: ts}}
+	if got := AttemptOrder(task); !got.Equal(ts) {
+		t.Errorf("got %v, want %v", got, ts)
+	}
+}
+
+// The second shape from PR #633's review: eldara-swarmcli_migrate, three failed
+// attempts, a run that completed, then a completed run of the next image. Every
+// task carries DesiredState=shutdown, which swarm stamps onto the leftovers when
+// the service is updated — so the last failure's Status.Timestamp lands after
+// both completed runs even though it was created before them. The task list
+// orders attempts by CreatedAt, so the row above it has to as well, or the row
+// contradicts the rows beneath it.
+func TestActiveDeploymentErrors_OrdersAttemptsByCreation(t *testing.T) {
+	base := time.Date(2026, 9, 9, 14, 0, 0, 0, time.UTC)
+	mk := func(created, stamp time.Time, state swarm.TaskState, msg string) swarm.Task {
+		return swarm.Task{
+			ServiceID: "migrate", Slot: 1, DesiredState: swarm.TaskStateShutdown,
+			Meta:   swarm.Meta{CreatedAt: created},
+			Status: swarm.TaskStatus{State: state, Timestamp: stamp, Err: msg},
+		}
+	}
+	tasks := []swarm.Task{
+		mk(base, base.Add(20*time.Second), swarm.TaskStateFailed, "task: non-zero exit (3)"),
+		mk(base.Add(time.Minute), base.Add(80*time.Second), swarm.TaskStateFailed, "task: non-zero exit (3)"),
+		// Created third, restamped last.
+		mk(base.Add(2*time.Minute), base.Add(7*time.Minute), swarm.TaskStateFailed, "task: non-zero exit (1)"),
+		mk(base.Add(3*time.Minute), base.Add(4*time.Minute), swarm.TaskStateComplete, ""),
+		mk(base.Add(5*time.Minute), base.Add(6*time.Minute), swarm.TaskStateComplete, ""),
+	}
+	if result := ActiveDeploymentErrorsByService(tasks); len(result) != 0 {
+		t.Errorf("the newest attempt completed, so the service is not failing; got %v", result)
 	}
 }

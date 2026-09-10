@@ -68,3 +68,14 @@ func isStoppedState(state string) bool {
 	}
 	return false
 }
+
+// IsTerminal reports whether a swarm task state means the task is over: it will
+// not run again, and its container has exited if it ever started. The services
+// view reads it to stop showing a container state that has nothing left to say —
+// on a task that is already over, "exited" is not news, and whether the cell can
+// say it at all turns on whether the node has pruned the container yet
+// (issue #616).
+func IsTerminal(state string) bool {
+	return isFailedState(state) || isStoppedState(state) ||
+		swarm.TaskState(state) == swarm.TaskStateComplete
+}

@@ -143,12 +143,13 @@ func TestColumns_StatusShowsRolloutProgress(t *testing.T) {
 func TestExpandedRow_ContainerStateFallback(t *testing.T) {
 	m := testModel()
 	loadWithFilter(m, AllFilter, fakeEntries("web"))
-	// Expand the service and give it a replica that is erroring with no
-	// healthcheck (Health empty). The container's live state must still surface
-	// as the HEALTH fallback so failures show for images without a HEALTHCHECK.
+	// Expand the service and give it a replica that swarm still calls running
+	// while its container has died, with no healthcheck (Health empty). The
+	// container's live state must surface as the HEALTH fallback so failures
+	// show for images without a HEALTHCHECK.
 	m.expandedServices["id-web"] = true
 	m.serviceTasks["id-web"] = []docker.TaskEntry{{
-		Name: "web.1", NodeName: "node-1", DesiredState: "Running",
+		Name: "web.1", NodeName: "node-1", DesiredState: "Running", State: "running",
 		CurrentState: "running 8m", ContainerID: "c1", ContainerState: "exited",
 	}}
 	m.setRenderItem()
@@ -193,6 +194,52 @@ func TestExpandedRow_TintsByTaskState(t *testing.T) {
 	require.Equal(t, fgSeq(lipgloss.Color("7")), rowTint(t, out, "node-old"))
 }
 
+// Once a task is over, CURRENT STATE has already said so and the container's
+// "exited" adds nothing — worse, whether the cell can say it at all turns on
+// whether the node has pruned the container out of the health decorator's
+// inventory, which is a difference between rows and not between tasks. With no
+// healthcheck verdict left to show, the column goes away rather than filling
+// with dashes (issue #616).
+func TestExpandedRow_HealthDropsWhenEveryTaskIsOver(t *testing.T) {
+	m := testModel()
+	loadWithFilter(m, AllFilter, fakeEntries("web"))
+	m.expandedServices["id-web"] = true
+	m.serviceTasks["id-web"] = []docker.TaskEntry{
+		{Name: "web.1", NodeName: "node-done", DesiredState: "Shutdown", State: "complete",
+			CurrentState: "complete 44 seconds ago", ContainerState: "exited"},
+		{Name: "web.2", NodeName: "node-old", DesiredState: "Shutdown", State: "complete",
+			CurrentState: "complete 3 days ago"},
+	}
+	m.setRenderItem()
+
+	out := m.List.RenderItem(m.List.Filtered[0], false, 0)
+	require.NotContains(t, out, "HEALTH", "no task can report health, so the column earns no width")
+	require.NotContains(t, out, "exited", "a finished task's container state is not a healthcheck verdict")
+}
+
+// The fallback keeps earning its place while a task could still be running:
+// there the container's state contradicts the task's, and that is the container
+// error #616 was careful not to hide.
+func TestExpandedRow_HealthKeepsContainerStateWhileTaskCouldRun(t *testing.T) {
+	m := testModel()
+	loadWithFilter(m, AllFilter, fakeEntries("web"))
+	m.expandedServices["id-web"] = true
+	m.serviceTasks["id-web"] = []docker.TaskEntry{
+		{Name: "web.1", NodeName: "node-loop", DesiredState: "Running", State: "running",
+			CurrentState: "running 2 minutes ago", ContainerState: "exited"},
+		{Name: "web.2", NodeName: "node-done", DesiredState: "Shutdown", State: "complete",
+			CurrentState: "complete 44 seconds ago", ContainerState: "exited"},
+	}
+	m.setRenderItem()
+
+	out := m.List.RenderItem(m.List.Filtered[0], false, 0)
+	require.Contains(t, out, "HEALTH", "one task with something to report brings the column back")
+	require.Contains(t, rowFor(t, out, "node-loop"), "exited",
+		"a task swarm calls running whose container has died is the case the fallback exists for")
+	require.NotContains(t, rowFor(t, out, "node-done"), "exited",
+		"the finished task alongside it still says nothing")
+}
+
 // trueColour makes a test's assertions run against the tinted rows: the default
 // profile under `go test` is Ascii, where every style renders as plain text.
 func trueColour(t *testing.T) {
@@ -205,9 +252,15 @@ func trueColour(t *testing.T) {
 // rowTint returns the opening SGR sequence of the rendered row carrying marker.
 func rowTint(t *testing.T, out, marker string) string {
 	t.Helper()
+	return sgrPrefix.FindString(rowFor(t, out, marker))
+}
+
+// rowFor returns the rendered line carrying marker, styling included.
+func rowFor(t *testing.T, out, marker string) string {
+	t.Helper()
 	for _, line := range strings.Split(out, "\n") {
 		if strings.Contains(ansi.Strip(line), marker) {
-			return sgrPrefix.FindString(line)
+			return line
 		}
 	}
 	require.FailNowf(t, "no rendered row", "no row containing %q", marker)

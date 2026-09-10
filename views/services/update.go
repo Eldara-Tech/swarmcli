@@ -24,7 +24,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/docker/docker/api/types/swarm"
 )
 
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
@@ -665,110 +664,15 @@ func (m *Model) refreshServiceErrorsFromSnapshot() {
 		return
 	}
 
-	svcDesired := make(map[string]int)
-	svcRunning := make(map[string]int)
-	for _, svc := range snap.Services {
-		// Shared with the loaders rather than duplicated: counting every node as
-		// a global service's target flagged a fully healthy service as erroring
-		// for as long as one node stayed drained or down (issue #480).
-		svcDesired[svc.ID] = snap.DesiredReplicas(svc)
-		// Initialize svcRunning with 0 for all services
-		svcRunning[svc.ID] = 0
-	}
-
-	latestTasks := taskutil.LatestTasksByServiceKey(snap.Tasks)
-
-	for _, t := range latestTasks {
-		if t.DesiredState == swarm.TaskStateRunning && t.Status.State == swarm.TaskStateRunning {
-			svcRunning[t.ServiceID]++
-		}
-	}
-
-	for _, t := range latestTasks {
-		desired := svcDesired[t.ServiceID]
-		running := svcRunning[t.ServiceID]
-		if desired == 0 || running >= desired {
-			continue
-		}
-		if t.DesiredState == swarm.TaskStateShutdown && t.Status.State == swarm.TaskStateComplete {
-			continue
-		}
-		hasError := false
-		// Only count explicit errors: Status.Err or Failed/Rejected states
-		if t.Status.Err != "" {
-			hasError = true
-		} else if t.Status.State == swarm.TaskStateFailed || t.Status.State == swarm.TaskStateRejected {
-			hasError = true
-		}
-		if !hasError {
-			continue
-		}
-		m.serviceHasError[t.ServiceID] = true
-		if m.serviceErrorText[t.ServiceID] == "" {
-			m.serviceErrorText[t.ServiceID] = t.Status.Err
-		}
-	}
-
-	// If service is under-replicated with no explicit error from latest task,
-	// check recent tasks for the most recent error
-	for serviceID, running := range svcRunning {
-		desired := svcDesired[serviceID]
-		if desired > 0 && running < desired && m.serviceErrorText[serviceID] == "" {
-			// Find most recent task timestamp for this service
-			var newestTaskTime time.Time
-			for _, t := range snap.Tasks {
-				if t.ServiceID != serviceID {
-					continue
-				}
-				at := t.Status.Timestamp
-				if at.IsZero() {
-					at = t.CreatedAt
-				}
-				if newestTaskTime.IsZero() || at.After(newestTaskTime) {
-					newestTaskTime = at
-				}
-			}
-
-			// Only check tasks within 5 minutes of the newest task
-			cutoff := newestTaskTime.Add(-5 * time.Minute)
-
-			// Find most recent task with an actual error (not just non-running)
-			var mostRecentErr string
-			var mostRecentErrTime time.Time
-			for _, t := range snap.Tasks {
-				if t.ServiceID != serviceID {
-					continue
-				}
-				if t.Status.Err == "" {
-					continue
-				}
-				at := t.Status.Timestamp
-				if at.IsZero() {
-					at = t.CreatedAt
-				}
-				if at.Before(cutoff) {
-					continue
-				}
-				if mostRecentErr == "" || at.After(mostRecentErrTime) {
-					mostRecentErr = t.Status.Err
-					mostRecentErrTime = at
-				}
-			}
-			if mostRecentErr != "" {
-				m.serviceHasError[serviceID] = true
-				m.serviceErrorText[serviceID] = mostRecentErr
-			}
-		}
-	}
-
-	// Also detect active deployment failures: slots where the newest error task
-	// is more recent than the newest running task, even when running >= desired.
-	// This catches a failed rolling update where old tasks are still running.
+	// One rule decides this, shared with the stacks view's badge: a slot is
+	// erroring when its newest failure is newer than its last sign of life. It
+	// subsumes the under-replication scan that used to sit here, which reported
+	// any failure within the window whether or not a later task had already
+	// succeeded — the reason a `..._init` service that exits 0 kept a red row
+	// and a stale ERROR cell from the attempt before it (PR #633 review).
 	for svcID, errMsg := range taskutil.ActiveDeploymentErrorsByService(snap.Tasks) {
-		if !m.serviceHasError[svcID] {
-			m.serviceHasError[svcID] = true
-			m.serviceErrorText[svcID] = errMsg
-		}
+		m.serviceHasError[svcID] = true
+		m.serviceErrorText[svcID] = errMsg
 	}
 }
 
@@ -809,17 +713,17 @@ func (m *Model) setRenderItem() {
 			if len(tasks) > 0 {
 				// HEALTH and PORTS are per-container data the swarm API does not
 				// expose; they are populated by a TaskOps decorator and stay
-				// empty otherwise, so only show those columns when present. The
-				// HEALTH cell shows the healthcheck token when present, else the
-				// container's live state (running / restarting / exited), so the
-				// column appears whenever the decorator is active.
+				// empty otherwise, so only show those columns when present.
+				// HEALTH is gated on the cell taskHealthCell would render rather
+				// than on the raw fields, so a service whose tasks are all over
+				// drops the column instead of showing a dash on every row.
 				// IMAGE earns its width only while the replicas disagree about it:
 				// that is a rollout, and it is the column that says which row is
 				// the outgoing generation. In a settled service every row would
 				// repeat the image already on the service row above.
 				show := taskRowColumns{}
 				for _, t := range tasks {
-					if t.Health != "" || t.ContainerState != "" {
+					if taskHealthCell(t) != "" {
 						show.health = true
 					}
 					if t.Ports != "" {
@@ -848,7 +752,7 @@ func (m *Model) setRenderItem() {
 						node:    filterlist.TruncateRunes(task.NodeName, 12),
 						desired: filterlist.TruncateRunes(task.DesiredState, 13),
 						current: filterlist.TruncateRunes(task.StatusText(), 40),
-						health:  dashIfEmpty(filterlist.TruncateRunes(firstNonEmpty(task.Health, task.ContainerState), 9)),
+						health:  dashIfEmpty(filterlist.TruncateRunes(taskHealthCell(task), 9)),
 						ports:   dashIfEmpty(filterlist.TruncateRunes(task.Ports, 20)),
 						errText: filterlist.TruncateRunes(task.Error, 30),
 					}, show)
@@ -945,6 +849,22 @@ func dashIfEmpty(s string) string {
 		return "—"
 	}
 	return s
+}
+
+// taskHealthCell is what the HEALTH column has to say about one task: the
+// healthcheck verdict when the decorator recorded one, else the container's live
+// docker-ps state, so a container error surfaces even for an image that declares
+// no HEALTHCHECK. That fallback stops once the swarm task state is terminal. The
+// container has of course exited by then, and whether the cell can say so turns
+// only on whether the node has pruned it out of the decorator's inventory yet —
+// so it advertises a difference between rows where there is none between tasks
+// (issue #616). CURRENT STATE already carries how the task ended, and ERROR
+// carries why.
+func taskHealthCell(t docker.TaskEntry) string {
+	if taskutil.IsTerminal(t.State) {
+		return t.Health
+	}
+	return firstNonEmpty(t.Health, t.ContainerState)
 }
 
 // firstNonEmpty returns the first non-empty string, used to fall back from the
