@@ -15,6 +15,7 @@ func makeTask(serviceID string, slot int, desired, actual swarm.TaskState, ts ti
 		ServiceID:    serviceID,
 		Slot:         slot,
 		DesiredState: desired,
+		Meta:         swarm.Meta{CreatedAt: ts},
 		Status: swarm.TaskStatus{
 			State:     actual,
 			Timestamp: ts,
@@ -214,5 +215,53 @@ func TestActiveDeploymentErrors_WindowFollowsTheService(t *testing.T) {
 	}
 	if _, ok := result["busy"]; ok {
 		t.Errorf("the healthy neighbour reported an error: %v", result)
+	}
+}
+
+func TestAttemptOrder_PrefersCreatedAt(t *testing.T) {
+	created := time.Date(2026, 9, 9, 10, 0, 0, 0, time.UTC)
+	task := swarm.Task{
+		Meta:   swarm.Meta{CreatedAt: created},
+		Status: swarm.TaskStatus{Timestamp: created.Add(time.Hour)},
+	}
+	if got := AttemptOrder(task); !got.Equal(created) {
+		t.Errorf("got %v, want %v", got, created)
+	}
+}
+
+func TestAttemptOrder_FallsBackToStatusTimestamp(t *testing.T) {
+	ts := time.Date(2026, 9, 9, 10, 0, 0, 0, time.UTC)
+	task := swarm.Task{Status: swarm.TaskStatus{Timestamp: ts}}
+	if got := AttemptOrder(task); !got.Equal(ts) {
+		t.Errorf("got %v, want %v", got, ts)
+	}
+}
+
+// The second shape from PR #633's review: eldara-swarmcli_migrate, three failed
+// attempts, a run that completed, then a completed run of the next image. Every
+// task carries DesiredState=shutdown, which swarm stamps onto the leftovers when
+// the service is updated — so the last failure's Status.Timestamp lands after
+// both completed runs even though it was created before them. The task list
+// orders attempts by CreatedAt, so the row above it has to as well, or the row
+// contradicts the rows beneath it.
+func TestActiveDeploymentErrors_OrdersAttemptsByCreation(t *testing.T) {
+	base := time.Date(2026, 9, 9, 14, 0, 0, 0, time.UTC)
+	mk := func(created, stamp time.Time, state swarm.TaskState, msg string) swarm.Task {
+		return swarm.Task{
+			ServiceID: "migrate", Slot: 1, DesiredState: swarm.TaskStateShutdown,
+			Meta:   swarm.Meta{CreatedAt: created},
+			Status: swarm.TaskStatus{State: state, Timestamp: stamp, Err: msg},
+		}
+	}
+	tasks := []swarm.Task{
+		mk(base, base.Add(20*time.Second), swarm.TaskStateFailed, "task: non-zero exit (3)"),
+		mk(base.Add(time.Minute), base.Add(80*time.Second), swarm.TaskStateFailed, "task: non-zero exit (3)"),
+		// Created third, restamped last.
+		mk(base.Add(2*time.Minute), base.Add(7*time.Minute), swarm.TaskStateFailed, "task: non-zero exit (1)"),
+		mk(base.Add(3*time.Minute), base.Add(4*time.Minute), swarm.TaskStateComplete, ""),
+		mk(base.Add(5*time.Minute), base.Add(6*time.Minute), swarm.TaskStateComplete, ""),
+	}
+	if result := ActiveDeploymentErrorsByService(tasks); len(result) != 0 {
+		t.Errorf("the newest attempt completed, so the service is not failing; got %v", result)
 	}
 }

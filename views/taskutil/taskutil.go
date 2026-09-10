@@ -19,6 +19,21 @@ func TaskKeyForService(t swarm.Task) string {
 	return fmt.Sprintf("%s:%s", t.ServiceID, t.NodeID)
 }
 
+// AttemptOrder returns the clock that orders one slot's attempts against each
+// other: when swarm created the task. Status.Timestamp answers a different
+// question — when the task last changed state — and the two disagree whenever a
+// finished task's status is touched again afterwards, which is how a service
+// whose newest run succeeded kept reporting an older failure (PR #633 review).
+// The task list sorts by CreatedAt too, so the service row and the rows beneath
+// it cannot contradict each other. Falls back to Status.Timestamp for a task
+// with no creation time.
+func AttemptOrder(t swarm.Task) time.Time {
+	if !t.CreatedAt.IsZero() {
+		return t.CreatedAt
+	}
+	return t.Status.Timestamp
+}
+
 // TaskTimestamp returns the effective timestamp for a task, falling back to
 // CreatedAt when Status.Timestamp is zero.
 func TaskTimestamp(t swarm.Task) time.Time {
@@ -30,14 +45,16 @@ func TaskTimestamp(t swarm.Task) time.Time {
 
 // LatestTasksByServiceKey returns the most relevant task per slot.
 // Tasks that want to be running are preferred over terminal tasks;
-// within the same tier the most recent task wins.
+// within the same tier the most recently created task wins — attempt order, the
+// same clock ActiveDeploymentErrorsByService and the task list use, so the two
+// cannot disagree about which attempt is a slot's current one.
 func LatestTasksByServiceKey(tasks []swarm.Task) []swarm.Task {
 	latest := make(map[string]swarm.Task)
 	latestAt := make(map[string]time.Time)
 	latestWantsRunning := make(map[string]bool)
 	for _, t := range tasks {
 		key := TaskKeyForService(t)
-		at := TaskTimestamp(t)
+		at := AttemptOrder(t)
 		wantsRunning := t.DesiredState == swarm.TaskStateRunning
 		if _, seen := latest[key]; !seen {
 			latest[key] = t
@@ -83,7 +100,7 @@ func ActiveDeploymentErrorsByService(tasks []swarm.Task) map[string]string {
 
 	newestByService := make(map[string]time.Time)
 	for _, t := range tasks {
-		at := TaskTimestamp(t)
+		at := AttemptOrder(t)
 		if newest, seen := newestByService[t.ServiceID]; !seen || at.After(newest) {
 			newestByService[t.ServiceID] = at
 		}
@@ -102,7 +119,7 @@ func ActiveDeploymentErrorsByService(tasks []swarm.Task) map[string]string {
 			bySlot[key] = &slotInfo{serviceID: t.ServiceID}
 		}
 		s := bySlot[key]
-		at := TaskTimestamp(t)
+		at := AttemptOrder(t)
 
 		if (t.DesiredState == swarm.TaskStateRunning && t.Status.State == swarm.TaskStateRunning) ||
 			t.Status.State == swarm.TaskStateComplete {

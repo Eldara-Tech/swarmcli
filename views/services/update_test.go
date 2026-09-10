@@ -133,3 +133,29 @@ func TestServiceErrors_NewestFailureIsReported(t *testing.T) {
 	require.True(t, m.serviceHasError["id-init"])
 	require.Equal(t, "task: non-zero exit (2)", m.serviceErrorText["id-init"])
 }
+
+// The eldara-swarmcli_migrate shape from the second PR #633 review, driven
+// through the view: the newest attempt completed, but the last failure's status
+// was stamped after it — which is what swarm does to the leftovers when the
+// service is updated and every task picks up DesiredState=shutdown. The service
+// row must agree with the task rows beneath it, and those sort by CreatedAt.
+func TestServiceErrors_RestampedFailureDoesNotOutrankANewerRun(t *testing.T) {
+	base := time.Date(2026, 9, 9, 14, 0, 0, 0, time.UTC)
+	mk := func(created, stamp time.Time, state swarm.TaskState, msg string) swarm.Task {
+		return swarm.Task{
+			ServiceID: "id-init", Slot: 1, DesiredState: swarm.TaskStateShutdown,
+			Meta:   swarm.Meta{CreatedAt: created},
+			Status: swarm.TaskStatus{State: state, Timestamp: stamp, Err: msg},
+		}
+	}
+	m := modelWithTasks([]swarm.Task{
+		mk(base, base.Add(20*time.Second), swarm.TaskStateFailed, "task: non-zero exit (3)"),
+		mk(base.Add(2*time.Minute), base.Add(7*time.Minute), swarm.TaskStateFailed, "task: non-zero exit (1)"),
+		mk(base.Add(3*time.Minute), base.Add(4*time.Minute), swarm.TaskStateComplete, ""),
+		mk(base.Add(5*time.Minute), base.Add(6*time.Minute), swarm.TaskStateComplete, ""),
+	})
+	m.refreshServiceErrorsFromSnapshot()
+
+	require.False(t, m.serviceHasError["id-init"], "the newest attempt completed")
+	require.Empty(t, m.serviceErrorText["id-init"])
+}
