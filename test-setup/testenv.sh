@@ -10,6 +10,12 @@ MANAGER_HOST="tcp://localhost:22375"
 KEEP="${KEEP:-0}"
 FOLLOW="${FOLLOW:-0}"
 SERVICE="${SERVICE:-}"
+# How big a swarm to start, counted the way the Docker API counts it: the
+# manager plus every worker, which is also the number a licence's node
+# allowance is compared against. 3 is the topology this file has always
+# brought up (1 manager + 2 workers), so leaving NODES unset changes nothing.
+# `worker` is a single scaled compose service, so any N >= 1 works.
+NODES="${NODES:-3}"
 DOCKER_COMPOSE="docker compose -f $COMPOSE_FILE"
 CONTEXT_NAME="swarmcli"
 
@@ -55,26 +61,26 @@ wait_for_manager() {
 
 # Wait until every worker DinD node has joined the swarm and reports Ready.
 #
-# The compose file declares a manager + N `worker<i>-join` containers that run
-# `docker swarm join`. Those joins are asynchronous: before this gate, `up`
-# returned as soon as the manager API was reachable, so `deploy` (worker image
-# distribution) and the integration tests frequently ran against an
-# effectively single-node swarm, so worker-placement tests had nothing to
-# exercise. Blocking here makes the
-# swarm match its declared topology so those tests are real, not skipped.
+# Each `worker` replica joins the swarm itself, and that join is asynchronous:
+# before this gate, `up` returned as soon as the manager API was reachable, so
+# `deploy` (worker image distribution) and the integration tests frequently ran
+# against an effectively single-node swarm, so worker-placement tests had
+# nothing to exercise. Blocking here makes the swarm match the topology that
+# was asked for, so those tests are real, not skipped.
 #
-# Expected worker count is derived from the compose file (one per
-# `worker<i>-join` service) so it stays correct if the topology changes.
+# Expected worker count is NODES minus the manager — the same number cmd_up
+# scales the `worker` service to, so the gate and the topology cannot drift.
 # `SKIP_WORKER_WAIT=1` bypasses the gate for deliberately single-node local
-# runs. A worker that never joins becomes a loud, diagnosable failure here
-# rather than a silent single-node degrade later.
+# runs, and `EXPECT_WORKERS` pins it for a trimmed topology. A worker that
+# never joins becomes a loud, diagnosable failure here rather than a silent
+# single-node degrade later.
 wait_for_workers() {
   if [ "${SKIP_WORKER_WAIT:-0}" = "1" ]; then
     warn "SKIP_WORKER_WAIT=1: not waiting for worker nodes (single-node run)"
     return
   fi
   local expected
-  expected="${EXPECT_WORKERS:-$(grep -cE '^[[:space:]]{2}worker[0-9]+-join:' "$COMPOSE_FILE")}"
+  expected="${EXPECT_WORKERS:-$((NODES - 1))}"
   if [ "$expected" -eq 0 ]; then
     return
   fi
@@ -95,6 +101,10 @@ wait_for_workers() {
   done
   err "Only ${ready:-0}/${expected} worker node(s) Ready after $((retries * wait_sec))s. Swarm state:"
   docker -H "$MANAGER_HOST" node ls >&2 || true
+  # Each replica joins the swarm itself, so the reason it did not is in its
+  # own log and nowhere else — `node ls` above can only report the absence.
+  err "Worker logs:"
+  $DOCKER_COMPOSE logs --tail=200 worker >&2 || true
   exit 1
 }
 
@@ -127,10 +137,21 @@ cleanup_port() {
 # === Commands ==============================================================
 
 cmd_up() {
+  if ! [[ "$NODES" =~ ^[1-9][0-9]*$ ]]; then
+    err "NODES must be a positive integer (got '$NODES'). It counts the whole"
+    err "swarm, manager included, so NODES=1 is a manager on its own."
+    exit 1
+  fi
+
   cleanup_port  # <<< ensure old manager gone
 
-  info "🚀 Starting multinode Swarm environment..."
-  $DOCKER_COMPOSE up -d
+  info "🚀 Starting Swarm environment: ${NODES} node(s) (1 manager + $((NODES - 1)) worker(s))..."
+  # --remove-orphans: this project's service names are not stable across
+  # checkouts — the fixed worker1/worker2 pair became one scaled `worker`.
+  # Containers of a service this file no longer declares are left running
+  # otherwise, and they keep holding the `shared` volume, which is what makes
+  # a later `down -v` report it as still in use.
+  $DOCKER_COMPOSE up -d --remove-orphans --scale "worker=$((NODES - 1))"
   $DOCKER_COMPOSE ps
 
   info "🔧 Ensuring Docker context..."
@@ -215,8 +236,11 @@ cmd_down() {
   # Remove the stack (ignore errors if it doesn't exist)
   run_or_warn docker --context "$CONTEXT_NAME" stack rm demo
 
-  # Bring down compose services and volumes
-  run_or_warn $DOCKER_COMPOSE down -v
+  # Bring down compose services and volumes. --remove-orphans for the same
+  # reason cmd_up passes it: a container left over from an earlier service
+  # layout still references `shared`, and the volume removal fails with
+  # "Resource is still in use" while the teardown reports success.
+  run_or_warn $DOCKER_COMPOSE down -v --remove-orphans
 
   ok "Swarm environment torn down."
 }

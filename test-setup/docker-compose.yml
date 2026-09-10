@@ -28,7 +28,6 @@ services:
       - "22375:2375"                     # expose manager Docker API to host
     volumes:
       - manager-data:/var/lib/docker
-      - shared:/shared
       - ../.devcontainer/certs:/usr/local/share/ca-certificates:ro
     networks:
       swarmnet:
@@ -41,7 +40,10 @@ services:
       start_period: 2s
 
 
-  # Initializes Swarm on manager and writes worker join token to the shared volume
+  # Initializes Swarm on the manager. It publishes nothing: each worker asks
+  # the manager for its own join token (see `worker`), so there is no token
+  # file, and no volume shared between services to carry one run's token into
+  # the next.
   swarm-init:
     image: docker:29
     depends_on:
@@ -49,8 +51,6 @@ services:
         condition: service_healthy
     environment:
       DOCKER_HOST: tcp://manager:2375
-    volumes:
-      - shared:/shared
     networks:
       - swarmnet
     command:
@@ -60,12 +60,26 @@ services:
          if ! docker info 2>/dev/null | grep -q 'Swarm: active'; then \
            docker swarm init --advertise-addr eth0; \
          fi; \
-         docker swarm join-token -q worker > /shared/worker_token; \
          tail -f /dev/null"
       ]
 
-  # ===== Worker #1 (dockerd-in-docker) =====
-  worker1:
+  # ===== Workers (dockerd-in-docker) =====
+  #
+  # One service scaled to as many replicas as the run asks for: `testenv.sh
+  # up` passes `--scale worker=$((NODES - 1))`, so the size of the swarm is a
+  # knob rather than a fixed pair of services.
+  #
+  # Each replica joins the swarm itself instead of being joined by a
+  # `worker<i>-join` sidecar. A sidecar cannot survive scaling: every replica
+  # of it would resolve the `worker` DNS name round-robin, so several would
+  # join whichever daemon answered first and the rest of the swarm would never
+  # be joined at all.
+  #
+  # /var/lib/docker is anonymous rather than a named volume for the same
+  # reason — replicas of one service share a named volume, and two dockerds on
+  # one graph directory is a corrupted store. `compose down -v` removes
+  # anonymous volumes too, so teardown is unchanged.
+  worker:
     image: docker:29-dind
     privileged: true
     environment:
@@ -75,112 +89,58 @@ services:
       net.ipv4.ip_forward: 1
       net.ipv4.conf.all.route_localnet: 1
     command:
-      [
-        "sh","-c",
-        "apk add --no-cache ca-certificates >/dev/null 2>&1 || true; \
-         update-ca-certificates || true; \
-         exec dockerd \
-           --host=tcp://0.0.0.0:2375 \
-           --host=unix:///var/run/docker.sock"
-      ]
+      - sh
+      - -c
+      # A block scalar rather than the one-line flow form the other services
+      # use: the join is a wait followed by a retry, and it has to stay
+      # readable. Every step announces itself, because a silent step that
+      # never finishes is indistinguishable from one that never started —
+      # `testenv.sh` dumps this log when the join gate times out.
+      - |
+        apk add --no-cache ca-certificates >/dev/null 2>&1 || true
+        update-ca-certificates || true
+        (
+          # Explicit: this half of the container talks to the daemon the next
+          # line starts, never to a host inherited from the image or the env.
+          export DOCKER_HOST=unix:///var/run/docker.sock
+          echo 'swarm-join: waiting for the local daemon'
+          until docker info >/dev/null 2>&1; do sleep 1; done
+          echo 'swarm-join: joining'
+          # Leave first, in case this replica reused a volume carrying state
+          # from an earlier swarm; retry until the daemon actually reports
+          # membership, so a manager that is not accepting joins yet is a
+          # delay rather than a permanent single-node degrade.
+          #
+          # The token is fetched from the manager on every attempt rather than
+          # read from a file the two services share. A shared volume outlives
+          # the swarm that filled it — a teardown that cannot remove it hands
+          # the next run a token for a swarm that no longer exists — and it is
+          # a token for *this* manager or the attempt fails and retries. Before
+          # `swarm init` lands the fetch is empty and the join fails, which is
+          # the same delay as any other not-yet-ready manager.
+          docker swarm leave >/dev/null 2>&1 || true
+          until docker info 2>/dev/null | grep -q 'Swarm: active'; do
+            docker swarm join --token \
+              "$(docker -H tcp://manager:2375 swarm join-token -q worker 2>/dev/null)" \
+              manager:2377 || sleep 2
+          done
+          echo 'swarm-join: joined'
+        ) &
+        exec dockerd --host=tcp://0.0.0.0:2375 --host=unix:///var/run/docker.sock
     volumes:
-      - worker1-data:/var/lib/docker
-      - shared:/shared
+      - /var/lib/docker
       - ../.devcontainer/certs:/usr/local/share/ca-certificates:ro
     networks:
-      swarmnet:
-        aliases: [worker1]
+      - swarmnet
     healthcheck:
       test: ["CMD-SHELL", "docker -H localhost:2375 info >/dev/null 2>&1"]
       interval: 2s
       timeout: 2s
       retries: 60
       start_period: 2s
-
-  # Joins worker1 to the Swarm
-  worker1-join:
-    image: docker:29
-    depends_on:
-      worker1:
-        condition: service_healthy
-      swarm-init:
-        condition: service_started
-    environment:
-      DOCKER_HOST: tcp://worker1:2375
-    volumes:
-      - shared:/shared
-    networks:
-      - swarmnet
-    command:
-      [
-        "sh","-exc",
-        "until [ -s /shared/worker_token ]; do sleep 1; done; \
-         docker swarm leave >/dev/null 2>&1 || true; \
-         docker swarm join --token \"$(cat /shared/worker_token)\" manager:2377; \
-         tail -f /dev/null"
-      ]
-
-  # ===== Worker #2 (dockerd-in-docker) =====
-  worker2:
-    image: docker:29-dind
-    privileged: true
-    environment:
-      DOCKER_TLS_CERTDIR:
-      <<: *proxy_env
-    sysctls:
-      net.ipv4.ip_forward: 1
-      net.ipv4.conf.all.route_localnet: 1
-    command:
-      [
-        "sh","-c",
-        "apk add --no-cache ca-certificates >/dev/null 2>&1 || true; \
-         update-ca-certificates || true; \
-         exec dockerd \
-           --host=tcp://0.0.0.0:2375 \
-           --host=unix:///var/run/docker.sock"
-      ]
-    volumes:
-      - worker2-data:/var/lib/docker
-      - shared:/shared
-      - ../.devcontainer/certs:/usr/local/share/ca-certificates:ro
-    networks:
-      swarmnet:
-        aliases: [worker2]
-    healthcheck:
-      test: ["CMD-SHELL", "docker -H localhost:2375 info >/dev/null 2>&1"]
-      interval: 2s
-      timeout: 2s
-      retries: 60
-      start_period: 2s
-
-  # Joins worker2 to the Swarm
-  worker2-join:
-    image: docker:29
-    depends_on:
-      worker2:
-        condition: service_healthy
-      swarm-init:
-        condition: service_started
-    environment:
-      DOCKER_HOST: tcp://worker2:2375
-    volumes:
-      - shared:/shared
-    networks:
-      - swarmnet
-    command:
-      [
-        "sh","-exc",
-        "until [ -s /shared/worker_token ]; do sleep 1; done; \
-         docker swarm leave >/dev/null 2>&1 || true; \
-         docker swarm join --token \"$(cat /shared/worker_token)\" manager:2377; \
-         tail -f /dev/null"
-      ]
 
 networks:
   swarmnet:
 
 volumes:
   manager-data:
-  worker1-data:
-  worker2-data:
-  shared:

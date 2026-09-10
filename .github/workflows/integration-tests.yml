@@ -47,7 +47,7 @@ jobs:
 
     # No `services:` DinD and no DOCKER_HOST override: a single shared DinD
     # container plus `docker swarm init` shadowed the multinode topology —
-    # `test-setup/docker-compose.yml` (manager + worker1/worker2 + joins,
+    # `test-setup/docker-compose.yml` (manager + scaled `worker` replicas,
     # all `privileged: true`) was run *nested* inside it, so every test and
     # the worker-readiness gate talked to the outer single-node swarm while
     # the real multinode swarm was orphaned (CI was silently single-node).

@@ -52,17 +52,33 @@ type ServiceConvergence struct {
 	NewestTaskAge time.Duration
 }
 
-// activeNodeIDs returns the nodes that can currently run tasks. A task pinned to
-// a node that is down never converges, so counting it in the denominator would
-// make a release hang until timeout for a reason no redeploy can fix.
-func activeNodeIDs(snap *SwarmSnapshot) map[string]struct{} {
-	active := make(map[string]struct{}, len(snap.Nodes))
+// schedulableNodes returns the nodes that can currently run tasks. A task pinned
+// to a node that is down never converges, so counting it in the denominator
+// would make a release hang until timeout for a reason no redeploy can fix.
+//
+// The predicate is swarmkit's own (orchestrator/global.updateNode): drained and
+// down, nothing else. A stricter one that also demanded Ready and Active split
+// the two halves of the ratio apart — a paused node's running task was counted
+// in the numerator while the node itself was dropped from the denominator, so a
+// healthy global service read 3/2.
+func schedulableNodes(snap *SwarmSnapshot) []swarm.Node {
+	out := make([]swarm.Node, 0, len(snap.Nodes))
 	for _, n := range snap.Nodes {
-		if n.Status.State == swarm.NodeStateReady && n.Spec.Availability == swarm.NodeAvailabilityActive {
-			active[n.ID] = struct{}{}
+		if n.Spec.Availability == swarm.NodeAvailabilityDrain || n.Status.State == swarm.NodeStateDown {
+			continue
 		}
+		out = append(out, n)
 	}
-	return active
+	return out
+}
+
+// nodeIDSet indexes nodes by ID, for callers filtering tasks by node.
+func nodeIDSet(nodes []swarm.Node) map[string]struct{} {
+	ids := make(map[string]struct{}, len(nodes))
+	for _, n := range nodes {
+		ids[n.ID] = struct{}{}
+	}
+	return ids
 }
 
 // LoadStackConvergence returns per-service convergence facts for a stack.
@@ -84,7 +100,8 @@ func LoadStackConvergence(stackName string) []ServiceConvergence {
 // so a caller polling one specific swarm for convergence does not read another
 // swarm's tasks out of the process-wide cache.
 func (snap *SwarmSnapshot) StackConvergence(stackName string) []ServiceConvergence {
-	active := activeNodeIDs(snap)
+	schedulable := schedulableNodes(snap)
+	active := nodeIDSet(schedulable)
 
 	var out []ServiceConvergence
 	for _, svc := range snap.Services {
@@ -133,7 +150,7 @@ func (snap *SwarmSnapshot) StackConvergence(stackName string) []ServiceConvergen
 			Running:       running,
 			Completed:     completed,
 			Job:           job,
-			Desired:       desiredOverActiveNodes(svc, len(active)),
+			Desired:       desiredOverNodes(svc, schedulable),
 			UpdateState:   updateState(svc),
 			Monitor:       monitorWindow(svc),
 			NewestTaskAge: ageSince(newest),
@@ -181,20 +198,25 @@ func isJobService(svc swarm.Service) bool {
 // DesiredReplicas is the service's target task count against this snapshot: the
 // declared replicas, or for a global service one per node that can currently run
 // one. Exported for callers outside this package that would otherwise duplicate
-// the mode switch and get the global case wrong (issue #480).
+// the mode switch and get the global case wrong (issues #480, #643).
 func (snap *SwarmSnapshot) DesiredReplicas(svc swarm.Service) int {
-	return desiredOverActiveNodes(svc, len(activeNodeIDs(snap)))
+	return desiredOverNodes(svc, schedulableNodes(snap))
 }
 
-// desiredOverActiveNodes is the target task count. For a global service that is
-// one per active node, so draining a node lowers the target rather than making
-// the service permanently short.
-func desiredOverActiveNodes(svc swarm.Service, activeNodes int) int {
+// desiredOverNodes is the target task count. For a global service that is one
+// per schedulable node the placement constraints admit, so draining a node
+// lowers the target rather than making the service permanently short, and a
+// service pinned to the managers is not measured against the workers too.
+//
+// A replicated service's declared count is its target wherever the replicas can
+// land, which is what swarm reports and what --wait must keep waiting for: a
+// constraint no node satisfies leaves it pending, not converged.
+func desiredOverNodes(svc swarm.Service, nodes []swarm.Node) int {
 	switch {
 	case svc.Spec.Mode.Replicated != nil && svc.Spec.Mode.Replicated.Replicas != nil:
 		return int(*svc.Spec.Mode.Replicated.Replicas)
 	case svc.Spec.Mode.Global != nil:
-		return activeNodes
+		return eligibleNodeCount(svc, nodes)
 	default:
 		return 1
 	}

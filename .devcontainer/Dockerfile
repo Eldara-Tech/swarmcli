@@ -24,6 +24,8 @@ RUN apt-get update \
 ARG USERNAME=vscode
 RUN groupadd -f docker && usermod -aG docker ${USERNAME}
 
+ENV GOTOOLCHAIN=auto
+
 ENV GONOSUMDB=* \
     GONOPROXY=* \
     GOPROXY=https://proxy.golang.org,direct

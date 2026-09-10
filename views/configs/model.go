@@ -284,16 +284,7 @@ func (m *Model) HasErrors() bool {
 	return false
 }
 
-// validateConfigName validates a config name
+// validateConfigName rejects, in the dialog, the names the daemon would refuse.
 func validateConfigName(name string) error {
-	if name == "" {
-		return fmt.Errorf("config name cannot be empty")
-	}
-	if strings.ContainsAny(name, " \t\n") {
-		return fmt.Errorf("config name cannot contain whitespace")
-	}
-	if strings.ContainsAny(name, "/\\:*?\"<>|") {
-		return fmt.Errorf("config name contains invalid characters")
-	}
-	return nil
+	return docker.ValidateSwarmObjectName("config", name)
 }

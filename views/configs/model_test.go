@@ -5,6 +5,7 @@ package configsview
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -233,6 +234,9 @@ func TestValidateConfigName(t *testing.T) {
 	require.Error(t, validateConfigName(""))
 	require.Error(t, validateConfigName("has space"))
 	require.Error(t, validateConfigName("has/slash"))
+	// swarmcli-be#353: the daemon caps a config name at 64, and the dialog used
+	// to let one through and report the daemon's refusal instead.
+	require.Error(t, validateConfigName(strings.Repeat("a", 65)))
 }
 
 func TestSelectedConfig_Empty(t *testing.T) {

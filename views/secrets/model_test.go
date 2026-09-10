@@ -5,6 +5,7 @@ package secretsview
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -234,6 +235,9 @@ func TestValidateSecretName(t *testing.T) {
 	require.Error(t, validateSecretName(""))
 	require.Error(t, validateSecretName("has space"))
 	require.Error(t, validateSecretName("has/slash"))
+	// swarmcli-be#353: the daemon caps a secret name at 64, and the dialog used
+	// to let one through and report the daemon's refusal instead.
+	require.Error(t, validateSecretName(strings.Repeat("a", 65)))
 }
 
 func TestSelectedSecret_Empty(t *testing.T) {

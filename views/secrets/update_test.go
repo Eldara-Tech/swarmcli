@@ -6,6 +6,7 @@ package secretsview
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -383,7 +384,19 @@ func TestCreateDialog_DetailsFile_Enter_InvalidName_ShowsError(t *testing.T) {
 	m.createNameInput.SetValue("bad/name")
 
 	m.Update(key("enter"))
-	require.Contains(t, m.createDialogError, "invalid")
+	require.Contains(t, m.createDialogError, "may contain only")
+}
+
+// swarmcli-be#353: a name the daemon would refuse for its length used to reach
+// the daemon, which reported it after the dialog had already closed.
+func TestCreateDialog_DetailsFile_Enter_OverlongName_ShowsError(t *testing.T) {
+	m := testModel()
+	m.createDialogActive = true
+	m.createDialogStep = "details-file"
+	m.createNameInput.SetValue(strings.Repeat("a", 65))
+
+	m.Update(key("enter"))
+	require.Contains(t, m.createDialogError, "64 characters or fewer")
 }
 
 func TestCreateDialog_DetailsFile_Enter_NoPath_ShowsError(t *testing.T) {

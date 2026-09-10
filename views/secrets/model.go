@@ -295,16 +295,7 @@ func revealHelpDesc() string {
 	return view.BEHelpDesc("reveal-secret", "Reveal")
 }
 
-// validateSecretName validates a secret name
+// validateSecretName rejects, in the dialog, the names the daemon would refuse.
 func validateSecretName(name string) error {
-	if name == "" {
-		return fmt.Errorf("secret name cannot be empty")
-	}
-	if strings.ContainsAny(name, " \t\n") {
-		return fmt.Errorf("secret name cannot contain whitespace")
-	}
-	if strings.ContainsAny(name, "/\\:*?\"<>|") {
-		return fmt.Errorf("secret name contains invalid characters")
-	}
-	return nil
+	return docker.ValidateSwarmObjectName("secret", name)
 }

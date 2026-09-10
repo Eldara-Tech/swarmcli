@@ -88,6 +88,80 @@ func TestGetServiceStackAndDesired_GlobalIgnoresInactiveNodes(t *testing.T) {
 	require.Equal(t, 2, desired)
 }
 
+// A global service targets the nodes its placement constraints admit, not every
+// node in the swarm. A service pinned to the managers of a 3+3 swarm read 3/6
+// and never converged in the eyes of the UI (issue #643).
+func TestGetServiceStackAndDesired_GlobalHonoursPlacementConstraints(t *testing.T) {
+	svc := globalService("node.role == manager")
+	snap := &SwarmSnapshot{Nodes: []swarm.Node{
+		roleNode("m1", swarm.NodeRoleManager), roleNode("m2", swarm.NodeRoleManager), roleNode("m3", swarm.NodeRoleManager),
+		roleNode("w1", swarm.NodeRoleWorker), roleNode("w2", swarm.NodeRoleWorker), roleNode("w3", swarm.NodeRoleWorker),
+	}}
+	_, desired := getServiceStackAndDesired(svc, snap)
+	require.Equal(t, 3, desired)
+}
+
+// Constraints and node state compose: draining an eligible node lowers the
+// target, draining an ineligible one changes nothing.
+func TestGetServiceStackAndDesired_GlobalConstrainedAndDrained(t *testing.T) {
+	drained := roleNode("m2", swarm.NodeRoleManager)
+	drained.Spec.Availability = swarm.NodeAvailabilityDrain
+	snap := &SwarmSnapshot{Nodes: []swarm.Node{
+		roleNode("m1", swarm.NodeRoleManager), drained, roleNode("w1", swarm.NodeRoleWorker),
+	}}
+	_, desired := getServiceStackAndDesired(globalService("node.role == manager"), snap)
+	require.Equal(t, 1, desired)
+}
+
+// A constraint no node satisfies means swarm wants zero tasks, and the services
+// view renders a zero target as "—" rather than a false shortfall.
+func TestGetServiceStackAndDesired_GlobalUnsatisfiableConstraint(t *testing.T) {
+	snap := &SwarmSnapshot{Nodes: []swarm.Node{activeNode("n1"), activeNode("n2")}}
+	_, desired := getServiceStackAndDesired(globalService("node.labels.absent == true"), snap)
+	require.Equal(t, 0, desired)
+}
+
+// A replicated service's declared count is its target wherever the replicas can
+// land. Filtering it by constraints would report an unschedulable service as
+// converged — the opposite of what --wait must do.
+func TestGetServiceStackAndDesired_ReplicatedIgnoresConstraints(t *testing.T) {
+	three := uint64(3)
+	svc := swarm.Service{Spec: swarm.ServiceSpec{
+		Mode:         swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: &three}},
+		TaskTemplate: swarm.TaskSpec{Placement: &swarm.Placement{Constraints: []string{"node.labels.absent == true"}}},
+	}}
+	snap := &SwarmSnapshot{Nodes: []swarm.Node{activeNode("n1"), activeNode("n2")}}
+	_, desired := getServiceStackAndDesired(svc, snap)
+	require.Equal(t, 3, desired)
+}
+
+// Swarm keeps a paused node's global task running, so the node belongs in the
+// denominator its task is counted against. Excluding it read 3/2.
+func TestGetServiceStackAndDesired_GlobalCountsPausedNodes(t *testing.T) {
+	paused := activeNode("n2")
+	paused.Spec.Availability = swarm.NodeAvailabilityPause
+	snap := &SwarmSnapshot{Nodes: []swarm.Node{activeNode("n1"), paused}}
+	_, desired := getServiceStackAndDesired(globalService(), snap)
+	require.Equal(t, 2, desired)
+}
+
+func globalService(constraints ...string) swarm.Service {
+	svc := swarm.Service{Spec: swarm.ServiceSpec{
+		Annotations: swarm.Annotations{Labels: map[string]string{"com.docker.stack.namespace": "mystack"}},
+		Mode:        swarm.ServiceMode{Global: &swarm.GlobalService{}},
+	}}
+	if len(constraints) > 0 {
+		svc.Spec.TaskTemplate.Placement = &swarm.Placement{Constraints: constraints}
+	}
+	return svc
+}
+
+func roleNode(id string, role swarm.NodeRole) swarm.Node {
+	n := activeNode(id)
+	n.Spec.Role = role
+	return n
+}
+
 func activeNode(id string) swarm.Node {
 	return swarm.Node{
 		ID:     id,

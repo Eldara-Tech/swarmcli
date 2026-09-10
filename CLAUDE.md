@@ -124,7 +124,8 @@ explains our implementation to them.
 ## Integration Test Infrastructure
 
 - Tests in `integration-tests/` use `//go:build integration` tag
-- `test-setup/docker-compose.yml`: DinD multi-node Swarm (1 manager on tcp://localhost:22375, 2 workers)
+- `test-setup/docker-compose.yml`: DinD multi-node Swarm (1 manager on tcp://localhost:22375,
+  plus a scaled `worker` service — `NODES=<n> testenv.sh up` sizes the whole swarm, default 3)
 - `test-setup/test-stack.yml`: Demo services (whoami, whoami_single, log_ticker) with volumes, networks, and configs
 - `test-setup/testenv.sh`: Orchestrator script
 - Tests use `gotestsum` as test runner (with `--format=testname` locally, `--format=github-actions` in CI)
