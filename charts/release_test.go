@@ -749,6 +749,47 @@ func TestConvergenceAcceptsACompletedJob(t *testing.T) {
 	require.Equal(t, PhaseProgressing, phaseOf(ServiceState{Running: 0, Completed: 0, Desired: 1, Job: true, Status: "active", NewestTaskAge: stableAge}))
 }
 
+// A one-shot's task ends inside the monitor window by design, and swarmkit
+// counts any task leaving RUNNING there as an update failure with no exemption
+// for a restart policy of none. So the default failure_action leaves EVERY
+// re-run job paused, and reading that as wedged reported a migration that had
+// done its work as a stack needing manual recovery — the state both
+// eldara-swarmcli stacks were in. Verified against a real swarm: a stack
+// redeployed with an exit-0 one-shot leaves UpdateStatus "update paused due to
+// failure or early termination of task ...".
+func TestConvergenceIgnoresThePauseAJobCannotAvoid(t *testing.T) {
+	done := ServiceState{
+		Name:          "migrate",
+		Completed:     1,
+		Desired:       1,
+		Job:           true,
+		UpdateState:   "paused",
+		NewestTaskAge: stableAge,
+	}
+	require.Equal(t, PhaseConverged, phaseOf(done), "the pause is the job finishing, not a verdict on it")
+
+	// A long-running service that paused is still wedged: it has no reason to
+	// end a task, so the pause means what it says.
+	require.Equal(t, PhaseWedged, phaseOf(ServiceState{Running: 1, Desired: 1, UpdateState: "paused", NewestTaskAge: stableAge}))
+}
+
+// The other half: a job whose task did NOT complete leaves the service paused
+// in exactly the same way, so the two cases must be told apart by the task. The
+// message names the count, since "update paused after a task failure" is the one
+// sentence a one-shot produces whether it worked or not.
+func TestConvergenceReportsAJobThatDidNotComplete(t *testing.T) {
+	c := ServiceState{
+		Name:          "migrate",
+		Completed:     0,
+		Desired:       1,
+		Job:           true,
+		UpdateState:   "paused",
+		NewestTaskAge: stableAge,
+	}.Convergence()
+	require.Equal(t, PhaseWedged, c.Phase)
+	require.Equal(t, "the one-shot task did not complete (0/1); swarm paused the rollout", c.Reason)
+}
+
 // A global service on a drained node lowers the target rather than leaving the
 // release permanently short of a replica that can never be scheduled.
 func TestConvergenceGlobalTracksActiveNodes(t *testing.T) {

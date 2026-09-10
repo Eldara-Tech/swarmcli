@@ -113,15 +113,14 @@ func (snap *SwarmSnapshot) StackConvergence(stackName string) []ServiceConvergen
 
 		running, completed := 0, 0
 		var newest time.Time
-		for _, t := range snap.Tasks {
-			if t.ServiceID != svc.ID {
-				continue
-			}
-			// A task not yet assigned has no NodeID; it is by definition not
-			// running yet, but guard anyway rather than counting it as active.
-			if t.NodeID == "" {
-				continue
-			}
+		// Only the newest task in each slot is judged. Swarm keeps terminal
+		// tasks in the list up to --task-history-limit, so a one-shot that has
+		// run before still lists every earlier Complete task, and counting those
+		// let three old successes meet a target of one: a migration whose latest
+		// run exited non-zero read converged, and the release detail said "5/1
+		// tasks running". An unassigned task has no slot to be the newest of and
+		// is dropped here rather than by the NodeID guard this replaces.
+		for _, t := range newestTaskPerSlot(svc.ID, snap.Tasks) {
 			if _, ok := active[t.NodeID]; !ok {
 				continue
 			}

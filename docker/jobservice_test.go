@@ -113,3 +113,41 @@ func TestStackConvergenceAgesACompletedJobTask(t *testing.T) {
 	require.Len(t, conv, 1)
 	require.Greater(t, conv[0].NewestTaskAge, 30*time.Minute)
 }
+
+// jobTaskAt is one run of a one-shot: a task in slot 1, created at a known time
+// so the generation rule has something to sort on.
+func jobTaskAt(svcID string, created time.Time, actual swarm.TaskState) swarm.Task {
+	t := taskInState(svcID, "n1", swarm.TaskStateShutdown, actual)
+	t.Slot = 1
+	t.Meta = swarm.Meta{CreatedAt: created}
+	return t
+}
+
+// Swarm keeps terminal tasks up to --task-history-limit, so a migration that
+// has run four times lists four tasks in the same slot. Counting all of them
+// meant a job that had ever succeeded could not report a later failure: three
+// old Completes met a target of one, so a run that exited non-zero read as
+// converged and --wait went green on it. Only the newest run is the answer.
+func TestStackConvergenceJudgesOnlyTheLatestJobRun(t *testing.T) {
+	now := time.Now()
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{jobSvc("migrate", "mystack", swarm.RestartPolicyConditionNone)},
+		Tasks: []swarm.Task{
+			jobTaskAt("migrate", now.Add(-3*time.Hour), swarm.TaskStateComplete),
+			jobTaskAt("migrate", now.Add(-2*time.Hour), swarm.TaskStateComplete),
+			jobTaskAt("migrate", now.Add(-time.Hour), swarm.TaskStateComplete),
+			jobTaskAt("migrate", now, swarm.TaskStateFailed),
+		},
+	}
+
+	conv := snap.StackConvergence("mystack")
+	require.Len(t, conv, 1)
+	require.Equal(t, 0, conv[0].Completed, "the latest run failed; its predecessors are history")
+	require.Equal(t, 1, conv[0].Desired)
+
+	// The same four tasks with the newest one Complete: one run, not four.
+	snap.Tasks[3] = jobTaskAt("migrate", now, swarm.TaskStateComplete)
+	conv = snap.StackConvergence("mystack")
+	require.Equal(t, 1, conv[0].Completed, "a job that ran four times has still done its work once")
+}

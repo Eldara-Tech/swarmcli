@@ -1209,7 +1209,23 @@ type Convergence struct {
 // Every rule here has been wrong once, which is why interpreting a ServiceState
 // belongs to this package rather than to each caller that holds one.
 func (s ServiceState) Convergence() Convergence {
-	switch s.UpdateState {
+	// A one-shot's task terminates inside the monitor window by design, and
+	// swarmkit counts any task that leaves RUNNING in that window as an update
+	// failure — a restart policy of none is not special-cased (its updater's
+	// failureTriggersAction). So the default failure_action pauses the rollout of
+	// every job that has ever run a second time, and the UpdateStatus that
+	// results says nothing about the job: a migration that exited 0 and one that
+	// exited 3 both leave the service "paused". Judge a job by its own task.
+	state := s.UpdateState
+	if s.Job && state == "paused" {
+		if up := s.Running + s.Completed; up < s.Desired {
+			return Convergence{PhaseWedged, fmt.Sprintf("the one-shot task did not complete (%d/%d); swarm paused the rollout", up, s.Desired)}
+		}
+		// Not "converged" outright: the checks below still apply, and this is
+		// only the removal of an UpdateStatus that was never evidence.
+		state = ""
+	}
+	switch state {
 	// Swarm never rolls back a rollback, so a paused rollout needs a human;
 	// waiting it out only delays the report.
 	case "paused":
