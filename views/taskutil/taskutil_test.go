@@ -167,3 +167,52 @@ func TestActiveDeploymentErrors_NoRunningTask(t *testing.T) {
 		t.Errorf("got %q, want %q", result["svc1"], "no suitable node")
 	}
 }
+
+// A run-to-completion service (`..._init`) exits 0 and is never restarted, so it
+// never has a running task for a later attempt to be measured against. Its
+// successful run still has to clear the failure before it, or the service row
+// carries that error until the next time the service runs at all — which for a
+// stack deployed once a month is forever (PR #633 review).
+func TestActiveDeploymentErrors_CompletedRunSupersedesFailure(t *testing.T) {
+	now := time.Date(2026, 9, 9, 14, 0, 0, 0, time.UTC)
+	tasks := []swarm.Task{
+		makeTask("svc1", 1, swarm.TaskStateShutdown, swarm.TaskStateComplete, now, ""),
+		makeTask("svc1", 1, swarm.TaskStateShutdown, swarm.TaskStateFailed, now.Add(-time.Minute), "task: non-zero exit (1)"),
+		makeTask("svc1", 1, swarm.TaskStateShutdown, swarm.TaskStateComplete, now.Add(-7*24*time.Hour), ""),
+	}
+	if result := ActiveDeploymentErrorsByService(tasks); len(result) != 0 {
+		t.Errorf("expected the completed run to clear the earlier failure, got %v", result)
+	}
+}
+
+// The other direction: a completed run does not immunize the slot, it only
+// speaks for the moment it finished.
+func TestActiveDeploymentErrors_FailureAfterCompletedRun(t *testing.T) {
+	now := time.Date(2026, 9, 9, 14, 0, 0, 0, time.UTC)
+	tasks := []swarm.Task{
+		makeTask("svc1", 1, swarm.TaskStateShutdown, swarm.TaskStateComplete, now.Add(-time.Minute), ""),
+		makeTask("svc1", 1, swarm.TaskStateShutdown, swarm.TaskStateFailed, now, "task: non-zero exit (1)"),
+	}
+	result := ActiveDeploymentErrorsByService(tasks)
+	if result["svc1"] != "task: non-zero exit (1)" {
+		t.Errorf("got %q, want %q", result["svc1"], "task: non-zero exit (1)")
+	}
+}
+
+// The window follows the service rather than the cluster. A service that broke a
+// week ago and has not been rescheduled since is still broken, and a neighbour
+// that deployed a minute ago must not push it out of its own window.
+func TestActiveDeploymentErrors_WindowFollowsTheService(t *testing.T) {
+	now := time.Date(2026, 9, 9, 14, 0, 0, 0, time.UTC)
+	tasks := []swarm.Task{
+		makeTask("stale", 1, swarm.TaskStateRunning, swarm.TaskStateRejected, now.Add(-7*24*time.Hour), "no suitable node"),
+		makeTask("busy", 1, swarm.TaskStateRunning, swarm.TaskStateRunning, now, ""),
+	}
+	result := ActiveDeploymentErrorsByService(tasks)
+	if result["stale"] != "no suitable node" {
+		t.Errorf("got %q, want %q", result["stale"], "no suitable node")
+	}
+	if _, ok := result["busy"]; ok {
+		t.Errorf("the healthy neighbour reported an error: %v", result)
+	}
+}

@@ -60,31 +60,38 @@ func LatestTasksByServiceKey(tasks []swarm.Task) []swarm.Task {
 	return res
 }
 
-// ActiveDeploymentErrorsByService returns serviceID -> error text for services
-// that have at least one slot where an error task is newer than the most recent
-// running task (or where there is no running task for that slot).
+// ActiveDeploymentErrorsByService returns serviceID -> error text for every
+// service with a slot whose failure nothing has since undone: an error task
+// newer than that slot's last sign of life, or with no sign of life at all.
 //
-// Only errors within the last 5 minutes (relative to the newest task in the
-// entire set) are considered, to avoid surfacing stale historical failures.
+// A slot shows a sign of life two ways. A task that both wants to run and is
+// running is the rolling-update case — the outgoing generation failed, the old
+// task is still up. A task that ran to completion is the run-to-completion case:
+// a `..._init` service exits 0, is never restarted, and never has a running task
+// for a later attempt to be compared against, so a failure before that success
+// would otherwise be reported forever (PR #633 review).
+//
+// Only errors within 5 minutes of that service's own newest task are considered,
+// so a rollout that eventually settled stops being news. The window follows the
+// service rather than the cluster: a service that broke weeks ago and has not
+// been rescheduled since is still broken, however busy its neighbours are.
 // When multiple slots error for the same service, the most recent error wins.
 func ActiveDeploymentErrorsByService(tasks []swarm.Task) map[string]string {
 	if len(tasks) == 0 {
 		return nil
 	}
 
-	// Find the global newest task timestamp for cutoff calculation.
-	var newestGlobal time.Time
+	newestByService := make(map[string]time.Time)
 	for _, t := range tasks {
 		at := TaskTimestamp(t)
-		if newestGlobal.IsZero() || at.After(newestGlobal) {
-			newestGlobal = at
+		if newest, seen := newestByService[t.ServiceID]; !seen || at.After(newest) {
+			newestByService[t.ServiceID] = at
 		}
 	}
-	cutoff := newestGlobal.Add(-5 * time.Minute)
 
 	type slotInfo struct {
 		serviceID string
-		runningAt time.Time
+		aliveAt   time.Time
 		errAt     time.Time
 		errMsg    string
 	}
@@ -97,13 +104,14 @@ func ActiveDeploymentErrorsByService(tasks []swarm.Task) map[string]string {
 		s := bySlot[key]
 		at := TaskTimestamp(t)
 
-		if t.DesiredState == swarm.TaskStateRunning && t.Status.State == swarm.TaskStateRunning {
-			if s.runningAt.IsZero() || at.After(s.runningAt) {
-				s.runningAt = at
+		if (t.DesiredState == swarm.TaskStateRunning && t.Status.State == swarm.TaskStateRunning) ||
+			t.Status.State == swarm.TaskStateComplete {
+			if s.aliveAt.IsZero() || at.After(s.aliveAt) {
+				s.aliveAt = at
 			}
 		}
 		if t.Status.Err != "" || t.Status.State == swarm.TaskStateFailed || t.Status.State == swarm.TaskStateRejected {
-			if at.Before(cutoff) {
+			if at.Before(newestByService[t.ServiceID].Add(-5 * time.Minute)) {
 				continue
 			}
 			if s.errAt.IsZero() || at.After(s.errAt) {
@@ -125,7 +133,7 @@ func ActiveDeploymentErrorsByService(tasks []swarm.Task) map[string]string {
 		if s.errAt.IsZero() {
 			continue
 		}
-		if !s.runningAt.IsZero() && !s.errAt.After(s.runningAt) {
+		if !s.aliveAt.IsZero() && !s.errAt.After(s.aliveAt) {
 			continue
 		}
 		prev, seen := best[s.serviceID]

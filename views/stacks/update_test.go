@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/swarm"
+
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	"github.com/Eldara-Tech/swarmcli/v2/views/confirmdialog"
 	"github.com/Eldara-Tech/swarmcli/v2/views/view"
@@ -1167,4 +1169,51 @@ func TestUpdate_Msg_DoesNotClearDeploying(t *testing.T) {
 	m.Update(Msg{NodeID: "node1", Stacks: fakeStacks("mystack")})
 	require.True(t, m.deploying)
 	require.Equal(t, "mystack", m.deployingStack)
+}
+
+// stackSnapshotWithInitTasks puts one run-to-completion service in a stack, with
+// the PR #633 review's task history: newest run in the given state, a failed
+// attempt a minute before it.
+func stackSnapshotWithInitTasks(newest swarm.TaskState, errText string) *docker.SwarmSnapshot {
+	now := time.Date(2026, 9, 9, 14, 0, 0, 0, time.UTC)
+	mk := func(state swarm.TaskState, ts time.Time, msg string) swarm.Task {
+		return swarm.Task{
+			ServiceID: "svc0", Slot: 1, DesiredState: swarm.TaskStateShutdown,
+			Status: swarm.TaskStatus{State: state, Timestamp: ts, Err: msg},
+		}
+	}
+	snap := snapshotWithStacks("mystack")
+	snap.Tasks = []swarm.Task{
+		mk(newest, now, errText),
+		mk(swarm.TaskStateFailed, now.Add(-time.Minute), "task: non-zero exit (1)"),
+	}
+	return snap
+}
+
+func stacksModelWithSnapshot(snap *docker.SwarmSnapshot) *Model {
+	return testModel(func(m *Model) {
+		ops := noopSnapshotOps()
+		ops.getSnapshotFn = func() *docker.SwarmSnapshot { return snap }
+		m.deps.Snapshot = ops
+	})
+}
+
+// The stack badge reads the same rule as the services view's ERROR column, so a
+// stack cannot claim to be failing while the only service in it reports a clean
+// run (PR #633 review).
+func TestStackErrors_CompletedRunClearsTheEarlierFailure(t *testing.T) {
+	m := stacksModelWithSnapshot(stackSnapshotWithInitTasks(swarm.TaskStateComplete, ""))
+	loadStacks(m, fakeStacks("mystack"))
+
+	require.False(t, m.stackHasError["mystack"], "the stack's only service completed its newest run")
+	require.Empty(t, m.stackErrorText["mystack"])
+}
+
+// The control: an unsuperseded failure still badges the stack.
+func TestStackErrors_NewestFailureIsReported(t *testing.T) {
+	m := stacksModelWithSnapshot(stackSnapshotWithInitTasks(swarm.TaskStateFailed, "task: non-zero exit (2)"))
+	loadStacks(m, fakeStacks("mystack"))
+
+	require.True(t, m.stackHasError["mystack"])
+	require.Equal(t, "task: non-zero exit (2)", m.stackErrorText["mystack"])
 }
