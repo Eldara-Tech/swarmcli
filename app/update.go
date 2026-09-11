@@ -301,6 +301,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 
+	case systeminfoview.HeartbeatMsg:
+		// A session still open a day later. Reported, and the answer discarded:
+		// raising an update notice under somebody who has been working in the
+		// TUI since yesterday would be an interruption rather than news.
+		return m, m.systemInfo.SendHeartbeat()
+
+	case systeminfoview.HeartbeatSentMsg:
+		// Re-armed on the round finishing rather than on it starting, so a slow
+		// or failed report cannot leave two rounds in flight.
+		return m, m.systemInfo.HeartbeatCmd()
+
 	case systeminfoview.SystemInfoMsg:
 		return m, m.systemInfo.Update(msg)
 

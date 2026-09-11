@@ -897,8 +897,10 @@ whether your license is valid, and none is possible — there is no server whose
 answer swarmcli would accept over its own check, which is also why an outage of
 ours cannot disable your features.
 
-**There are two requests, and only the second is managed-only.** Both send the
-same small set of fields, and one environment variable switches off both.
+**There are three requests.** Two are about your license and are described
+here; the third is the startup check-in, which is not about your license at all
+and has [its own section](#usage-reporting) below. The two license requests send
+the same small set of fields, and one environment variable switches off both.
 
 The first is a **token refresh**, made by every license that carries a
 [license id](#license-id) — including unbound and bound-at-issuance ones. Your
@@ -980,8 +982,61 @@ the questions people actually ask:
 A license issued before we began naming them carries no license id, and makes
 no request of either kind — there is nothing for it to ask about.
 
-The unrelated CE version-check behaviour (a single GET to
-`https://swarmcli.io/api/v1/version` at startup) can be disabled with
-`SWARMCLI_DISABLE_VERSION_CHECK=true`; see
+### Usage reporting
+
+**The third request is made once per launch, by every edition, and is not about
+your license.** It is how we know how many installations exist and which
+releases are actually in use — questions nothing else answers, and which were
+previously guessed at from the addresses in a web server log.
+
+It was for a long time described here as "a CE version-check, a single GET".
+That was wrong in three ways and is corrected rather than quietly reworded: it
+is a POST with a body, Business Edition makes it too, and the source address was
+recorded and kept. The documentation being wrong about it is the reason this
+section now exists.
+
+**What it sends.** One request, carrying:
+
+- a random **install id**, generated on first run and stored in
+  `~/.config/swarmcli/install.json`. It identifies an installation. It is not
+  derived from anything on the machine — not the hostname, not a MAC address,
+  not a machine-id — so it says nothing about you and cannot be correlated with
+  any other software's identifier;
+- the **version and edition**;
+- the **operating system and CPU architecture** the binary was built for;
+- **how swarmcli was installed** — Homebrew, Scoop, a container, built from
+  source, or unknown. This decides which distribution channels are worth
+  maintaining;
+- whether it is the **TUI or the controller** making the request.
+
+**What it does not send.** Your services, images, stacks, networks, volumes,
+node or cluster names, hostnames, addresses, command arguments or error text —
+the same list the license requests refuse, for the same reason. There is no
+field one could be written into.
+
+**Your address is not stored.** The request necessarily arrives from somewhere,
+and the receiving end turns that into a **country** and discards the address
+before anything is written. What is kept is "a launch from Germany", never an
+address, and nothing is passed to our analytics provider that could be turned
+back into one.
+
+**It is on by default, and this notice is why that is not a trick.** The first
+run that reports says so on screen — what is sent, what is not, and how to stop
+it — before anything leaves the machine. After that:
+
+```
+SWARMCLI_TELEMETRY=off
+```
+
+switches it off for good. The update check still works with it off: that request
+falls back to the version-only form, which carries no install id and nothing
+about your machine, exactly as it did before usage reporting existed.
+
+`SWARMCLI_DISABLE_VERSION_CHECK=true` is the older and blunter switch and stops
+the startup request altogether — no usage report and no update notice. See
 [Configuration](configuration.md#environment-variables).
+
+**A session left open reports again once a day**, and only then. It is the same
+report with a different event name, and it exists so a machine that opens the
+TUI and leaves it running is not counted only on the day it started.
 

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
+	"github.com/Eldara-Tech/swarmcli/v2/telemetry"
 
 	"github.com/stretchr/testify/require"
 )
@@ -173,8 +174,33 @@ func TestUpdateCPUMem_TrendArrows(t *testing.T) {
 	require.Equal(t, "up", m.prevMemTrend)
 }
 
+// checkInRequest is what the test server decodes. A superset of both bodies the
+// client can send — the telemetry report and the plain version check — so one
+// struct can assert which of the two went out.
+type checkInRequest struct {
+	Event     string `json:"event"`
+	InstallID string `json:"install_id"`
+	Version   string `json:"version"`
+	Edition   string `json:"edition"`
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
+	Mode      string `json:"mode"`
+}
+
+// newCheckInModel builds a model whose one outbound call goes to the test
+// server, with HOME redirected so the install identity is written into the
+// test's own directory rather than the developer's config.
+func newCheckInModel(t *testing.T, version, edition, serverURL string) *Model {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+
+	m := New(testDeps(), version, edition)
+	m.telemetry = &telemetry.Client{URL: serverURL, FallbackVersionURL: serverURL}
+	return m
+}
+
 func TestCheckLatestVersion_SendsVersionAndEdition(t *testing.T) {
-	var received versionCheckRequest
+	var received checkInRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodPost, r.Method)
 		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
@@ -187,8 +213,7 @@ func TestCheckLatestVersion_SendsVersionAndEdition(t *testing.T) {
 	}))
 	defer server.Close()
 
-	m := New(testDeps(), "1.2.2", "ce")
-	m.versionCheckURL = server.URL
+	m := newCheckInModel(t, "1.2.2", "ce", server.URL)
 	msg := m.CheckLatestVersion()()
 
 	latestMsg, ok := msg.(LatestVersionMsg)
@@ -205,8 +230,7 @@ func TestCheckLatestVersion_NoMessageWhenNotNewer(t *testing.T) {
 	}))
 	defer server.Close()
 
-	m := New(testDeps(), "1.2.2", "ce")
-	m.versionCheckURL = server.URL
+	m := newCheckInModel(t, "1.2.2", "ce", server.URL)
 	_, ok := m.CheckLatestVersion()().(NoVersionUpdateMsg)
 	require.True(t, ok)
 }
@@ -218,8 +242,7 @@ func TestCheckLatestVersion_FailureReturnsNoUpdate(t *testing.T) {
 	}))
 	defer server.Close()
 
-	m := New(testDeps(), "1.2.2", "ce")
-	m.versionCheckURL = server.URL
+	m := newCheckInModel(t, "1.2.2", "ce", server.URL)
 	_, ok := m.CheckLatestVersion()().(NoVersionUpdateMsg)
 	require.True(t, ok)
 }
@@ -230,7 +253,7 @@ func TestCheckLatestVersion_DevBuildSkipsCheck(t *testing.T) {
 }
 
 func TestCheckLatestVersion_UsesOverriddenEdition(t *testing.T) {
-	var received versionCheckRequest
+	var received checkInRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		err := json.NewDecoder(r.Body).Decode(&received)
 		require.NoError(t, err)
@@ -239,8 +262,7 @@ func TestCheckLatestVersion_UsesOverriddenEdition(t *testing.T) {
 	}))
 	defer server.Close()
 
-	m := New(testDeps(), "1.2.2", "be")
-	m.versionCheckURL = server.URL
+	m := newCheckInModel(t, "1.2.2", "be", server.URL)
 	msg := m.CheckLatestVersion()()
 	_, ok := msg.(LatestVersionMsg)
 	require.True(t, ok)

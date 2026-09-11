@@ -15,6 +15,7 @@ import (
 	systeminfoview "github.com/Eldara-Tech/swarmcli/v2/views/systeminfo"
 	"github.com/Eldara-Tech/swarmcli/v2/views/unlockdialog"
 
+	"github.com/Eldara-Tech/swarmcli/v2/telemetry"
 	"github.com/Eldara-Tech/swarmcli/v2/views/view"
 	"github.com/Eldara-Tech/swarmcli/v2/views/viewstack"
 	"github.com/charmbracelet/lipgloss"
@@ -145,14 +146,32 @@ func InitialModel() *Model {
 // Init  will be automatically called by Bubble Tea if the model implements the Model interface
 // and is passed into the tea.NewProgram function.
 func (m *Model) Init() tea.Cmd {
+	// Read **before** the batch below, not inside a command in it.
+	//
+	// `systemInfo.Init()` starts the check-in, and the check-in is what creates
+	// the install identity. Both would run as goroutines under tea.Batch, so
+	// asking "is this the first run" from inside one of them is a race against
+	// the other creating the file — lost about as often as won, which is the
+	// worst kind. Answering it here, synchronously, makes the ordering a fact
+	// rather than a hope.
+	showTelemetryNotice := telemetry.ShouldNotice()
+
 	// "" loads all stacks on all nodes
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		tick(),
 		loadSnapshotAsync(),
 		m.systemInfo.LoadStatus(),
 		m.systemInfo.Init(), // Initialize systeminfo's tick commands
 		watchEventsCmd(),
-	)
+	}
+
+	if showTelemetryNotice {
+		cmds = append(cmds, func() tea.Msg {
+			return view.AppInfoMsg{Message: telemetry.NoticeTitle + "\n\n" + telemetry.NoticeBody}
+		})
+	}
+
+	return tea.Batch(cmds...)
 }
 
 func (m *Model) switchToView(name string, data any) tea.Cmd {

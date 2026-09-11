@@ -239,7 +239,9 @@ Every environment variable and on-disk path, for both editions, is documented in
 [docs/configuration.md](docs/configuration.md) — `SWARMCLI_ENV` and `LOG_LEVEL`
 above among them.
 
-On startup, SwarmCLI checks for a newer release by sending the current version and edition to `https://swarmcli.io/api/v1/version`. Set `SWARMCLI_DISABLE_VERSION_CHECK=true` to opt out.
+On startup, SwarmCLI makes one request. It checks whether a newer release is available, and reports that swarmcli was started — a random install id, the version and edition, your OS and architecture, and how swarmcli was installed. It does not send your services, images, stacks, hostnames, command arguments or IP address; your country is derived from the connection and the address is never stored. The first run says all of this on screen before anything is sent.
+
+Set `SWARMCLI_TELEMETRY=off` to stop the usage report and keep the update check, or `SWARMCLI_DISABLE_VERSION_CHECK=true` to stop the request entirely. Full detail in [docs/license.md](docs/license.md#usage-reporting).
 
 Colorize log tails. Not perfect but simple:
 

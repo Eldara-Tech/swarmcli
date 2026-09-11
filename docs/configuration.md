@@ -16,7 +16,8 @@ apply to every build.
 | `SWARMCLI_ENV` | both | `dev` writes human-readable logs, `prod` writes JSON. | `prod` | startup |
 | `LOG_LEVEL` | both | Log verbosity: `debug`, `info`, `warn`, `error`. | `debug` in dev, `info` in prod | startup |
 | `DOCKER_CONTEXT` | both | Docker context to talk to. It overrides `docker context use`, so while it is set the context switcher refuses to move to a different context rather than writing a switch that could not take effect. | the active context | startup |
-| `SWARMCLI_DISABLE_VERSION_CHECK` | both | Disables the startup request to `https://swarmcli.io/api/v1/version` that checks whether a newer release is available. | unset | startup |
+| `SWARMCLI_DISABLE_VERSION_CHECK` | both | Disables the startup request altogether — no update check **and** no usage report. The blunter of the two switches. | unset | startup |
+| `SWARMCLI_TELEMETRY` | both | `off` stops [usage reporting](license.md#usage-reporting): no install id and nothing about your machine is sent. The startup request still happens and still tells you when a newer release exists, in the version-only form it had before usage reporting existed. | unset (reporting on) | startup |
 | `SWARMCLI_CHARTS_ALLOW_PLAINTEXT` | both | Allows chart repositories served over plain `http://`, which are refused by default (see [charts/README.md](../charts/README.md#transport)). | unset (https only) | `charts` commands |
 | `SWARMCLI_CHARTS_NO_AUTO_UPDATE` | both | Stops a `charts` command refreshing a repository index before resolving a chart from it. `--no-repo-update` does the same for one invocation. | unset (refreshes) | `charts` commands |
 | `EDITOR` | both | Editor invoked by the in-TUI edit actions (stack, config, secret). | `nano` | edit action |
@@ -34,6 +35,12 @@ The four on/off variables (`SWARMCLI_DISABLE_VERSION_CHECK`,
 `SWARMCLI_DISABLE_LICENSE_RENEWAL`) accept the
 values Go's `strconv.ParseBool` does — `1`, `t`, `true`, `TRUE` and their false
 counterparts. Anything else is treated as unset.
+
+`SWARMCLI_TELEMETRY` is the exception and reads the other way round, because it
+names the thing rather than the negation of it: it is **on** unless set to one of
+`off`, `false`, `0` or `no`, in any case. Anything else leaves reporting on — a
+typo cannot silently switch it off, which is the safer direction for a value
+whose absence is also "on".
 
 See [License — Activation](license.md#activation) for how `SWARMCLI_LICENSE`
 and the license file are installed into a swarm. There is no precedence between

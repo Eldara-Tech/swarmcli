@@ -74,6 +74,7 @@ go test ./cli -run TestGeneratedCommandBlocks -update
 | `LOG_LEVEL` | `debug`/`info`/`warn`/`error` | `debug` (dev), `info` (prod) |
 | `DOCKER_CONTEXT` | Override Docker context | `docker context show` |
 | `TEST_LOG` | Enable logging in tests | unset |
+| `SWARMCLI_TELEMETRY` | `off`/`false`/`0`/`no` stops the startup usage report (install id, version, OS/arch, install method). The update check still runs, in the version-only form. On unless explicitly switched off — see `telemetry/` and `docs/license.md#usage-reporting` | unset (reporting on) |
 | `SWARMCLI_CHARTS_ALLOW_PLAINTEXT` | Opt out of the https-only default for chart repositories; read only by `cli`, which wires it to `charts.RepoStore.AllowPlaintext` (the `charts` package never reads the environment, so embedders keep the default) | unset (https only) |
 | `SWARMCLI_CHARTS_NO_AUTO_UPDATE` | Stop the CLI refreshing a repository index before resolving a chart from it; read only by `cli`, which wires it to `charts.RepoStore.Refresh` = `RefreshNever` (same for `--no-repo-update`). Embedders keep the `RefreshExplicit` default either way | unset (refreshes) |
 
