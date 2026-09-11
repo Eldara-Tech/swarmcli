@@ -20,7 +20,7 @@ is **not** an images-only `:bootstrap --upgrade`.
 
 ## The one command
 
-After upgrading the `swarmcli-be` binary (see [Installation →
+After upgrading the binary (see [Installation →
 Upgrade](installation.md#upgrade)):
 
 ```
@@ -63,9 +63,9 @@ Docker contexts keep working afterwards — their certificates are unchanged.
 1. **Upgrade the binary first** so it deploys the matched, mTLS-capable agent
    and rbac-proxy images:
    ```
-   brew upgrade swarmcli-be          # Homebrew
-   scoop update swarmcli-be          # Scoop
-   docker pull eldaratech/swarmcli-be:latest   # Docker
+   brew upgrade swarmcli             # Homebrew
+   scoop update swarmcli              # Scoop
+   docker pull eldaratech/swarmcli:latest      # Docker
    ```
 2. From the **original (non-managed) context** on a swarm manager (see the
    callout above for why), run `:bootstrap --migrate` and accept the
