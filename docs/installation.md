@@ -16,8 +16,8 @@ The package/formula/image names are `swarmcli` for this build and
 both artefacts side by side. They install the same binary name, so **you can
 have either at any time, but not both**. See [CE and BE are one
 download](#ce-and-be-are-one-download) below. The older `swarmcli-be` formula,
-manifest and image were renamed on 2026-08-07; they still receive the same build
-for a deprecation window, and Homebrew now warns on install and upgrade.
+manifest and image were renamed on 2026-08-07 and retired on 2026-09-11 — see
+[The retired `swarmcli-be` names](#the-retired-swarmcli-be-names).
 
 ## Channels
 
@@ -29,9 +29,9 @@ brew install Eldara-Tech/tap/swarmcli
 
 The formula is hosted at
 [Eldara-Tech/homebrew-tap](https://github.com/Eldara-Tech/homebrew-tap).
-It conflicts with the `swarmcli-oss` cask and with the deprecated
-`swarmcli-be` one; brew will refuse to install two at once and will offer to
-remove the other.
+It conflicts with the `swarmcli-oss` cask and with the retired `swarmcli-be`
+one; brew will refuse to install two at once and will offer to remove the
+other.
 
 ### Scoop (Windows)
 
@@ -168,10 +168,21 @@ contributor checking what they built. It is not a cut-down edition — it is the
 whole Community Edition. [Editions](editions.md) is the fuller account,
 including how the build proves which one it is.
 
+### The retired `swarmcli-be` names
+
 Before the editions split, Business Edition shipped as separate `swarmcli-be`
-packages and an `eldaratech/swarmcli-be` image. Those keep receiving the same
-build for a deprecation window, so nothing breaks if you track one — but
-`swarmcli` is where they lead now.
+packages and an `eldaratech/swarmcli-be` image. They carried the same build
+under a second name from the rename on 2026-08-07 until they were retired on
+2026-09-11. Switch to `swarmcli`; it is the build they were installing.
+
+| If you track | You now see | Switch with |
+|---|---|---|
+| the `swarmcli-be` cask | `brew install`/`upgrade` fails, naming `swarmcli` | `brew uninstall --cask swarmcli-be && brew install Eldara-Tech/tap/swarmcli` |
+| the `swarmcli-be` Scoop manifest | the bucket no longer carries it | `scoop uninstall swarmcli-be; scoop install swarmcli` |
+| `eldaratech/swarmcli-be` | the pull fails — the repository is gone | `docker pull eldaratech/swarmcli:latest` |
+
+An install already on disk keeps working, licence included: nothing about the
+product changed, only the names it is published under.
 
 ## Upgrade
 
@@ -181,9 +192,8 @@ scoop update swarmcli             # Scoop
 docker pull eldaratech/swarmcli:latest      # Docker
 ```
 
-If you still track the deprecated `swarmcli-be` names, those commands keep
-working and install the same build — but switch, because the deprecation is
-where they end.
+The `swarmcli-be` forms of these commands no longer work — see [The retired
+`swarmcli-be` names](#the-retired-swarmcli-be-names) for the one-line switch.
 
 For binary installs, replace the file on disk with the new archive's
 contents.

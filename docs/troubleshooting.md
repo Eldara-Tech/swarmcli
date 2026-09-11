@@ -258,11 +258,12 @@ by manually re-importing if you have the original cert files saved.
 
 ## Installation
 
-**`brew install swarmcli-be` says it conflicts with `swarmcli`.**
-By design — both formulae install the same `swarmcli` binary on disk.
-Brew offers to uninstall the existing one; accept, then re-run.
+**`brew install swarmcli-be` fails, or `scoop install swarmcli-be` cannot find
+the package.** The `swarmcli-be` names were retired on 2026-09-11; install
+`swarmcli`, which is the same build. See [Installation → The retired
+`swarmcli-be` names](installation.md#the-retired-swarmcli-be-names).
 
-**`scoop install swarmcli-be` cannot find the package.**
+**`scoop install swarmcli` cannot find the package.**
 Add the bucket first: `scoop bucket add eldara https://github.com/Eldara-Tech/scoop-bucket`.
 
 **Docker container starts but immediately exits.**
