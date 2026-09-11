@@ -24,6 +24,10 @@ type captured struct {
 	Arch          string `json:"arch"`
 	InstallMethod string `json:"install_method"`
 	Mode          string `json:"mode"`
+	Nodes         *int   `json:"nodes"`
+	Managers      *int   `json:"managers"`
+	Services      *int   `json:"services"`
+	DockerVersion string `json:"docker_version"`
 }
 
 // serve returns a client pointed at a recording server, with HOME redirected so
@@ -52,7 +56,7 @@ func TestCheckIn_ReportsTheFullEventByDefault(t *testing.T) {
 	// consent decision, so it is pinned rather than left to be inferred.
 	c, got, path := serve(t, `{"latestVersion":"1.14.15"}`)
 
-	latest, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI)
+	latest, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI, Shape{})
 
 	require.NoError(t, err)
 	require.Equal(t, "1.14.15", latest)
@@ -66,6 +70,67 @@ func TestCheckIn_ReportsTheFullEventByDefault(t *testing.T) {
 	require.NotEmpty(t, got.Arch)
 }
 
+func TestCheckIn_SendsTheSwarmShapeWhenObserved(t *testing.T) {
+	c, got, _ := serve(t, `{"latestVersion":"1.14.15"}`)
+	nodes, managers, services := 7, 3, 24
+
+	_, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI, Shape{
+		Nodes: &nodes, Managers: &managers, Services: &services, DockerVersion: "28.5.2",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 7, *got.Nodes)
+	require.Equal(t, 3, *got.Managers)
+	require.Equal(t, 24, *got.Services)
+	require.Equal(t, "28.5.2", got.DockerVersion)
+}
+
+func TestCheckIn_OmitsTheShapeWhenNothingWasObserved(t *testing.T) {
+	// Absent and zero are different facts. An unreachable daemon must not be
+	// reported as a swarm with no nodes — nothing downstream could tell those
+	// apart, and one of them is a lie.
+	c, got, _ := serve(t, `{"latestVersion":"1.14.15"}`)
+
+	_, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI, Shape{})
+
+	require.NoError(t, err)
+	require.Nil(t, got.Nodes)
+	require.Nil(t, got.Managers)
+	require.Nil(t, got.Services)
+	require.Empty(t, got.DockerVersion)
+}
+
+func TestCheckIn_ZeroServicesIsSentAsZero(t *testing.T) {
+	// The one count that is honestly zero: a swarm running nothing. It has to
+	// arrive as 0 rather than be omitted, or "nobody deploys anything" and "we
+	// did not look" become the same row.
+	c, got, _ := serve(t, `{"latestVersion":"1.14.15"}`)
+	nodes, managers, services := 1, 1, 0
+
+	_, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI, Shape{
+		Nodes: &nodes, Managers: &managers, Services: &services,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, got.Services)
+	require.Equal(t, 0, *got.Services)
+}
+
+func TestCheckIn_ShapeNeverLeavesWithTelemetryOff(t *testing.T) {
+	// The fallback body is the version-only one. A shape gathered before the
+	// switch was read must not ride along in it.
+	c, got, path := serve(t, `{"latestVersion":"1.14.15"}`)
+	t.Setenv(Env, "off")
+	nodes := 7
+
+	_, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI, Shape{Nodes: &nodes, DockerVersion: "28.5.2"})
+
+	require.NoError(t, err)
+	require.Equal(t, "/version", *path)
+	require.Nil(t, got.Nodes)
+	require.Empty(t, got.DockerVersion)
+}
+
 func TestCheckIn_OffFallsBackToThePlainVersionCheck(t *testing.T) {
 	// The update notice is a feature somebody asked for by running swarmcli, not
 	// telemetry. Switching reporting off must not also stop telling them a new
@@ -73,7 +138,7 @@ func TestCheckIn_OffFallsBackToThePlainVersionCheck(t *testing.T) {
 	c, got, path := serve(t, `{"latestVersion":"1.14.15"}`)
 	t.Setenv(Env, "off")
 
-	latest, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI)
+	latest, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI, Shape{})
 
 	require.NoError(t, err)
 	require.Equal(t, "1.14.15", latest)
@@ -92,7 +157,7 @@ func TestCheckIn_WritesNoIdentityWhenDisabled(t *testing.T) {
 	c, _, _ := serve(t, `{"latestVersion":"1.14.15"}`)
 	t.Setenv(Env, "off")
 
-	_, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI)
+	_, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI, Shape{})
 	require.NoError(t, err)
 
 	require.True(t, IsFirstRun(), "a disabled run must not create an install identity")
@@ -213,9 +278,12 @@ func TestNotice_EnumeratesWhatIsSentAndNamesTheOffSwitch(t *testing.T) {
 	// The notice is what makes opt-out legitimate, so its content is a contract
 	// rather than copy. If a field is added to the report and not to this list,
 	// the notice becomes untrue.
-	for _, want := range []string{"install id", "version", "OS", Env} {
+	for _, want := range []string{"install id", "version", "OS", "nodes, managers and services", Env} {
 		require.Contains(t, NoticeBody, want)
 	}
+
+	// The word that makes the cluster line honest: counts, not names.
+	require.Contains(t, NoticeBody, "counts only")
 
 	// And the reassurance somebody running this against production actually
 	// wants, which is about what is NOT sent.

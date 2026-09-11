@@ -59,6 +59,23 @@ type Model struct {
 const (
 	defaultEdition = "ce"
 
+	// snapshotWait is how long the check-in waits for the swarm to be observed
+	// before reporting without it.
+	//
+	// The snapshot is loaded asynchronously and is not there when the TUI
+	// starts, so a check-in fired at Init would report "no nodes" for
+	// everybody — which is worse than reporting nothing, because it is a wrong
+	// answer rather than a missing one. Waiting a moment costs the update
+	// notice a second or two and costs the data nothing.
+	//
+	// Bounded because the failure it has to survive is a Docker socket that
+	// never answers. That must not mean the install goes uncounted: the
+	// deadline passes, the shape is omitted, and the check-in goes out anyway.
+	snapshotWait = 5 * time.Second
+
+	// snapshotPoll is how often it looks while waiting.
+	snapshotPoll = 150 * time.Millisecond
+
 	// heartbeatInterval re-reports a session that is still open.
 	//
 	// A day, not minutes. `swarmcli_started` already answers how many installs
@@ -131,7 +148,7 @@ func (m *Model) CheckLatestVersion() tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		latestVersion, err := m.checkIn(telemetry.EventStarted, currentVersion, currentEdition)
+		latestVersion, err := m.checkIn(telemetry.EventStarted, currentVersion, currentEdition, m.swarmShape())
 		if err != nil {
 			l().Infow("startup version check failed", "version", currentVersion, "edition", currentEdition, "error", err)
 			return NoVersionUpdateMsg{}
@@ -189,12 +206,67 @@ func shouldShowLatestVersion(currentVersion, latestVersion string) bool {
 // The HTTP lives there rather than here for layering: this is a view, and a
 // view that owns an HTTP client and an identity file is a view that cannot be
 // tested without both.
-func (m *Model) checkIn(event, currentVersion, edition string) (string, error) {
+func (m *Model) checkIn(event, currentVersion, edition string, shape telemetry.Shape) (string, error) {
 	client := m.telemetry
 	if client == nil {
 		client = telemetry.New()
 	}
-	return client.CheckIn(event, currentVersion, edition, telemetry.ModeTUI)
+	return client.CheckIn(event, currentVersion, edition, telemetry.ModeTUI, shape)
+}
+
+// swarmShape counts what kind of swarm this is, waiting briefly for the first
+// observation and giving up rather than guessing.
+//
+// Runs inside the check-in's own goroutine, so the wait blocks nothing the user
+// can see. Every count is omitted unless it was actually observed: an
+// unreachable daemon, a swarm still loading, or a locked swarm all report
+// nothing rather than zero.
+func (m *Model) swarmShape() telemetry.Shape {
+	var shape telemetry.Shape
+
+	// Both dependencies are nil-checked, and that is not defensiveness for its
+	// own sake: `docker.Deps` is a struct of interfaces and a partially
+	// populated one is constructible — the test harness builds exactly that.
+	// The rule this enforces is that gathering telemetry must never be able to
+	// bring down the TUI. A panic here would take the whole program with it,
+	// for a number nobody would miss.
+	if m.deps.ClusterInfo != nil {
+		if version, err := m.deps.ClusterInfo.GetDockerVersion(); err == nil {
+			shape.DockerVersion = strings.TrimSpace(version)
+		}
+	}
+
+	if m.deps.Snapshot == nil {
+		return shape
+	}
+
+	deadline := time.Now().Add(snapshotWait)
+	for {
+		snap := m.deps.Snapshot.GetSnapshot()
+
+		// A locked swarm is reachable and its entity lists are empty until it
+		// is unlocked, so counting them would report a one-node swarm running
+		// nothing. Omitted instead — the fact is unobserved, not zero.
+		if snap != nil && !snap.Locked {
+			nodes := len(snap.Nodes)
+			services := len(snap.Services)
+			managers := 0
+			for i := range snap.Nodes {
+				if snap.Nodes[i].Spec.Role == swarm.NodeRoleManager {
+					managers++
+				}
+			}
+			shape.Nodes = &nodes
+			shape.Managers = &managers
+			shape.Services = &services
+			return shape
+		}
+
+		if time.Now().After(deadline) {
+			return shape
+		}
+		time.Sleep(snapshotPoll)
+	}
 }
 
 // HeartbeatCmd re-reports a session that is still open, once a day.
@@ -224,7 +296,7 @@ func (m *Model) SendHeartbeat() tea.Cmd {
 	currentEdition := normalizeEdition(m.edition)
 
 	return func() tea.Msg {
-		if _, err := m.checkIn(telemetry.EventHeartbeat, currentVersion, currentEdition); err != nil {
+		if _, err := m.checkIn(telemetry.EventHeartbeat, currentVersion, currentEdition, m.swarmShape()); err != nil {
 			l().Infow("heartbeat failed", "error", err)
 		}
 		return HeartbeatSentMsg{}

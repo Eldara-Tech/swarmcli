@@ -1007,12 +1007,21 @@ section now exists.
 - **how swarmcli was installed** — Homebrew, Scoop, a container, built from
   source, or unknown. This decides which distribution channels are worth
   maintaining;
-- whether it is the **TUI or the controller** making the request.
+- whether it is the **TUI or the controller** making the request;
+- **the shape of your swarm, as counts** — how many nodes it has, how many of
+  those are managers, how many services are running, and the Docker engine
+  version. This is what tells us whether swarmcli is being run against a
+  one-node laptop or a twenty-node fleet, which nothing else answers and which
+  decides what we build next. They are counts and only counts; if the swarm has
+  not been observed yet, or is locked, or the daemon does not answer, they are
+  left out rather than sent as zero.
 
-**What it does not send.** Your services, images, stacks, networks, volumes,
-node or cluster names, hostnames, addresses, command arguments or error text —
-the same list the license requests refuse, for the same reason. There is no
-field one could be written into.
+**What it does not send.** The *names* of anything: your services, images,
+stacks, networks, volumes, nodes or cluster, your hostnames, addresses, command
+arguments or error text. The same list the license requests refuse, for the same
+reason, and the same distinction — **how many, never which ones**. A node count
+is a fact about scale; a node name is a map of your estate. There is no field
+the second could be written into.
 
 **Your address is not stored.** The request necessarily arrives from somewhere,
 and the receiving end turns that into a **country** and discards the address

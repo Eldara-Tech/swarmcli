@@ -126,6 +126,25 @@ func Reporting() State {
 // Enabled reports whether a usage report will be sent.
 func Enabled() bool { return Reporting() == StateFull }
 
+// Shape is what kind of swarm this is, as counts.
+//
+// **Counts, never names.** `docs/license.md` publishes that line for the
+// licence requests — "how many, never which ones" — and this holds to it: a
+// node count is a fact about scale, a node name is a map of somebody's estate.
+// Nothing here can be turned into the second.
+//
+// Pointers, so that absent and zero stay different facts. A swarm that has not
+// been observed yet sends nothing; a swarm observed to be running no services
+// sends `0`, and that is a real and different answer. Only `Services` can
+// honestly be zero — a swarm always has at least the node you are asking — but
+// all three are pointers so the next reader does not have to know which.
+type Shape struct {
+	Nodes         *int
+	Managers      *int
+	Services      *int
+	DockerVersion string
+}
+
 // report is the telemetry request body. Mirrors the server's zod schema; a
 // field it does not know is stripped there rather than rejected, so the two
 // drifting apart fails quietly and the tests on both sides are what catch it.
@@ -138,6 +157,11 @@ type report struct {
 	Arch          string `json:"arch,omitempty"`
 	InstallMethod string `json:"install_method,omitempty"`
 	Mode          string `json:"mode,omitempty"`
+
+	Nodes         *int   `json:"nodes,omitempty"`
+	Managers      *int   `json:"managers,omitempty"`
+	Services      *int   `json:"services,omitempty"`
+	DockerVersion string `json:"docker_version,omitempty"`
 }
 
 // versionOnly is the fallback body: exactly what has always been sent, so a
@@ -184,7 +208,7 @@ func New() *Client {
 // unchanged — the update notice is a feature the user asked for by running
 // swarmcli, not telemetry, and switching off usage reporting must not also stop
 // telling them a new release exists.
-func (c *Client) CheckIn(event, version, edition, mode string) (string, error) {
+func (c *Client) CheckIn(event, version, edition, mode string, shape Shape) (string, error) {
 	if Enabled() {
 		installID := InstallID()
 		// No storable identity means no report: a per-process id would make
@@ -200,6 +224,10 @@ func (c *Client) CheckIn(event, version, edition, mode string) (string, error) {
 				Arch:          Arch(),
 				InstallMethod: InstallMethod(),
 				Mode:          mode,
+				Nodes:         shape.Nodes,
+				Managers:      shape.Managers,
+				Services:      shape.Services,
+				DockerVersion: shape.DockerVersion,
 			})
 		}
 	}

@@ -239,7 +239,7 @@ Every environment variable and on-disk path, for both editions, is documented in
 [docs/configuration.md](docs/configuration.md) — `SWARMCLI_ENV` and `LOG_LEVEL`
 above among them.
 
-On startup, SwarmCLI makes one request. It checks whether a newer release is available, and reports that swarmcli was started — a random install id, the version and edition, your OS and architecture, and how swarmcli was installed. It does not send your services, images, stacks, hostnames, command arguments or IP address; your country is derived from the connection and the address is never stored. The first run says all of this on screen before anything is sent.
+On startup, SwarmCLI makes one request. It checks whether a newer release is available, and reports that swarmcli was started — a random install id, the version and edition, your OS and architecture, how swarmcli was installed, and the shape of your swarm as counts (nodes, managers, services, Docker version). It does not send the *names* of anything: no services, images, stacks, nodes, hostnames, command arguments or IP address. Your country is derived from the connection and the address is never stored. The first run says all of this on screen before anything is sent.
 
 `SWARMCLI_TELEMETRY=off` stops the usage report and keeps the update check. `SWARMCLI_TELEMETRY=none` makes no outbound request at all. Full detail in [docs/license.md](docs/license.md#usage-reporting).
 

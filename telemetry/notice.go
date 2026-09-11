@@ -21,18 +21,21 @@ package telemetry
 const (
 	NoticeTitle = "Usage reporting is on"
 
-	NoticeBody = `swarmcli reports that it was started, so we know how many installs there are
-and which releases are in use. It sends:
+	NoticeBody = `swarmcli reports that it was started, so we know how many installs there
+are, which releases are in use, and what kind of swarms people run. It sends:
 
   • a random install id, generated on this machine just now
   • the version and edition
   • the OS, CPU architecture, and how swarmcli was installed
+  • how many nodes, managers and services your swarm has, and its Docker
+    version — counts only
 
 It does not send your cluster, node, service, stack or image names, your
 hostnames, your command arguments, or your IP address. Your country is derived
 from the connection and the address itself is never stored.
 
-Turn it off with SWARMCLI_TELEMETRY=off — the update check still works.`
+Turn it off with SWARMCLI_TELEMETRY=off — the update check still works.
+SWARMCLI_TELEMETRY=none sends nothing at all.`
 )
 
 // ShouldNotice reports whether this run should show the disclosure.
