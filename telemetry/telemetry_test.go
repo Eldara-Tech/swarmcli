@@ -101,29 +101,33 @@ func TestCheckIn_WritesNoIdentityWhenDisabled(t *testing.T) {
 func TestReporting_ThreeStates(t *testing.T) {
 	// "no telemetry" and "no network" are different asks. One variable expresses
 	// both, and which value means which is the whole of the public contract.
-	cases := map[string]State{
-		"":       StateFull,
-		"on":     StateFull,
-		"true":   StateFull,
-		"1":      StateFull,
-		"banana": StateFull,
+	cases := []struct {
+		name  string
+		value string
+		want  State
+	}{
+		{"unset", "", StateFull},
+		{"on", "on", StateFull},
+		{"true", "true", StateFull},
+		{"one", "1", StateFull},
+		{"unrecognised", "banana", StateFull},
 
-		"off":   StateUpdateOnly,
-		"OFF":   StateUpdateOnly,
-		"false": StateUpdateOnly,
-		"0":     StateUpdateOnly,
-		"no":    StateUpdateOnly,
-		" off ": StateUpdateOnly,
+		{"off", "off", StateUpdateOnly},
+		{"off uppercase", "OFF", StateUpdateOnly},
+		{"false", "false", StateUpdateOnly},
+		{"zero", "0", StateUpdateOnly},
+		{"no", "no", StateUpdateOnly},
+		{"off padded with spaces", " off ", StateUpdateOnly},
 
-		"none":   StateSilent,
-		"NONE":   StateSilent,
-		"silent": StateSilent,
+		{"none", "none", StateSilent},
+		{"none uppercase", "NONE", StateSilent},
+		{"silent", "silent", StateSilent},
 	}
 
-	for value, want := range cases {
-		t.Run(value, func(t *testing.T) {
-			t.Setenv(Env, value)
-			require.Equal(t, want, Reporting())
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(Env, c.value)
+			require.Equal(t, c.want, Reporting())
 		})
 	}
 }
