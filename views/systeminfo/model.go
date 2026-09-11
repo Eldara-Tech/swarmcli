@@ -5,8 +5,6 @@ package systeminfoview
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -59,8 +57,7 @@ type Model struct {
 }
 
 const (
-	defaultEdition         = "ce"
-	versionCheckDisableEnv = "SWARMCLI_DISABLE_VERSION_CHECK"
+	defaultEdition = "ce"
 
 	// heartbeatInterval re-reports a session that is still open.
 	//
@@ -124,7 +121,7 @@ func (m *Model) CheckLatestVersion() tea.Cmd {
 	currentVersion := strings.TrimSpace(m.version)
 	currentEdition := normalizeEdition(m.edition)
 	if versionCheckDisabled() {
-		l().Infow("startup version check disabled", "env", versionCheckDisableEnv)
+		l().Infow("startup request disabled", "env", telemetry.Env)
 		return nil
 	}
 
@@ -159,9 +156,10 @@ func normalizeEdition(edition string) string {
 	return normalizedEdition
 }
 
+// versionCheckDisabled reports whether this build makes no startup request at
+// all. One variable governs it now — see telemetry.Reporting.
 func versionCheckDisabled() bool {
-	disabled, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(versionCheckDisableEnv)))
-	return err == nil && disabled
+	return telemetry.Reporting() == telemetry.StateSilent
 }
 
 func shouldShowLatestVersion(currentVersion, latestVersion string) bool {

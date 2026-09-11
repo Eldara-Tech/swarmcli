@@ -71,7 +71,7 @@ func TestCheckIn_OffFallsBackToThePlainVersionCheck(t *testing.T) {
 	// telemetry. Switching reporting off must not also stop telling them a new
 	// release exists — and the body must carry no identity.
 	c, got, path := serve(t, `{"latestVersion":"1.14.15"}`)
-	t.Setenv(DisableEnv, "off")
+	t.Setenv(Env, "off")
 
 	latest, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI)
 
@@ -90,7 +90,7 @@ func TestCheckIn_WritesNoIdentityWhenDisabled(t *testing.T) {
 	// telemetry on later would silently reuse an identity created while it was
 	// off.
 	c, _, _ := serve(t, `{"latestVersion":"1.14.15"}`)
-	t.Setenv(DisableEnv, "off")
+	t.Setenv(Env, "off")
 
 	_, err := c.CheckIn(EventStarted, "1.2.2", "ce", ModeTUI)
 	require.NoError(t, err)
@@ -98,20 +98,68 @@ func TestCheckIn_WritesNoIdentityWhenDisabled(t *testing.T) {
 	require.True(t, IsFirstRun(), "a disabled run must not create an install identity")
 }
 
-func TestEnabled_AcceptsTheSpellingsPeopleActuallyUse(t *testing.T) {
-	for _, off := range []string{"off", "OFF", "false", "False", "0", "no", " off "} {
-		t.Run(off, func(t *testing.T) {
-			t.Setenv(DisableEnv, off)
-			require.False(t, Enabled())
-		})
+func TestReporting_ThreeStates(t *testing.T) {
+	// "no telemetry" and "no network" are different asks. One variable expresses
+	// both, and which value means which is the whole of the public contract.
+	cases := map[string]State{
+		"":       StateFull,
+		"on":     StateFull,
+		"true":   StateFull,
+		"1":      StateFull,
+		"banana": StateFull,
+
+		"off":   StateUpdateOnly,
+		"OFF":   StateUpdateOnly,
+		"false": StateUpdateOnly,
+		"0":     StateUpdateOnly,
+		"no":    StateUpdateOnly,
+		" off ": StateUpdateOnly,
+
+		"none":   StateSilent,
+		"NONE":   StateSilent,
+		"silent": StateSilent,
 	}
 
-	for _, on := range []string{"", "on", "true", "1", "yes", "banana"} {
-		t.Run("on/"+on, func(t *testing.T) {
-			t.Setenv(DisableEnv, on)
-			require.True(t, Enabled(), "anything not recognised as off leaves it on")
+	for value, want := range cases {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(Env, value)
+			require.Equal(t, want, Reporting())
 		})
 	}
+}
+
+func TestReporting_UnrecognisedLeavesReportingOn(t *testing.T) {
+	// The deliberate direction for a value whose absence also means on: a typo
+	// in a chart must not silently switch reporting off, because nobody notices
+	// until the numbers are already wrong.
+	t.Setenv(Env, "disabled")
+
+	require.Equal(t, StateFull, Reporting())
+}
+
+func TestReporting_HonoursTheRetiredVariable(t *testing.T) {
+	// Undocumented, still honoured. The machines that set it are the ones where
+	// an outbound request is a compliance question; dropping support would mean
+	// an upgrade silently starts making network calls on exactly those, and
+	// they would find out from a firewall log rather than from us.
+	t.Setenv(legacyDisableEnv, "true")
+
+	require.Equal(t, StateSilent, Reporting())
+}
+
+func TestReporting_ExplicitSettingBeatsTheRetiredVariable(t *testing.T) {
+	// Somebody who has set the new variable has made a decision; the old one
+	// left over in a chart must not quietly override it.
+	t.Setenv(legacyDisableEnv, "true")
+	t.Setenv(Env, "on")
+
+	require.Equal(t, StateFull, Reporting())
+}
+
+func TestReporting_RetiredVariableFalseIsNotSilent(t *testing.T) {
+	t.Setenv(legacyDisableEnv, "false")
+
+	require.Equal(t, StateFull, Reporting())
 }
 
 func TestInstallID_IsStableAcrossCalls(t *testing.T) {
@@ -153,7 +201,7 @@ func TestShouldNotice_OnlyOnceAndOnlyWhenReporting(t *testing.T) {
 	require.False(t, ShouldNotice(), "and never again")
 
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv(DisableEnv, "off")
+	t.Setenv(Env, "off")
 	require.False(t, ShouldNotice(), "a disabled run has nothing to disclose")
 }
 
@@ -161,7 +209,7 @@ func TestNotice_EnumeratesWhatIsSentAndNamesTheOffSwitch(t *testing.T) {
 	// The notice is what makes opt-out legitimate, so its content is a contract
 	// rather than copy. If a field is added to the report and not to this list,
 	// the notice becomes untrue.
-	for _, want := range []string{"install id", "version", "OS", DisableEnv} {
+	for _, want := range []string{"install id", "version", "OS", Env} {
 		require.Contains(t, NoticeBody, want)
 	}
 

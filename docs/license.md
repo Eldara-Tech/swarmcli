@@ -1032,8 +1032,15 @@ switches it off for good. The update check still works with it off: that request
 falls back to the version-only form, which carries no install id and nothing
 about your machine, exactly as it did before usage reporting existed.
 
-`SWARMCLI_DISABLE_VERSION_CHECK=true` is the older and blunter switch and stops
-the startup request altogether — no usage report and no update notice. See
+**If you want swarmcli to make no outbound request at all** — the air-gapped
+case, and the same posture as installing leases from a file:
+
+```
+SWARMCLI_TELEMETRY=none
+```
+
+That is the whole switch. `SWARMCLI_DISABLE_VERSION_CHECK=true` was the earlier
+spelling of it and still works, so nothing already setting it breaks. See
 [Configuration](configuration.md#environment-variables).
 
 **A session left open reports again once a day**, and only then. It is the same

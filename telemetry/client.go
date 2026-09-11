@@ -9,17 +9,33 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	// DisableEnv switches telemetry off. Any of off/false/0/no, case-insensitive.
+	// Env is the one variable that governs the startup request, and it has
+	// three states rather than two — see State.
 	//
 	// Spelled as a value rather than as SWARMCLI_DISABLE_TELEMETRY so that
-	// `SWARMCLI_TELEMETRY=off` reads the way people write it, and so a future
-	// third state has somewhere to go without a second variable.
-	DisableEnv = "SWARMCLI_TELEMETRY"
+	// `SWARMCLI_TELEMETRY=off` reads the way people write it, and so the third
+	// state had somewhere to go without a second variable.
+	Env = "SWARMCLI_TELEMETRY"
+
+	// legacyDisableEnv is the variable this replaced. Still honoured, no longer
+	// documented.
+	//
+	// It is undocumented rather than deleted, and that is a deliberate
+	// asymmetry. The people who set it are the ones running swarmcli where
+	// outbound requests are a compliance question — air-gapped clusters, which
+	// this product serves on purpose and which install leases from a file for
+	// the same reason. Dropping support would mean an upgrade silently starts
+	// making network calls on exactly those machines, and they would find out
+	// from a firewall log rather than from us. A variable nobody is told about
+	// but that keeps working costs a line here; the alternative costs somebody
+	// an incident.
+	legacyDisableEnv = "SWARMCLI_DISABLE_VERSION_CHECK"
 
 	// DefaultURL is the telemetry endpoint, which also answers the update check.
 	DefaultURL = "https://swarmcli.io/api/v1/telemetry"
@@ -45,22 +61,70 @@ const (
 	ModeCD  = "cd"
 )
 
-// Enabled reports whether usage reporting is on.
+// State is what the startup request does. Three states, because "no telemetry"
+// and "no network" are different asks and conflating them served neither.
+type State int
+
+const (
+	// StateFull reports usage and checks for updates, in one request. The
+	// default.
+	//
+	// **On by default**, which is the decision worth being explicit about
+	// rather than burying in a boolean. What makes that defensible is the shape
+	// of what is sent: an install identifier and a country the server derives
+	// and the client never sees, with no address stored and nothing about the
+	// cluster. The first-run notice says so before the first report leaves.
+	StateFull State = iota
+
+	// StateUpdateOnly sends the version-only request: no install id and nothing
+	// about the machine, byte-identical to what shipped before usage reporting
+	// existed. The update notice still works, because being told a new release
+	// exists is a feature somebody asked for by running swarmcli and is not
+	// telemetry.
+	StateUpdateOnly
+
+	// StateSilent makes no outbound request at all. The state an air-gapped or
+	// policy-restricted cluster wants, and the one no amount of "off" could
+	// express while this was two variables.
+	StateSilent
+)
+
+// Reporting reads the state from the environment.
 //
-// **On by default**, which is the decision worth being explicit about rather
-// than burying in a boolean. What makes that defensible is the shape of what is
-// sent: an install identifier and a country the server derives and the client
-// never sees, with no address stored and nothing about the cluster. The
-// first-run notice says so before the first report leaves, and this variable
-// switches it off for good.
-func Enabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(DisableEnv))) {
+// Anything unrecognised leaves reporting **on**. That is the deliberate
+// direction for a value whose absence also means on: a typo in a chart cannot
+// silently disable it, which would be a failure nobody notices until the
+// numbers are already wrong.
+func Reporting() State {
+	set := strings.ToLower(strings.TrimSpace(os.Getenv(Env)))
+
+	switch set {
+	case "none", "silent":
+		return StateSilent
 	case "off", "false", "0", "no":
-		return false
-	default:
-		return true
+		return StateUpdateOnly
 	}
+
+	// The retired variable, honoured for the reason given at its declaration —
+	// but only when the current one says nothing at all.
+	//
+	// The guard is `set == ""`, not "the switch above did not match". Somebody
+	// who has written SWARMCLI_TELEMETRY has made a decision, and a stale
+	// SWARMCLI_DISABLE_VERSION_CHECK left in the same chart must not quietly
+	// overrule it — including when what they wrote is a spelling this does not
+	// recognise, which lands on StateFull and is still their decision. Getting
+	// this backwards silenced `SWARMCLI_TELEMETRY=on`, and a test caught it.
+	if set == "" {
+		if disabled, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(legacyDisableEnv))); err == nil && disabled {
+			return StateSilent
+		}
+	}
+
+	return StateFull
 }
+
+// Enabled reports whether a usage report will be sent.
+func Enabled() bool { return Reporting() == StateFull }
 
 // report is the telemetry request body. Mirrors the server's zod schema; a
 // field it does not know is stripped there rather than rejected, so the two

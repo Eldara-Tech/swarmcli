@@ -16,8 +16,7 @@ apply to every build.
 | `SWARMCLI_ENV` | both | `dev` writes human-readable logs, `prod` writes JSON. | `prod` | startup |
 | `LOG_LEVEL` | both | Log verbosity: `debug`, `info`, `warn`, `error`. | `debug` in dev, `info` in prod | startup |
 | `DOCKER_CONTEXT` | both | Docker context to talk to. It overrides `docker context use`, so while it is set the context switcher refuses to move to a different context rather than writing a switch that could not take effect. | the active context | startup |
-| `SWARMCLI_DISABLE_VERSION_CHECK` | both | Disables the startup request altogether — no update check **and** no usage report. The blunter of the two switches. | unset | startup |
-| `SWARMCLI_TELEMETRY` | both | `off` stops [usage reporting](license.md#usage-reporting): no install id and nothing about your machine is sent. The startup request still happens and still tells you when a newer release exists, in the version-only form it had before usage reporting existed. | unset (reporting on) | startup |
+| `SWARMCLI_TELEMETRY` | both | Governs the one request swarmcli makes at startup. Unset reports usage and checks for updates. `off` stops [usage reporting](license.md#usage-reporting) — no install id, nothing about your machine — while still telling you when a newer release exists. `none` makes no outbound request at all, which is what an air-gapped or policy-restricted cluster wants. | unset (reporting on) | startup |
 | `SWARMCLI_CHARTS_ALLOW_PLAINTEXT` | both | Allows chart repositories served over plain `http://`, which are refused by default (see [charts/README.md](../charts/README.md#transport)). | unset (https only) | `charts` commands |
 | `SWARMCLI_CHARTS_NO_AUTO_UPDATE` | both | Stops a `charts` command refreshing a repository index before resolving a chart from it. `--no-repo-update` does the same for one invocation. | unset (refreshes) | `charts` commands |
 | `EDITOR` | both | Editor invoked by the in-TUI edit actions (stack, config, secret). | `nano` | edit action |
@@ -30,17 +29,29 @@ apply to every build.
 | `SWARMCLI_SHELL_CMD` | BE | Shell command to exec when opening a shell into a task. If unset, the agent auto-detects (`bash` → `sh` → `ash`). | unset | shell connect |
 | `SWARMCLI_FORWARD_IDLE_TIMEOUT` | BE | Idle timeout for an active port-forward (no traffic in either direction). Accepts any Go duration; capped at `24h`. | `30m` | per-forward, evaluated continuously |
 
-The four on/off variables (`SWARMCLI_DISABLE_VERSION_CHECK`,
-`SWARMCLI_CHARTS_ALLOW_PLAINTEXT`, `SWARMCLI_CHARTS_NO_AUTO_UPDATE`,
-`SWARMCLI_DISABLE_LICENSE_RENEWAL`) accept the
+The three on/off variables (`SWARMCLI_CHARTS_ALLOW_PLAINTEXT`,
+`SWARMCLI_CHARTS_NO_AUTO_UPDATE`, `SWARMCLI_DISABLE_LICENSE_RENEWAL`) accept the
 values Go's `strconv.ParseBool` does — `1`, `t`, `true`, `TRUE` and their false
 counterparts. Anything else is treated as unset.
 
-`SWARMCLI_TELEMETRY` is the exception and reads the other way round, because it
-names the thing rather than the negation of it: it is **on** unless set to one of
-`off`, `false`, `0` or `no`, in any case. Anything else leaves reporting on — a
-typo cannot silently switch it off, which is the safer direction for a value
-whose absence is also "on".
+`SWARMCLI_TELEMETRY` is not one of them: it has three states rather than two,
+because "send no usage data" and "make no network request" are different asks
+and one variable saying both is clearer than two variables each saying half.
+
+| Value | Usage report | Update check |
+|---|---|---|
+| unset | yes | yes |
+| `off`, `false`, `0`, `no` | no | yes |
+| `none`, `silent` | no | no |
+
+Anything it does not recognise leaves reporting **on**. That is the safer
+direction for a value whose absence also means on: a typo in a chart cannot
+silently switch it off, which is a failure nobody notices until the numbers are
+already wrong.
+
+`SWARMCLI_DISABLE_VERSION_CHECK` was the earlier spelling of `none` and is still
+honoured, so nothing that sets it breaks — an explicit `SWARMCLI_TELEMETRY`
+always wins. New configuration should use the table above.
 
 See [License — Activation](license.md#activation) for how `SWARMCLI_LICENSE`
 and the license file are installed into a swarm. There is no precedence between

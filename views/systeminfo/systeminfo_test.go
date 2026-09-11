@@ -269,8 +269,8 @@ func TestCheckLatestVersion_UsesOverriddenEdition(t *testing.T) {
 	require.Equal(t, "be", received.Edition)
 }
 
-func TestCheckLatestVersion_DisabledReturnsNilCmd(t *testing.T) {
-	t.Setenv(versionCheckDisableEnv, "true")
+func TestCheckLatestVersion_SilentReturnsNilCmd(t *testing.T) {
+	t.Setenv(telemetry.Env, "none")
 
 	m := New(testDeps(), "1.2.2", "ce")
 	require.Nil(t, m.CheckLatestVersion())
