@@ -22,7 +22,7 @@ func (DockerSecretLs) Spec() registry.CommandSpec {
 	return registry.CommandSpec{
 		Detail: "Opens the Docker Secrets list, where you can create, " +
 			"inspect and delete secrets and see which stacks use them. " +
-			"With a Business Edition licence you can also reveal a " +
+			"With a Business Edition license you can also reveal a " +
 			"secret's value.",
 		Examples: []string{":secret"},
 	}

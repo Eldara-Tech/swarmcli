@@ -56,7 +56,7 @@ swarmcli
 ```
 
 `swarmcli` is the full build: everything below, plus Business Edition's
-features, which stay inert until a licence verifies. For the wholly Apache-2.0
+features, which stay inert until a license verifies. For the wholly Apache-2.0
 build, install `swarmcli-oss` instead — same executable name, same commands. See
 [docs/editions.md](docs/editions.md), and `swarmcli version` to check which one
 you have.
@@ -155,11 +155,11 @@ commercial superset that adds:
 - Thirteen licensed entitlements. Eight in this TUI — shell into a running
   service task, reveal-secret, port-forward, volumes across all nodes, RBAC
   user management, service health, pull progress and container statistics —
-  and five more consumed by swarmcli-cd, because one licence covers both
+  and five more consumed by swarmcli-cd, because one license covers both
   products. See
   [docs/features.md](docs/features.md#where-the-gates-live).
 
-The licence that turns them on need not be a paid one: the [free
+The license that turns them on need not be a paid one: the [free
 tier](docs/license.md#the-free-tier) grants the same features on a swarm of up
 to three nodes.
 
@@ -169,7 +169,7 @@ work.
 
 It is not a separate download. The `swarmcli` archives, image, cask and Scoop
 manifest published from this repository's releases *are* the Business Edition
-build, carrying the licensed code inert; a licence turns it on. The wholly
+build, carrying the licensed code inert; a license turns it on. The wholly
 Apache-2.0 build ships beside it as `swarmcli-oss`. Which one you have is
 [docs/editions.md](docs/editions.md), and `swarmcli version` answers it
 directly.
@@ -178,7 +178,7 @@ Documentation lives in [`docs/`](docs/) — [installation](docs/installation.md)
 [license](docs/license.md), [bootstrap](docs/bootstrap.md),
 [RBAC](docs/rbac.md), [features](docs/features.md), [volumes](docs/volumes.md),
 [configuration](docs/configuration.md) and
-[troubleshooting](docs/troubleshooting.md). Licence sign-up is at
+[troubleshooting](docs/troubleshooting.md). License sign-up is at
 [swarmcli.io/be](https://swarmcli.io/be).
 
 ## Installation
