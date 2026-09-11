@@ -4,17 +4,13 @@
 package systeminfoview
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
+	"github.com/Eldara-Tech/swarmcli/v2/telemetry"
 
 	"github.com/briandowns/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,10 +24,10 @@ type Model struct {
 	// We don't need a viewport here, as we will use a fixed size for the content.
 	content string
 
-	version         string
-	edition         string
-	latest          string
-	versionCheckURL string
+	version   string
+	edition   string
+	latest    string
+	telemetry *telemetry.Client
 
 	context        string
 	cpuUsage       string
@@ -61,20 +57,35 @@ type Model struct {
 }
 
 const (
-	defaultEdition         = "ce"
-	defaultVersionCheckURL = "https://swarmcli.io/api/v1/version"
-	versionCheckDisableEnv = "SWARMCLI_DISABLE_VERSION_CHECK"
-	versionCheckTimeout    = 4 * time.Second
+	defaultEdition = "ce"
+
+	// snapshotWait is how long the check-in waits for the swarm to be observed
+	// before reporting without it.
+	//
+	// The snapshot is loaded asynchronously and is not there when the TUI
+	// starts, so a check-in fired at Init would report "no nodes" for
+	// everybody — which is worse than reporting nothing, because it is a wrong
+	// answer rather than a missing one. Waiting a moment costs the update
+	// notice a second or two and costs the data nothing.
+	//
+	// Bounded because the failure it has to survive is a Docker socket that
+	// never answers. That must not mean the install goes uncounted: the
+	// deadline passes, the shape is omitted, and the check-in goes out anyway.
+	snapshotWait = 5 * time.Second
+
+	// snapshotPoll is how often it looks while waiting.
+	snapshotPoll = 150 * time.Millisecond
+
+	// heartbeatInterval re-reports a session that is still open.
+	//
+	// A day, not minutes. `swarmcli_started` already answers how many installs
+	// launched and which releases they run; the only thing this adds is the
+	// machine that opened the TUI once and left it open, which `started` alone
+	// would count on the day it began and never again. A short interval would
+	// multiply every install's request volume for no extra fact, which is the
+	// thing this design is most careful to avoid.
+	heartbeatInterval = 24 * time.Hour
 )
-
-type versionCheckRequest struct {
-	Version string `json:"version"`
-	Edition string `json:"edition"`
-}
-
-type versionCheckResponse struct {
-	LatestVersion string `json:"latestVersion"`
-}
 
 // Create a new instance
 func New(deps docker.Deps, version, edition string) *Model {
@@ -83,17 +94,17 @@ func New(deps docker.Deps, version, edition string) *Model {
 	normalizedEdition := normalizeEdition(edition)
 
 	return &Model{
-		deps:            deps,
-		content:         content(context, version, "", "", 0, 0),
-		version:         version,
-		edition:         normalizedEdition,
-		versionCheckURL: defaultVersionCheckURL,
-		context:         context,
-		updateInterval:  8 * time.Second,
-		lastUpdate:      time.Now(),
-		loadingCPU:      true,
-		loadingMem:      true,
-		firstLoad:       true,
+		deps:           deps,
+		content:        content(context, version, "", "", 0, 0),
+		version:        version,
+		edition:        normalizedEdition,
+		telemetry:      telemetry.New(),
+		context:        context,
+		updateInterval: 8 * time.Second,
+		lastUpdate:     time.Now(),
+		loadingCPU:     true,
+		loadingMem:     true,
+		firstLoad:      true,
 	}
 }
 
@@ -114,6 +125,11 @@ func (m *Model) Init() tea.Cmd {
 	if cmd := m.CheckLatestVersion(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
+	// Its own chain, armed once here and re-armed on HeartbeatSentMsg. nil when
+	// there is nothing to report, so no timer wakes for no reason.
+	if cmd := m.HeartbeatCmd(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 
 	return tea.Batch(cmds...)
 }
@@ -122,7 +138,7 @@ func (m *Model) CheckLatestVersion() tea.Cmd {
 	currentVersion := strings.TrimSpace(m.version)
 	currentEdition := normalizeEdition(m.edition)
 	if versionCheckDisabled() {
-		l().Infow("startup version check disabled", "env", versionCheckDisableEnv)
+		l().Infow("startup request disabled", "env", telemetry.Env)
 		return nil
 	}
 
@@ -132,7 +148,7 @@ func (m *Model) CheckLatestVersion() tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		latestVersion, err := fetchLatestVersion(m.versionCheckURL, currentVersion, currentEdition)
+		latestVersion, err := m.checkIn(telemetry.EventStarted, currentVersion, currentEdition, m.swarmShape())
 		if err != nil {
 			l().Infow("startup version check failed", "version", currentVersion, "edition", currentEdition, "error", err)
 			return NoVersionUpdateMsg{}
@@ -157,9 +173,10 @@ func normalizeEdition(edition string) string {
 	return normalizedEdition
 }
 
+// versionCheckDisabled reports whether this build makes no startup request at
+// all. One variable governs it now — see telemetry.Reporting.
 func versionCheckDisabled() bool {
-	disabled, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(versionCheckDisableEnv)))
-	return err == nil && disabled
+	return telemetry.Reporting() == telemetry.StateSilent
 }
 
 func shouldShowLatestVersion(currentVersion, latestVersion string) bool {
@@ -182,50 +199,108 @@ func shouldShowLatestVersion(currentVersion, latestVersion string) bool {
 	return false
 }
 
-func fetchLatestVersion(checkURL, currentVersion, edition string) (string, error) {
-	edition = normalizeEdition(edition)
-	checkURL = strings.TrimSpace(checkURL)
-	if checkURL == "" {
-		return "", fmt.Errorf("version API URL is empty")
+// checkIn performs the one outbound call a launch makes, through the telemetry
+// client, which decides whether it carries an install id or is the plain
+// version check (telemetry/client.go).
+//
+// The HTTP lives there rather than here for layering: this is a view, and a
+// view that owns an HTTP client and an identity file is a view that cannot be
+// tested without both.
+func (m *Model) checkIn(event, currentVersion, edition string, shape telemetry.Shape) (string, error) {
+	client := m.telemetry
+	if client == nil {
+		client = telemetry.New()
 	}
+	return client.CheckIn(event, currentVersion, edition, telemetry.ModeTUI, shape)
+}
 
-	payload := versionCheckRequest{
-		Version: currentVersion,
-		Edition: edition,
-	}
+// swarmShape counts what kind of swarm this is, waiting briefly for the first
+// observation and giving up rather than guessing.
+//
+// Runs inside the check-in's own goroutine, so the wait blocks nothing the user
+// can see. Every count is omitted unless it was actually observed: an
+// unreachable daemon, a swarm still loading, or a locked swarm all report
+// nothing rather than zero.
+func (m *Model) swarmShape() telemetry.Shape {
+	var shape telemetry.Shape
 
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("marshal version payload: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, checkURL, bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("build version request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: versionCheckTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("send version request: %w", err)
-	}
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			l().Debugw("version response body close failed", "error", closeErr)
+	// Both dependencies are nil-checked, and that is not defensiveness for its
+	// own sake: `docker.Deps` is a struct of interfaces and a partially
+	// populated one is constructible — the test harness builds exactly that.
+	// The rule this enforces is that gathering telemetry must never be able to
+	// bring down the TUI. A panic here would take the whole program with it,
+	// for a number nobody would miss.
+	if m.deps.ClusterInfo != nil {
+		if version, err := m.deps.ClusterInfo.GetDockerVersion(); err == nil {
+			shape.DockerVersion = strings.TrimSpace(version)
 		}
-	}()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("version API status: %s", resp.Status)
 	}
 
-	var decoded versionCheckResponse
-	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
-		return "", fmt.Errorf("decode version response: %w", err)
+	if m.deps.Snapshot == nil {
+		return shape
 	}
 
-	return strings.TrimSpace(decoded.LatestVersion), nil
+	deadline := time.Now().Add(snapshotWait)
+	for {
+		snap := m.deps.Snapshot.GetSnapshot()
+
+		// A locked swarm is reachable and its entity lists are empty until it
+		// is unlocked, so counting them would report a one-node swarm running
+		// nothing. Omitted instead — the fact is unobserved, not zero.
+		if snap != nil && !snap.Locked {
+			nodes := len(snap.Nodes)
+			services := len(snap.Services)
+			managers := 0
+			for i := range snap.Nodes {
+				if snap.Nodes[i].Spec.Role == swarm.NodeRoleManager {
+					managers++
+				}
+			}
+			shape.Nodes = &nodes
+			shape.Managers = &managers
+			shape.Services = &services
+			return shape
+		}
+
+		if time.Now().After(deadline) {
+			return shape
+		}
+		time.Sleep(snapshotPoll)
+	}
+}
+
+// HeartbeatCmd re-reports a session that is still open, once a day.
+//
+// Its own chain, re-armed by the caller on each HeartbeatMsg, and deliberately
+// not folded into the 8-second resource tick: that one is a Docker fan-out and
+// this one is a network call, so sharing a timer would tie the cheapest thing
+// in the view to the most expensive.
+//
+// Returns nil when there is nothing to report, so a build with the version
+// check disabled — or a dev build — arms no timer at all rather than waking
+// once a day to decide it has nothing to do.
+func (m *Model) HeartbeatCmd() tea.Cmd {
+	if versionCheckDisabled() || strings.TrimSpace(m.version) == "dev" || !telemetry.Enabled() {
+		return nil
+	}
+
+	return tea.Tick(heartbeatInterval, func(time.Time) tea.Msg { return HeartbeatMsg{} })
+}
+
+// SendHeartbeat reports the still-open session. Its answer is discarded: the
+// update notice is a startup thing, and raising one a day later under somebody
+// who has been working in the TUI since yesterday would be an interruption
+// rather than news.
+func (m *Model) SendHeartbeat() tea.Cmd {
+	currentVersion := strings.TrimSpace(m.version)
+	currentEdition := normalizeEdition(m.edition)
+
+	return func() tea.Msg {
+		if _, err := m.checkIn(telemetry.EventHeartbeat, currentVersion, currentEdition, m.swarmShape()); err != nil {
+			l().Infow("heartbeat failed", "error", err)
+		}
+		return HeartbeatSentMsg{}
+	}
 }
 
 func isNewerVersion(currentVersion, latestVersion string) bool {

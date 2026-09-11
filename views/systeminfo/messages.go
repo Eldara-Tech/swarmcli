@@ -45,3 +45,13 @@ type LatestVersionMsg struct {
 }
 
 type NoVersionUpdateMsg struct{}
+
+// HeartbeatMsg is the daily timer firing: a session that is still open should
+// re-report. Carries nothing — the model has everything the report needs.
+type HeartbeatMsg struct{}
+
+// HeartbeatSentMsg closes one heartbeat round. The app re-arms the timer on it
+// rather than on HeartbeatMsg, so a slow or failed report cannot leave two
+// rounds in flight — the same one-chain-in-one-chain-out rule the resource tick
+// follows.
+type HeartbeatSentMsg struct{}
