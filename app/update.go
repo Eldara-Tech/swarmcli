@@ -42,6 +42,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// The first-run usage-reporting line clears on the first key the app itself
+	// handles — not the first key of the session. While a startup overlay is up
+	// it covers the screen and takes every keystroke, so retiring the notice
+	// there would retire something nobody could have read.
+	if m.telemetryNoticeActive {
+		if _, isKey := msg.(tea.KeyMsg); isKey {
+			m.telemetryNoticeActive = false
+		}
+	}
+
 	for _, hook := range preUpdateHooks {
 		if handled, cmd := hook(m.currentView.Name(), msg); handled {
 			return m, cmd

@@ -38,6 +38,43 @@ Turn it off with SWARMCLI_TELEMETRY=off — the update check still works.
 SWARMCLI_TELEMETRY=none sends nothing at all.`
 )
 
+// NoticeLine and NoticeLineShort are the same disclosure as one line, for the
+// stack bar.
+//
+// **The full text moved to `:telemetry`; this is what the first run shows.** A
+// modal that must be dismissed reads as a demand rather than a disclosure, and
+// it arrives at the one moment somebody is trying to look at their swarm. The
+// line says the two things that cannot wait — that reporting is on, and that it
+// is counts rather than names — and names the command that prints the rest.
+//
+// Two lengths because the bar is shared. The short form is what survives on a
+// narrow terminal, and it keeps the half a reader would miss the notice for:
+// that reporting is happening, and where to read about it.
+const (
+	NoticeLine      = "Usage reporting is on · counts only, never names · :telemetry"
+	NoticeLineShort = "Usage reporting on · :telemetry"
+)
+
+// StatusText is what `:telemetry` prints: the state this process is actually
+// in, then the same enumeration the first run advertises.
+//
+// The state comes first because it is the question being asked. Somebody typing
+// `:telemetry` after setting the variable wants to know whether it took effect,
+// and an unconditional "usage reporting is on" above the enumeration would be a
+// lie in two of the three states.
+func StatusText() string {
+	var state string
+	switch Reporting() {
+	case StateUpdateOnly:
+		state = "Usage reporting is OFF (" + Env + "=off). The update check still runs."
+	case StateSilent:
+		state = "Usage reporting is OFF and no request is made at all (" + Env + "=none)."
+	default:
+		state = NoticeTitle + "."
+	}
+	return state + "\n\n" + NoticeBody
+}
+
 // ShouldNotice reports whether this run should show the disclosure.
 //
 // True exactly once per installation: on the run that has no stored identity

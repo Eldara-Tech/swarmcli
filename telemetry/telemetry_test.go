@@ -328,3 +328,33 @@ func TestInstallMethod_UnknownRatherThanAGuessWhenTheExecutableIsUnreadable(t *t
 
 	require.Equal(t, MethodUnknown, InstallMethod())
 }
+
+// The one-line form is what the first run actually shows, so the two facts a
+// reader would otherwise have to take on trust — that it is counts rather than
+// names, and where the rest of the text lives — are pinned here the same way
+// the body's enumeration is.
+func TestNoticeLine_CarriesTheFactAndTheCommand(t *testing.T) {
+	for _, want := range []string{"Usage reporting", "counts only", ":telemetry"} {
+		require.Contains(t, NoticeLine, want)
+	}
+	for _, want := range []string{"Usage reporting", ":telemetry"} {
+		require.Contains(t, NoticeLineShort, want)
+	}
+	require.Less(t, len(NoticeLineShort), len(NoticeLine),
+		"the short form is the one that survives a narrow bar")
+}
+
+func TestStatusText_NamesTheStateItIsActuallyIn(t *testing.T) {
+	t.Setenv(Env, "")
+	t.Setenv(legacyDisableEnv, "")
+	require.Contains(t, StatusText(), NoticeTitle)
+	require.Contains(t, StatusText(), NoticeBody)
+
+	t.Setenv(Env, "off")
+	require.Contains(t, StatusText(), "OFF")
+	require.Contains(t, StatusText(), "update check still runs")
+	require.Contains(t, StatusText(), NoticeBody, "the enumeration is still worth reading when it is off")
+
+	t.Setenv(Env, "none")
+	require.Contains(t, StatusText(), "no request is made at all")
+}
