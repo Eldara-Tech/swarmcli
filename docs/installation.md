@@ -137,7 +137,7 @@ grep -o 'swarmcli[^"]*version=[^ "]*' ~/.local/state/swarmcli/app.log \
 ```
 
 The log-line prefix (`swarmcli-be ` vs `swarmcli `) says which build you have,
-regardless of whether a licence verified. `swarmcli version` says the same
+regardless of whether a license verified. `swarmcli version` says the same
 thing on stdout:
 
 ```console
@@ -153,11 +153,11 @@ publishes two artefacts under one tag, and the plain name is the full product:
 | | `swarmcli` | `swarmcli-oss` |
 |---|---|---|
 | License | this repository's code is Apache 2.0; the licensed code is commercial | wholly Apache 2.0 |
-| Contains | everything, with Business Edition features **inert** until a licence verifies | the Community Edition, and nothing else |
+| Contains | everything, with Business Edition features **inert** until a license verifies | the Community Edition, and nothing else |
 | Binary on disk | `swarmcli` | `swarmcli` (same name) |
 | Get it | `brew install swarmcli`, `scoop install swarmcli`, `eldaratech/swarmcli:<tag>` | `swarmcli-oss` on either, or `eldaratech/swarmcli:<tag>-oss` |
 
-So **activating Business Edition is installing a licence, not installing a
+So **activating Business Edition is installing a license, not installing a
 different program.** If you already run `swarmcli` from the Homebrew tap, the
 Scoop bucket, the Docker image or a release archive, you have the build a key
 unlocks — see [License](license.md).
@@ -181,7 +181,7 @@ under a second name from the rename on 2026-08-07 until they were retired on
 | the `swarmcli-be` Scoop manifest | the bucket no longer carries it | `scoop uninstall swarmcli-be; scoop install swarmcli` |
 | `eldaratech/swarmcli-be` | the pull fails — the repository is gone | `docker pull eldaratech/swarmcli:latest` |
 
-An install already on disk keeps working, licence included: nothing about the
+An install already on disk keeps working, license included: nothing about the
 product changed, only the names it is published under.
 
 ## Upgrade
@@ -208,7 +208,7 @@ What swarmcli does have is a **startup notice**: one request to
 system-info header, and a dismiss-only modal pointing back at this page. It tells
 you a newer release exists; it never fetches one.
 
-(The one thing that *does* renew itself is a managed licence's lease, which is
+(The one thing that *does* renew itself is a managed license's lease, which is
 unrelated to the binary — see [license.md](license.md).)
 
 The compatibility matrix between BE, the bundled CE codebase, and the

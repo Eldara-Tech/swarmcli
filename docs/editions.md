@@ -7,11 +7,11 @@ Copyright © 2026 Eldara Tech
 
 Every release publishes **two** artefacts from one tag. They are built from
 different trees, they are named differently, and one of them can be unlocked by
-a licence. This page is what each of them is.
+a license. This page is what each of them is.
 
-| | Built from | Contains | Licence |
+| | Built from | Contains | License |
 |---|---|---|---|
-| `swarmcli_*` archives, `eldaratech/swarmcli:<tag>`, `:latest`, the `swarmcli` Homebrew cask and Scoop manifest | a private build wrapper around this repository | this repository, plus licensed code that is **inert** without a licence | this repository's code is Apache-2.0; the licensed code is proprietary |
+| `swarmcli_*` archives, `eldaratech/swarmcli:<tag>`, `:latest`, the `swarmcli` Homebrew cask and Scoop manifest | a private build wrapper around this repository | this repository, plus licensed code that is **inert** without a license | this repository's code is Apache-2.0; the licensed code is proprietary |
 | `swarmcli_*_oss` archives, `eldaratech/swarmcli:<tag>-oss`, the `swarmcli-oss` cask and manifest | this repository, and nothing else | this repository, and nothing else | wholly Apache-2.0 |
 
 The command inside both archives is `swarmcli`. Every invocation in these docs,
@@ -21,9 +21,9 @@ difference between them is what the build contains, not how it is driven.
 ## Why there are two
 
 The default artefact carries the licensed code because a single binary is the
-only arrangement in which "install a licence" is not "download a different
+only arrangement in which "install a license" is not "download a different
 product". Nothing is hidden by that — the code is compiled in and does nothing
-until a licence verifies.
+until a license verifies.
 
 But a released binary that contains proprietary code cannot honestly be called
 open source, and a project whose only download is that binary has no answer when
@@ -50,9 +50,9 @@ $ swarmcli version
 1.14.0 (oss build, chart engine 1.14.0)
 ```
 
-`(business build)` is the merged artefact — **whether or not a licence
+`(business build)` is the merged artefact — **whether or not a license
 verified**. That is exactly what distinguishes "this binary has no licensed
-code" from "this binary has no licence", and neither the edition label nor the
+code" from "this binary has no license", and neither the edition label nor the
 absence of features answers that alone.
 
 The chart engine is reported beside it because the two can legitimately differ:
@@ -72,20 +72,20 @@ The prefix is the signal, and it is written on every start, including
 non-interactive `swarmcli charts …` runs.
 
 **The edition label in the TUI header** is the weakest of the three, and is not
-a build signal at all: it follows live licence state, so the merged build with
-no valid licence reads *Community Edition* — correctly, because that is what it
+a build signal at all: it follows live license state, so the merged build with
+no valid license reads *Community Edition* — correctly, because that is what it
 is behaving as. Do not use it to answer this question.
 
-## What a licence changes, and when
+## What a license changes, and when
 
-A licence is installed into the swarm and read at startup. It turns features on
+A license is installed into the swarm and read at startup. It turns features on
 in the merged build only, and the OSS build has nothing to install one *with*:
 the `license` command and the `:license` view are both part of the licensed
 code, so `swarmcli license …` exits `2` with `unknown command "license"` and
 `:license` is not a command the TUI knows.
 
-A licence need not be a paid one: the [free tier](license.md#the-free-tier) is a
-licence like any other and turns the same features on, on a swarm of up to three
+A license need not be a paid one: the [free tier](license.md#the-free-tier) is a
+license like any other and turns the same features on, on a swarm of up to three
 nodes.
 
 The Business Edition documentation covers acquiring, installing and managing a

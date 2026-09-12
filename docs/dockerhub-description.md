@@ -23,7 +23,7 @@ The image has two fields:
 ### Short description
 
 ```
-Keyboard-driven Docker Swarm TUI. One image, both editions; Business features need a licence.
+Keyboard-driven Docker Swarm TUI. One image, both editions; Business features need a license.
 ```
 
 ### Full description
@@ -46,9 +46,9 @@ cluster, works against a local socket or any Docker context.
 
 One image, two builds of the same command:
 
-| Tag | Contains | Licence |
+| Tag | Contains | License |
 |---|---|---|
-| `:<version>`, `:latest` | the whole product — Business Edition features compiled in and **inert** until a licence verifies | this repository's code is Apache-2.0; the licensed code is proprietary |
+| `:<version>`, `:latest` | the whole product — Business Edition features compiled in and **inert** until a license verifies | this repository's code is Apache-2.0; the licensed code is proprietary |
 | `:<version>-oss` | the Community Edition and nothing else | wholly Apache-2.0 |
 
 `:<version>-oss` is not a cut-down build — it is the whole Community Edition,
@@ -68,12 +68,12 @@ docker run --rm -it --pull always \
 ```
 
 The TUI needs a TTY — keep `-it`, or the container starts and exits immediately.
-Mounting `~/.config/swarmcli` is what makes a licence and your settings survive
+Mounting `~/.config/swarmcli` is what makes a license and your settings survive
 `--rm`.
 
 ### Business Edition
 
-Business features are already in this image and stay inert until a licence key
+Business features are already in this image and stay inert until a license key
 verifies; there is no second download. Get a key, including a free trial, at
 https://swarmcli.io/be and pass it with `-e SWARMCLI_LICENSE=<key>`, or let the
 TUI store it on the swarm.
@@ -124,7 +124,7 @@ Full account, field by field: https://github.com/Eldara-Tech/swarmcli/blob/main/
 
 | Variable | Effect |
 |---|---|
-| `SWARMCLI_LICENSE` | Business Edition licence key |
+| `SWARMCLI_LICENSE` | Business Edition license key |
 | `SWARMCLI_TELEMETRY` | `off` stops usage reporting; `none` stops every outbound request |
 | `SWARMCLI_ENV` | `dev` enables pretty debug logs (default `prod`) |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, `error` |

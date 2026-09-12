@@ -11,7 +11,7 @@ contexts, start at the [README](../README.md); for what the two
 published artefacts are, see [Editions](editions.md).
 
 Business Edition is not a separate program — it is the same binary with
-features a licence unlocks. On top of the Community Edition it adds:
+features a license unlocks. On top of the Community Edition it adds:
 
 - **`:bootstrap`** — one-command deploy of an mTLS-fronted RBAC proxy and a
   per-node agent stack onto your existing Swarm.
@@ -21,11 +21,11 @@ features a licence unlocks. On top of the Community Edition it adds:
   into a running service (`x` on a service), reveal-secret (`x` on a secret),
   port-forward, volume management across all swarm nodes, RBAC user and role
   management, service health, pull progress and container statistics. The
-  other five are consumed by swarmcli-cd, since one licence covers both
+  other five are consumed by swarmcli-cd, since one license covers both
   products. [Features — Where the gates
   live](features.md#where-the-gates-live) is the list.
 
-The licence that unlocks them need not be a paid one: the [free
+The license that unlocks them need not be a paid one: the [free
 tier](license.md#the-free-tier) grants the same features on a swarm of up to
 three nodes.
 
