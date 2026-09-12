@@ -38,7 +38,7 @@ flowchart TB
     ren --> sock1
   end
 
-  ren -- "HTTPS" --> svc["swarmcli.io<br/>licence service"]
+  ren -- "HTTPS" --> svc["swarmcli.io<br/>license service"]
 
   subgraph node["Each Swarm node"]
     ag["agent (global)"]
@@ -64,10 +64,10 @@ The bootstrap command creates the following artifacts:
   rbac-proxy connects here on port `8080` to locate and reach per-node
   agents over the overlay.
 - `licence-renewer` — one replica on a manager, running this same swarmcli
-  image as `license sync --interval 6h`. It keeps the swarm's licence current
+  image as `license sync --interval 6h`. It keeps the swarm's license current
   while nobody has a TUI open: it collects a token we re-signed — a renewal, a
   plan change, a rolled [free-tier](license.md#the-free-tier) term — and, on a
-  [managed](license.md#managed-licenses-activation-is-a-second-step) licence,
+  [managed](license.md#managed-licenses-activation-is-a-second-step) license,
   renews the activation lease. Omitted by `--no-renewer`, and omitted by a
   development build, which publishes no image to deploy.
 
@@ -168,17 +168,17 @@ To skip the interactive prompt, pass `--port`:
 ### The `Auto-renewal:` warning on `:license`
 
 A swarm bootstrapped before the renewer existed cannot gain one from
-`:bootstrap --upgrade`, which is images-only. Nothing renews the licence while
+`:bootstrap --upgrade`, which is images-only. Nothing renews the license while
 swarmcli is closed, and until this line existed that happened in silence — so
 `:license` reports it:
 
 ```
 Auto-renewal: no licence-renewer service on this swarm
-  Nothing renews the licence while swarmcli is closed, so this licence's term
+  Nothing renews the license while swarmcli is closed, so this license's term
   stops being rolled forward.
 ```
 
-The consequence named depends on the licence: a managed one loses its
+The consequence named depends on the license: a managed one loses its
 activation renewal, a static one — every [free-tier](license.md#the-free-tier)
 key among them — loses the annual roll of its term, which is the only thing
 keeping it alive. The fix is `:bootstrap --force` from the original

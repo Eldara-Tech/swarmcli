@@ -38,7 +38,7 @@ What a key records about you:
   `free` key carries a node allowance somebody actually judges. See [The free
   tier](#the-free-tier).
 - **When it expires**, if ever. A `be` key may be issued without an expiry;
-  `trial` and `free` may not. A free licence's expiry is not a countdown to the
+  `trial` and `free` may not. A free license's expiry is not a countdown to the
   end of the tier, because it is rolled forward — see [The free
   tier](#the-free-tier).
 - **Node, user and per-node vCPU limits**, if any. See [Limits](#limits).
@@ -54,10 +54,10 @@ not grant.
 
 ## The free tier
 
-There is a permanent free tier, and it is a licence like any other: a signed key
+There is a permanent free tier, and it is a license like any other: a signed key
 you install into a swarm, verified offline, granting the same features a paid
 `be` key grants — the Business Edition features these pages describe, and the
-licensed swarmcli-cd features beside them, since one licence covers both
+licensed swarmcli-cd features beside them, since one license covers both
 products. It is not a reduced feature set under a different name, and nothing
 about installing, renewing or moving it differs from what the rest of this page
 describes.
@@ -65,7 +65,7 @@ describes.
 What bounds it is not the features. It is the two things around the key:
 
 - **Three nodes.** The allowance is recorded on the key as `max_nodes`, the same
-  field a paid licence carries, and swarmcli does not refuse anything on the
+  field a paid license carries, and swarmcli does not refuse anything on the
   strength of it — the count is judged elsewhere, and [Limits](#limits) is where
   that is spelled out, because "soft limit" on its own leads a reader to the
   wrong conclusion here.
@@ -73,21 +73,21 @@ What bounds it is not the features. It is the two things around the key:
   and the term is rolled forward for you: it reaches the swarm on the same daily
   token refresh that carries a renewal or a tier change (see
   [Privacy](#privacy)), and it arrives before the date it replaces rather than
-  on it. Rolling it forward is the only lever there is — a free licence ends by
+  on it. Rolling it forward is the only lever there is — a free license ends by
   no longer being rolled, never by anything switching off from our side — and
   that is also why the expiry is mandatory rather than optional. A free key with
   no expiry would be a permanent grant on every swarm it reached, and nothing
   could ever end it.
 
 A swarm that cannot reach us keeps the term it was signed with and stops when it
-runs out, and there is no offline substitute: a free licence has no lease, so
+runs out, and there is no offline substitute: a free license has no lease, so
 there is no lease file to hand-carry in its place. Air-gapped and
 policy-restricted deployments are what the paid tiers' offline paths are for.
 
-One free licence per account, and it is [bound to one
+One free license per account, and it is [bound to one
 swarm](#per-swarm-binding) at issuance like any other key — `bind: static`, so
 there is **no lease**, and nothing to renew or hand-carry after the key is in.
-That is the step a paid licence has and this one does not; getting the key is
+That is the step a paid license has and this one does not; getting the key is
 still a step, and it is one command:
 
 ```bash
@@ -99,7 +99,7 @@ browser, and installs what comes back. Register Cluster in the dashboard is the
 same thing done by hand — see [Getting a bound
 license](#getting-a-bound-license) — and either way installing the key is the
 end of it. Moving it to another swarm is the same dashboard action as for a paid
-licence, and asking for a second free key is refused naming the cluster the
+license, and asking for a second free key is refused naming the cluster the
 first one is on.
 
 The tier is new: a free key is accepted from v2.0.0. An older swarmcli does not
@@ -429,7 +429,7 @@ The view also shows:
   same line as `Managed — …`, and names the exact state because the remedies
   differ: `activated for <id>, renews <date>`; `renewal overdue, features off
   in N day(s) (<date>)`; `activation expired <date>`; `not activated for this
-  swarm (<id>)`; `the installed lease is not for this swarm's licence`, when
+  swarm (<id>)`; `the installed lease is not for this swarm's license`, when
   the wrong lease file was pasted; `expected: <id> / Observed: <id>
   (mismatch)`. Two more are about this host rather than the license: `this
   host's clock is behind the newest time this swarm has seen`, which no fresh
@@ -445,15 +445,15 @@ The view also shows:
   otherwise read as the same kind of number and they are not: one counts the
   swarm, the other measures its biggest machine. Also a report and not a status.
   See [Limits](#limits).
-- `Allowance: 5 of 3 nodes, as the licence service sees it`, and beside it
+- `Allowance: 5 of 3 nodes, as the license service sees it`, and beside it
   `Term: stops rolling 2026-09-12 unless the count comes down` — what the
-  licence service last said about the allowance, shown only while it says this
-  licence is over it, and abbreviated into the status bar as well because the
+  license service last said about the allowance, shown only while it says this
+  license is over it, and abbreviated into the status bar as well because the
   swarm nobody opens `:license` on is the one that lapses. Also a report and not
   a status. See [Limits](#limits).
 - `Auto-renewal: no licence-renewer service on this swarm` — shown when the
   swarm was bootstrapped before the `licence-renewer` service existed, so
-  nothing renews the licence while swarmcli is closed. See [Bootstrap — the
+  nothing renews the license while swarmcli is closed. See [Bootstrap — the
   `Auto-renewal:` warning](bootstrap.md#the-auto-renewal-warning-on-license).
 
 Key bindings inside the view:
@@ -616,7 +616,7 @@ binding modes, and `:license` names which one you hold.
   cryptographically valid but Business Edition features disable and
   `:license` shows `Wrong swarm`. Switching back restores it immediately,
   with no waiting period. Every [free-tier](#the-free-tier) key is one of
-  these, which is why a free licence needs no lease.
+  these, which is why a free license needs no lease.
 - **Managed**: the swarm is named in the key as above, but the binding is also
   kept current — features work only while the swarm holds a live lease, which
   it renews by itself. See
@@ -763,7 +763,7 @@ stateDiagram-v2
 
 Nothing in that column is a startup prompt: an unlicensed or expired start
 is passive. The edition label drops to *Community Edition*, the status bar
-grows a suffix saying so, and the licence dialog opens just-in-time — when a
+grows a suffix saying so, and the license dialog opens just-in-time — when a
 gated feature is actually requested, and not before. So a swarm that nobody
 asks a Business Edition question of never shows a modal at all.
 
@@ -833,7 +833,7 @@ is compared and the `vCPU:` line cannot appear.
 Soft in the binary is not the same as unbounded, and on the [free
 tier](#the-free-tier) the difference is the whole of the tier's boundary. Every
 licensing request reports the node count this swarm observed (see
-[Privacy](#privacy)), and on a free licence that count is compared against the
+[Privacy](#privacy)), and on a free license that count is compared against the
 allowance *there* rather than here. Nothing switches off when it is exceeded.
 What is at stake is the roll of the term:
 
@@ -845,7 +845,7 @@ What is at stake is the roll of the term:
 2. Come back under the allowance before that date and the clock stops. The
    report goes quiet and the term rolls again.
 3. Stay over it, and on that date nothing happens — which is the part worth
-   knowing in advance. The licence keeps working until the expiry already signed
+   knowing in advance. The license keeps working until the expiry already signed
    into the key, then through the [grace period](#lifecycle-states), and only
    then do Business Edition features stop. How long that is depends on where in
    the term the swarm was when the rolling stopped: it may be days or most of a
@@ -853,12 +853,12 @@ What is at stake is the roll of the term:
 
 So an exceeded allowance is a dated warning rather than an outage, and the
 outage it can become arrives long after the warning that named it. Bringing the
-count back under the allowance or moving to a paid licence resolves it, at any
+count back under the allowance or moving to a paid license resolves it, at any
 point before the term runs out.
 
 Two node figures can be on screen at once, and they are allowed to disagree. The
 `Nodes:` line is this process's own count against the allowance signed into the
-key; the `Allowance:` line is what the licence service last recorded and last
+key; the `Allowance:` line is what the license service last recorded and last
 decided. Each names its source, so a stale report beside a fresh count is two
 views of one swarm rather than a contradiction.
 

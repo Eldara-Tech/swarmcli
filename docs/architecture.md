@@ -70,7 +70,7 @@ docker/
 registry/
   registry.go              Global command map: Register(), Get(), All(), Suggest()
 features/
-  features.go              Feature-flag registry. The base build enables nothing; extension builds call Enable() from init(). This is the seam swarmcli-be's profeatures/ drives from the licence, so a change here is a cross-repo change
+  features.go              Feature-flag registry. The base build enables nothing; extension builds call Enable() from init(). This is the seam swarmcli-be's profeatures/ drives from the license, so a change here is a cross-repo change
 args/
   args.go                  Argument parsing shared by the CLI dispatch path
 settings/
@@ -150,8 +150,8 @@ Two consequences matter when changing this repo:
   the `docker` operations interfaces are consumed by a module you cannot see from
   here. Renaming or narrowing one is a cross-repo change, and the BE side must
   merge first or its CI breaks.
-- **`features/` is the licence seam.** The base build enables nothing; the paid
-  build calls `features.Enable()` from `init()` once a licence verifies. Code here
+- **`features/` is the license seam.** The base build enables nothing; the paid
+  build calls `features.Enable()` from `init()` once a license verifies. Code here
   should ask `features.IsEnabled` rather than assume an edition.
 
 [editions.md](editions.md) describes the split from a user's point of view.
