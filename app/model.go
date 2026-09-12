@@ -16,6 +16,7 @@ import (
 	"github.com/Eldara-Tech/swarmcli/v2/views/unlockdialog"
 
 	"github.com/Eldara-Tech/swarmcli/v2/telemetry"
+	"github.com/Eldara-Tech/swarmcli/v2/ui"
 	"github.com/Eldara-Tech/swarmcli/v2/views/view"
 	"github.com/Eldara-Tech/swarmcli/v2/views/viewstack"
 	"github.com/charmbracelet/lipgloss"
@@ -54,6 +55,11 @@ type Model struct {
 	updateDialog         *confirmdialog.Model
 	updateDialogActive   bool
 	pendingUpdateVersion string // version to persist if the opt-out box is ticked
+
+	// App-level first-run usage-reporting disclosure, shown as one line on the
+	// stack bar rather than as a dialog. Set once in Init and cleared by the
+	// first keystroke the app handles; see renderStackBar and Update.
+	telemetryNoticeActive bool
 
 	// App-level "the Docker context changed outside swarmcli" prompt. The
 	// session is pinned to one context (docker.SessionContext), so a
@@ -154,7 +160,7 @@ func (m *Model) Init() tea.Cmd {
 	// the other creating the file — lost about as often as won, which is the
 	// worst kind. Answering it here, synchronously, makes the ordering a fact
 	// rather than a hope.
-	showTelemetryNotice := telemetry.ShouldNotice()
+	m.telemetryNoticeActive = telemetry.ShouldNotice()
 
 	// "" loads all stacks on all nodes
 	cmds := []tea.Cmd{
@@ -163,12 +169,6 @@ func (m *Model) Init() tea.Cmd {
 		m.systemInfo.LoadStatus(),
 		m.systemInfo.Init(), // Initialize systeminfo's tick commands
 		watchEventsCmd(),
-	}
-
-	if showTelemetryNotice {
-		cmds = append(cmds, func() tea.Msg {
-			return view.AppInfoMsg{Message: telemetry.NoticeTitle + "\n\n" + telemetry.NoticeBody}
-		})
 	}
 
 	return tea.Batch(cmds...)
@@ -237,6 +237,7 @@ const stackBarMaxCrumbs = 3
 var (
 	stackBarSuffixStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
 	stackBarHintStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	stackBarNoticeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 )
 
 func (m *Model) renderStackBar() string {
@@ -256,6 +257,17 @@ func (m *Model) renderStackBar() string {
 			return crumbs + strings.Repeat(" ", gap) + right
 		}
 	}
+
+	// Nothing fit beside the breadcrumbs. On the first reporting run the
+	// disclosure takes the whole bar rather than going unshown: a notice that
+	// silently disappears below some terminal width is precisely the failure
+	// this line exists to avoid, and "swarmcli says so on screen before
+	// anything is sent" has to be true on a 46-column terminal too. The
+	// breadcrumbs are back on the next frame; the notice is gone on the next
+	// keystroke.
+	if m.telemetryNoticeActive && m.terminalWidth > 0 {
+		return ui.TruncateANSI(stackBarNoticeStyle.Render(telemetry.NoticeLineShort), m.terminalWidth)
+	}
 	return crumbs
 }
 
@@ -271,16 +283,37 @@ func (m *Model) stackBarRight() []string {
 		hint = stackBarHintStyle.Render(commandHintText)
 	}
 
+	var candidates []string
 	switch {
 	case hint != "" && suffix != "":
-		return []string{hint + strings.Repeat(" ", stackBarGap) + suffix, suffix}
+		candidates = []string{hint + strings.Repeat(" ", stackBarGap) + suffix, suffix}
 	case suffix != "":
-		return []string{suffix}
+		candidates = []string{suffix}
 	case hint != "":
-		return []string{hint}
-	default:
-		return nil
+		candidates = []string{hint}
 	}
+
+	// The first-run disclosure is appended to every candidate and then tried
+	// alone, so it is the last thing standing when the bar runs out of room —
+	// ahead of both the hint and the suffix, which is the opposite of their
+	// usual order and deliberate. Losing the hint costs discoverability and
+	// losing the suffix costs a status somebody can read on the next frame;
+	// losing the disclosure costs the reason reporting-by-default is
+	// defensible at all. The short form is the last rung: on a terminal too
+	// narrow for the full line, "reporting is on, type this" is still the
+	// message.
+	if !m.telemetryNoticeActive {
+		return candidates
+	}
+
+	notice := stackBarNoticeStyle.Render(telemetry.NoticeLine)
+	short := stackBarNoticeStyle.Render(telemetry.NoticeLineShort)
+
+	withNotice := make([]string, 0, len(candidates)+2)
+	for _, c := range candidates {
+		withNotice = append(withNotice, c+strings.Repeat(" ", stackBarGap)+notice)
+	}
+	return append(withNotice, notice, short)
 }
 
 // fitBreadcrumbs renders the breadcrumb trail for names, shedding the oldest

@@ -1030,8 +1030,16 @@ address, and nothing is passed to our analytics provider that could be turned
 back into one.
 
 **It is on by default, and this notice is why that is not a trick.** The first
-run that reports says so on screen — what is sent, what is not, and how to stop
-it — before anything leaves the machine. After that:
+run that reports says so on screen, before anything leaves the machine: one line
+on the status bar reading *Usage reporting is on · counts only, never names ·
+:telemetry*, which stays until you touch the keyboard. It is a line rather than
+a dialog on purpose — a disclosure that has to be dismissed before you can look
+at your swarm reads as a demand, and is the kind of thing people click away
+without reading.
+
+`:telemetry` prints the whole of it, on any run and not just the first: the
+state this process is in, every field the request carries, every field it does
+not, and the switch below. After that:
 
 ```
 SWARMCLI_TELEMETRY=off

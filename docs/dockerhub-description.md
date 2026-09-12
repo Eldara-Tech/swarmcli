@@ -108,8 +108,9 @@ networks, volumes, nodes, your cluster, hostnames, command arguments or error
 text. The receiving end turns the connection into a country and discards the
 address before anything is written.
 
-It is on by default and says so on screen, listing exactly this, on the first
-run that reports — before anything leaves the machine.
+It is on by default and says so on screen on the first run that reports, before
+anything leaves the machine: one line on the status bar, naming the `:telemetry`
+command, which lists exactly the above on any run.
 
 | Value | Usage report | Update check |
 |---|---|---|
