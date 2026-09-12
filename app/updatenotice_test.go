@@ -31,9 +31,9 @@ func TestUpdateNoticeMessage_BE(t *testing.T) {
 	version, edition = "v1.8.0", "be"
 
 	msg := updateNoticeMessage("v1.9.0")
-	require.Contains(t, msg, installDocsURLBusiness)
-	require.Contains(t, msg, "Business Edition")
-	require.NotContains(t, msg, "Try Business Edition") // no CE→BE upsell line for BE
+	require.Contains(t, msg, installDocsURLCommunity)
+	require.NotContains(t, msg, installDocsURLBusiness) // one install link for every edition
+	require.NotContains(t, msg, "Business Edition")     // BE is not named to a BE user
 }
 
 // Unlicensed BE: the build flag is "be" but BusinessEditionActive is overridden
@@ -50,7 +50,7 @@ func TestUpdateNoticeMessage_UnlicensedBE_ShowsUpsell(t *testing.T) {
 	require.Contains(t, msg, "Try Business Edition")
 }
 
-// Licensed BE: predicate true → BE copy, no upsell, regardless of build flag.
+// Licensed BE: predicate true → shared copy, no upsell, regardless of build flag.
 func TestUpdateNoticeMessage_LicensedBE_NoUpsell(t *testing.T) {
 	origV, origE, origP := version, edition, BusinessEditionActive
 	defer func() { version, edition, BusinessEditionActive = origV, origE, origP }()
@@ -58,7 +58,7 @@ func TestUpdateNoticeMessage_LicensedBE_NoUpsell(t *testing.T) {
 	BusinessEditionActive = func() bool { return true }
 
 	msg := updateNoticeMessage("v1.9.0")
-	require.Contains(t, msg, installDocsURLBusiness)
+	require.Contains(t, msg, installDocsURLCommunity)
 	require.NotContains(t, msg, "Try Business Edition")
 }
 

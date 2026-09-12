@@ -15,18 +15,18 @@ const (
 )
 
 // BusinessEditionActive reports whether Business Edition is effectively active.
-// The update notice uses it to choose the install link and whether to show the
-// "try Business Edition" hint. It defaults to the static build edition flag, so
-// the CE binary always reports false (and shows the hint). BE overrides it from
-// its live license state — so an unlicensed BE binary, which already presents
-// as Community Edition throughout the UI, also shows the hint, while a licensed
+// The update notice uses it to decide whether to show the "try Business
+// Edition" hint. It defaults to the static build edition flag, so the CE binary
+// always reports false (and shows the hint). BE overrides it from its live
+// license state — so an unlicensed BE binary, which already presents as
+// Community Edition throughout the UI, also shows the hint, while a licensed
 // one suppresses it.
 var BusinessEditionActive = func() bool { return edition == "be" }
 
 // showUpdateNotice raises the app-level "update available" dialog for the given
-// latest release. Edition selects the install link and whether the CE→BE hint
-// is shown. The dialog is an info-mode confirmdialog carrying an opt-out
-// checkbox; ResultMsg handling persists the dismissal when it is ticked.
+// latest release. Edition selects whether the CE→BE hint is shown. The dialog
+// is an info-mode confirmdialog carrying an opt-out checkbox; ResultMsg
+// handling persists the dismissal when it is ticked.
 func (m *Model) showUpdateNotice(latest string) {
 	m.updateDialog.Visible = true
 	m.updateDialog.ErrorMode = false
@@ -38,23 +38,24 @@ func (m *Model) showUpdateNotice(latest string) {
 	m.pendingUpdateVersion = latest
 }
 
-// updateNoticeMessage builds the notice body. An active Business Edition shows
-// only the BE install link; otherwise (CE, or unlicensed BE presenting as
-// Community Edition) it shows the CE link plus a subtle one-line BE upsell.
+// updateNoticeMessage builds the notice body. Every edition gets the same "a new
+// version is available" copy and the same install link — which edition a binary
+// runs as is not what someone updating it needs to read. Only the subtle
+// one-line BE upsell is conditional: it is shown to CE, and to an unlicensed BE
+// presenting as Community Edition, but not to a licensed BE.
 func updateNoticeMessage(latest string) string {
 	current := strings.TrimSpace(version)
 	if current == "" {
 		current = "unknown"
 	}
-	if BusinessEditionActive() {
-		return fmt.Sprintf(
-			"A new version of SwarmCLI Business Edition is available: %s (you have %s).\n\n"+
-				"Update: %s",
-			latest, current, installDocsURLBusiness)
-	}
-	return fmt.Sprintf(
+	msg := fmt.Sprintf(
 		"A new version of SwarmCLI is available: %s (you have %s).\n\n"+
-			"Update: %s\n\n"+
-			"Need RBAC, SSO & port-forwarding? Try Business Edition →\n%s",
-		latest, current, installDocsURLCommunity, installDocsURLBusiness)
+			"Update: %s",
+		latest, current, installDocsURLCommunity)
+	if BusinessEditionActive() {
+		return msg
+	}
+	return msg + fmt.Sprintf(
+		"\n\nNeed RBAC, SSO & port-forwarding? Try Business Edition →\n%s",
+		installDocsURLBusiness)
 }
