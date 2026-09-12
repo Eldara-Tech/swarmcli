@@ -20,7 +20,7 @@ func TestUpdateNoticeMessage_CE(t *testing.T) {
 	msg := updateNoticeMessage("v1.9.0")
 	require.Contains(t, msg, "v1.9.0")
 	require.Contains(t, msg, "v1.8.0")
-	require.Contains(t, msg, installDocsURLCommunity)
+	require.Contains(t, msg, installDocsURL)
 	require.Contains(t, msg, installDocsURLBusiness) // CE → BE upsell present
 	require.Contains(t, msg, "Business Edition")
 }
@@ -31,7 +31,7 @@ func TestUpdateNoticeMessage_BE(t *testing.T) {
 	version, edition = "v1.8.0", "be"
 
 	msg := updateNoticeMessage("v1.9.0")
-	require.Contains(t, msg, installDocsURLCommunity)
+	require.Contains(t, msg, installDocsURL)
 	require.NotContains(t, msg, installDocsURLBusiness) // one install link for every edition
 	require.NotContains(t, msg, "Business Edition")     // BE is not named to a BE user
 }
@@ -46,7 +46,7 @@ func TestUpdateNoticeMessage_UnlicensedBE_ShowsUpsell(t *testing.T) {
 	BusinessEditionActive = func() bool { return false }
 
 	msg := updateNoticeMessage("v1.9.0")
-	require.Contains(t, msg, installDocsURLCommunity)
+	require.Contains(t, msg, installDocsURL)
 	require.Contains(t, msg, "Try Business Edition")
 }
 
@@ -58,7 +58,7 @@ func TestUpdateNoticeMessage_LicensedBE_NoUpsell(t *testing.T) {
 	BusinessEditionActive = func() bool { return true }
 
 	msg := updateNoticeMessage("v1.9.0")
-	require.Contains(t, msg, installDocsURLCommunity)
+	require.Contains(t, msg, installDocsURL)
 	require.NotContains(t, msg, "Try Business Edition")
 }
 

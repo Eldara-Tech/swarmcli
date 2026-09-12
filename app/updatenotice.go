@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	installDocsURLCommunity = "https://swarmcli.io/docs/cli#installation"
-	installDocsURLBusiness  = "https://swarmcli.io/docs/cli#installation-business"
-	updateNoticeCheckbox    = "Do not show this again for this version"
+	installDocsURL         = "https://swarmcli.io/docs/cli#installation"
+	installDocsURLBusiness = "https://swarmcli.io/docs/cli#installation-business"
+	updateNoticeCheckbox   = "Do not show this again for this version"
 )
 
 // BusinessEditionActive reports whether Business Edition is effectively active.
@@ -51,7 +51,7 @@ func updateNoticeMessage(latest string) string {
 	msg := fmt.Sprintf(
 		"A new version of SwarmCLI is available: %s (you have %s).\n\n"+
 			"Update: %s",
-		latest, current, installDocsURLCommunity)
+		latest, current, installDocsURL)
 	if BusinessEditionActive() {
 		return msg
 	}
