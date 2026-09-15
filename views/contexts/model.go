@@ -284,8 +284,8 @@ func (m *Model) MoveCursor(delta int) {
 	if m.List.Cursor < 0 {
 		m.List.Cursor = 0
 	}
-	if m.List.Cursor >= len(m.contexts) {
-		m.List.Cursor = len(m.contexts) - 1
+	if m.List.Cursor >= len(m.List.Filtered) {
+		m.List.Cursor = len(m.List.Filtered) - 1
 	}
 	// ApplyFilter will keep the cursor in-bounds and update viewport offset
 	m.List.ApplyFilter()
@@ -296,8 +296,8 @@ func (m *Model) MoveCursor(delta int) {
 func (m *Model) GetSelectedContext() (docker.ContextInfo, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.List.Cursor >= 0 && m.List.Cursor < len(m.contexts) {
-		return m.contexts[m.List.Cursor], true
+	if m.List.Cursor >= 0 && m.List.Cursor < len(m.List.Filtered) {
+		return m.List.Filtered[m.List.Cursor], true
 	}
 	return docker.ContextInfo{}, false
 }

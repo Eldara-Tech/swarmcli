@@ -327,6 +327,25 @@ func TestKey_Enter_SwitchContext(t *testing.T) {
 	require.Equal(t, "other", switched)
 }
 
+func TestKey_Enter_SwitchContext_Filtered(t *testing.T) {
+	var switched string
+	ops := noopContextOps()
+	ops.validateContextFn = func(_ context.Context, name string) error {
+		switched = name
+		return nil
+	}
+	m := testModel(func(m *Model) {
+		m.deps.Contexts = ops
+	})
+	// fakeContexts marks the first one current; the filtered row is the third.
+	loadContexts(m, fakeContexts("alpha", "bravo", "charlie"))
+	m.ApplySearchQuery("charlie")
+	cmd := m.Update(key("enter"))
+	require.True(t, m.IsSwitchPending())
+	require.IsType(t, ContextSwitchedMsg{}, runCmd(cmd))
+	require.Equal(t, "charlie", switched)
+}
+
 func TestKey_Enter_CurrentContext_NoOp(t *testing.T) {
 	m := testModel()
 	ctxs := fakeContexts("current")

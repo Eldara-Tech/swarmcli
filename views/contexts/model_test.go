@@ -327,6 +327,17 @@ func TestGetSelectedContext(t *testing.T) {
 	require.Equal(t, "ctx1", ctx.Name)
 }
 
+// The cursor indexes the filtered rows, so a filter must not change which
+// context the highlighted row resolves to.
+func TestGetSelectedContext_Filtered(t *testing.T) {
+	m := testModel()
+	loadContexts(m, fakeContexts("alpha", "bravo", "charlie"))
+	m.ApplySearchQuery("charlie")
+	ctx, ok := m.GetSelectedContext()
+	require.True(t, ok)
+	require.Equal(t, "charlie", ctx.Name)
+}
+
 func TestGetSelectedContext_Empty(t *testing.T) {
 	m := testModel()
 	_, ok := m.GetSelectedContext()
