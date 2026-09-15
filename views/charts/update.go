@@ -531,6 +531,23 @@ func (m *Model) moveUp() {
 	}
 }
 
+// ClickRow selects the release drawn on a content line (view.RowClicker). A
+// click anywhere in an expanded release — a revision, a service or one of their
+// header lines — selects the release itself and drops the child selection;
+// children are picked with the keys.
+func (m *Model) ClickRow(line int) bool {
+	oldCursor := m.list.Cursor
+	if !m.list.SelectLine(line) {
+		return false
+	}
+	m.childIndex = noChild
+	if oldCursor != m.list.Cursor {
+		m.list.ResetColumnScroll()
+	}
+	m.list.Viewport.SetContent(m.list.View())
+	return true
+}
+
 // movePage advances the cursor by one screenful of RENDERED LINES.
 //
 // Counting items instead would page past several screens whenever a release is

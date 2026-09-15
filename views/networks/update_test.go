@@ -470,3 +470,59 @@ func TestUsedByView_Enter_Navigates(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "services", nav.ViewName)
 }
+
+// --- Mouse ---
+
+func TestClickRow_SelectsTheLineInTheScrolledWindow(t *testing.T) {
+	m := testModel()
+	loadNetworks(m, fakeNetworks("alpha", "beta", "delta", "gamma"))
+	m.networksList.Viewport.YOffset = 1
+
+	require.True(t, m.ClickRow(1))
+	require.Equal(t, "delta", m.networksList.Filtered[m.networksList.Cursor].Name)
+}
+
+func TestClickRow_SelectsTheFilteredRow(t *testing.T) {
+	m := testModel()
+	loadNetworks(m, fakeNetworks("alpha", "beta", "gamma"))
+	m.ApplySearchQuery("gamma")
+
+	require.True(t, m.ClickRow(0))
+	require.Equal(t, "gamma", m.networksList.Filtered[m.networksList.Cursor].Name)
+}
+
+func TestClickRow_BelowTheLastRowSelectsNothing(t *testing.T) {
+	m := testModel()
+	loadNetworks(m, fakeNetworks("alpha", "beta", "gamma"))
+	m.networksList.Cursor = 1
+
+	require.False(t, m.ClickRow(3))
+	require.Equal(t, 1, m.networksList.Cursor)
+}
+
+// Before the first load the content is the loading placeholder, not a row.
+func TestClickRow_WhileLoadingSelectsNothing(t *testing.T) {
+	require.False(t, testModel().ClickRow(0))
+}
+
+// While the used-by list is open it is what is on screen, so a click selects
+// in it and leaves the networks cursor where it was.
+func TestClickRow_SelectsInTheUsedByList(t *testing.T) {
+	m := testModel()
+	loadNetworks(m, fakeNetworks("alpha", "beta"))
+	m.networksList.Viewport.Width = 80
+	m.networksList.Viewport.Height = 20
+	m.Update(UsedByLoadedMsg{Services: []usedByItem{
+		{StackName: "s1", ServiceName: "svc1"},
+		{StackName: "s1", ServiceName: "svc2"},
+		{StackName: "s2", ServiceName: "svc3"},
+	}})
+	require.True(t, m.usedByViewActive)
+
+	require.True(t, m.ClickRow(2))
+	require.Equal(t, "svc3", m.usedByList.Filtered[m.usedByList.Cursor].ServiceName)
+	require.Equal(t, 0, m.networksList.Cursor)
+
+	require.False(t, m.ClickRow(3))
+	require.Equal(t, 2, m.usedByList.Cursor)
+}

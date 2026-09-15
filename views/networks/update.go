@@ -521,6 +521,24 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
+// ClickRow selects the row drawn on the given content line (view.RowClicker)
+// in whichever list is on screen, the used-by list while it is open, and
+// refreshes it the way the arrow keys do.
+func (m *Model) ClickRow(line int) bool {
+	if m.usedByViewActive {
+		if !m.usedByList.SelectLine(line) {
+			return false
+		}
+		m.usedByList.Viewport.SetContent(m.usedByList.View())
+		return true
+	}
+	if !m.networksList.SelectLine(line) {
+		return false
+	}
+	m.networksList.Viewport.SetContent(m.networksList.View())
+	return true
+}
+
 func (m *Model) handleUsedByViewKeys(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":

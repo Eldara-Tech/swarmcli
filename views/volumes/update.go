@@ -253,6 +253,21 @@ func (m *Model) handleNormalKeys(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
+// ClickRow selects the volume drawn on the given content line (view.RowClicker),
+// with the same reset the arrow keys do when the cursor moves. A click on the
+// loading placeholder selects nothing: the list is still empty.
+func (m *Model) ClickRow(line int) bool {
+	oldCursor := m.volumesList.Cursor
+	if !m.volumesList.SelectLine(line) {
+		return false
+	}
+	if m.volumesList.Cursor != oldCursor {
+		m.volumesList.ResetColumnScroll()
+		m.volumesList.Viewport.SetContent(m.volumesList.View())
+	}
+	return true
+}
+
 // selectedVolume returns the volume under the cursor, or false if the list is empty.
 func (m *Model) selectedVolume() (volumeItem, bool) {
 	if len(m.volumesList.Filtered) == 0 {

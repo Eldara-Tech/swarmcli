@@ -413,3 +413,68 @@ func TestComputeFrameDimensions_WithHeaderFooter(t *testing.T) {
 		t.Errorf("DesiredContentLines = %d, want 16", spec.DesiredContentLines)
 	}
 }
+
+// --- SelectLine ---
+
+// selectLineList has three items; "b" is drawn on two lines.
+func selectLineList() *FilterableList[string] {
+	items := []string{"a", "b", "c"}
+	return &FilterableList[string]{
+		Items:    items,
+		Filtered: items,
+		RenderItem: func(item string, _ bool, _ int) string {
+			if item == "b" {
+				return "b\n  b-detail"
+			}
+			return item
+		},
+	}
+}
+
+func TestSelectLine_MapsLinesToItems(t *testing.T) {
+	for line, want := range []int{0, 1, 1, 2} {
+		f := selectLineList()
+		if !f.SelectLine(line) {
+			t.Fatalf("line %d: expected a row", line)
+		}
+		if f.Cursor != want {
+			t.Errorf("line %d: cursor = %d, want %d", line, f.Cursor, want)
+		}
+	}
+}
+
+func TestSelectLine_CountsFromTheScrolledWindow(t *testing.T) {
+	f := selectLineList()
+	f.Viewport.YOffset = 2 // the window starts on b's second line
+	if !f.SelectLine(1) || f.Cursor != 2 {
+		t.Errorf("line 1 with YOffset 2: cursor = %d, want 2", f.Cursor)
+	}
+}
+
+func TestSelectLine_NoRowLeavesCursor(t *testing.T) {
+	for _, line := range []int{-1, 4, 50} {
+		f := selectLineList()
+		f.Cursor = 1
+		if f.SelectLine(line) {
+			t.Errorf("line %d: expected no row", line)
+		}
+		if f.Cursor != 1 {
+			t.Errorf("line %d: cursor moved to %d", line, f.Cursor)
+		}
+	}
+}
+
+func TestSelectLine_EmptyList(t *testing.T) {
+	f := &FilterableList[string]{}
+	if f.SelectLine(0) {
+		t.Error("expected no row in an empty list")
+	}
+}
+
+func TestSelectLine_WithoutRenderItem(t *testing.T) {
+	items := []string{"a", "b"}
+	f := &FilterableList[string]{Items: items, Filtered: items}
+	if !f.SelectLine(1) || f.Cursor != 1 {
+		t.Errorf("cursor = %d, want 1", f.Cursor)
+	}
+}

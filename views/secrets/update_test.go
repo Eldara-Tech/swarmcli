@@ -670,3 +670,69 @@ func TestSpinnerTick_AdvancesSpinner(t *testing.T) {
 	m.Update(SpinnerTickMsg(time.Now()))
 	require.Equal(t, oldSpinner+1, m.spinner)
 }
+
+// --- Row clicks ---
+
+func TestClickRow_SelectsTheLine(t *testing.T) {
+	m := testModel()
+	readySecrets(m, 120, "a", "b", "c", "d")
+	require.True(t, m.ClickRow(2))
+	require.Equal(t, "c", m.selectedSecret())
+}
+
+func TestClickRow_CountsFromTheScrolledWindow(t *testing.T) {
+	m := testModel()
+	readySecrets(m, 120, "a", "b", "c", "d")
+	m.secretsList.Viewport.YOffset = 1
+	require.True(t, m.ClickRow(1))
+	require.Equal(t, "c", m.selectedSecret())
+}
+
+func TestClickRow_Filtered(t *testing.T) {
+	m := testModel()
+	readySecrets(m, 120, "db-1", "web-1", "web-2")
+	m.ApplySearchQuery("web")
+	require.True(t, m.ClickRow(1))
+	require.Equal(t, "web-2", m.selectedSecret())
+}
+
+func TestClickRow_PastTheLastRow(t *testing.T) {
+	m := testModel()
+	readySecrets(m, 120, "a", "b", "c")
+	m.Update(key("down"))
+	require.False(t, m.ClickRow(3))
+	require.Equal(t, "b", m.selectedSecret())
+}
+
+func TestClickRow_ResetsTheColumnScroll(t *testing.T) {
+	m := testModel()
+	readySecrets(m, 60, longSecretName, "tls")
+	m.Update(key("right"))
+	m.Update(key("right"))
+	scrolled := m.secretsList.RenderItem(m.secretsList.Filtered[0], true, 0)
+
+	require.True(t, m.ClickRow(1))
+	require.True(t, m.ClickRow(0))
+
+	require.NotEqual(t, scrolled, m.secretsList.RenderItem(m.secretsList.Filtered[0], true, 0),
+		"a click that moves the cursor resets the scroll offset, as the cursor keys do")
+}
+
+// While the UsedBy list is open it is what is on screen, so the click lands
+// there, and Enter then opens the stack that was clicked.
+func TestClickRow_UsedByList(t *testing.T) {
+	m := testModel()
+	readySecrets(m, 120, "a", "b")
+	m.usedByViewActive = true
+	m.usedBySecretName = "a"
+	m.usedByList.Items = []usedByItem{{StackName: "stack1", ServiceName: "svc1"}, {StackName: "stack2", ServiceName: "svc2"}}
+	m.usedByList.Filtered = m.usedByList.Items
+
+	require.True(t, m.ClickRow(1))
+	require.Equal(t, 1, m.usedByList.Cursor)
+	require.Equal(t, "a", m.selectedSecret(), "the main list stays where it was")
+
+	nav, ok := runCmd(m.Update(key("enter"))).(view.NavigateToMsg)
+	require.True(t, ok)
+	require.Equal(t, "stack2", nav.Payload.(map[string]interface{})["stackName"])
+}
