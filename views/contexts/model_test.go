@@ -319,6 +319,51 @@ func TestMoveCursor(t *testing.T) {
 	require.Equal(t, 0, m.GetCursor())
 }
 
+func TestClickRow_SelectsTheLine(t *testing.T) {
+	m := testModel()
+	loadContexts(m, fakeContexts("a", "b", "c"))
+	require.True(t, m.ClickRow(2))
+	require.Equal(t, 2, m.GetCursor())
+	require.Equal(t, 2, m.cursor, "the legacy cursor follows")
+}
+
+func TestClickRow_CountsFromTheScrolledWindow(t *testing.T) {
+	m := testModel()
+	loadContexts(m, fakeContexts("a", "b", "c"))
+	m.List.Viewport.YOffset = 1
+	require.True(t, m.ClickRow(1))
+	require.Equal(t, 2, m.GetCursor())
+}
+
+func TestClickRow_Filtered(t *testing.T) {
+	m := testModel()
+	loadContexts(m, fakeContexts("db-1", "web-1", "web-2"))
+	m.ApplySearchQuery("web")
+	require.True(t, m.ClickRow(1))
+	require.Equal(t, "web-2", m.List.Filtered[m.GetCursor()].Name)
+}
+
+func TestClickRow_PastTheLastRow(t *testing.T) {
+	m := testModel()
+	loadContexts(m, fakeContexts("a", "b", "c"))
+	m.MoveCursor(1)
+	require.False(t, m.ClickRow(3))
+	require.Equal(t, 1, m.GetCursor())
+}
+
+func TestClickRow_IgnoredWhileLoadingOrSwitching(t *testing.T) {
+	m := testModel()
+	loadContexts(m, fakeContexts("a", "b", "c"))
+
+	m.SetLoading(true)
+	require.False(t, m.ClickRow(1))
+	m.SetLoading(false)
+
+	m.SetSwitchPending(true)
+	require.False(t, m.ClickRow(1))
+	require.Equal(t, 0, m.GetCursor())
+}
+
 func TestGetSelectedContext(t *testing.T) {
 	m := testModel()
 	loadContexts(m, fakeContexts("ctx1", "ctx2"))

@@ -276,6 +276,11 @@ TEST_LOG=1 ./test-setup/testenv.sh test
 | `r`      | Restart Service         |
 | `ctrl-c` | Quit                    |
 
+The mouse works too: the wheel moves the selection, a click selects a row and a
+double click opens it, as Enter does. While swarmcli has the mouse, hold Shift
+(Option in iTerm2) to select text in the terminal. `:mouse` switches it off for
+the session, and `SWARMCLI_MOUSE=off` starts without it.
+
 ## Project Hygiene
 
 Impeccable project hygiene is the backbone of a thriving ecosystem.

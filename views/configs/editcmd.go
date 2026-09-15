@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
+	"github.com/Eldara-Tech/swarmcli/v2/views/view"
 	"os"
 	"os/exec"
 	"strings"
@@ -54,7 +55,7 @@ func editWithTempFileCmd(baseName string, initialData []byte, onDone func([]byte
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+	return view.ExecProcess(cmd, func(err error) tea.Msg {
 		// Clean up temp file
 		defer func(name string) {
 			_ = os.Remove(name)

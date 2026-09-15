@@ -887,6 +887,24 @@ func (m *Model) handleUsedByViewKey(msg tea.KeyMsg) tea.Cmd {
 	}
 }
 
+// ClickRow selects the row under a mouse click: in the UsedBy list while it is
+// open, otherwise in the secrets list, resetting the horizontal scroll the way a
+// cursor key does.
+func (m *Model) ClickRow(line int) bool {
+	if m.usedByViewActive {
+		return m.usedByList.SelectLine(line)
+	}
+	oldCursor := m.secretsList.Cursor
+	if !m.secretsList.SelectLine(line) {
+		return false
+	}
+	if m.secretsList.Cursor != oldCursor {
+		m.secretsList.ResetColumnScroll()
+		m.secretsList.Viewport.SetContent(m.secretsList.View())
+	}
+	return true
+}
+
 func revealDetailedHelpDesc() string {
 	return view.BEHelpDesc("reveal-secret", "Reveal secret content")
 }

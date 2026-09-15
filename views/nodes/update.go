@@ -502,6 +502,20 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
+// ClickRow selects the node drawn on the given content line (view.RowClicker),
+// with the same reset the arrow keys do when the cursor moves.
+func (m *Model) ClickRow(line int) bool {
+	oldCursor := m.List.Cursor
+	if !m.List.SelectLine(line) {
+		return false
+	}
+	if m.List.Cursor != oldCursor {
+		m.List.ResetColumnScroll()
+		m.List.Viewport.SetContent(m.List.View())
+	}
+	return true
+}
+
 func (m *Model) SetContent(msg Msg) {
 	l().Infof("NodesView.SetContent: Updating display with %d entries", len(msg.Entries))
 

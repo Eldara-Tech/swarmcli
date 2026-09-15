@@ -714,6 +714,21 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
+// ClickRow selects the stack drawn on a content line (view.RowClicker). A click
+// anywhere in an expanded stack — its task header or a task row — selects the
+// stack itself and drops the task selection; tasks are picked with the keys.
+func (m *Model) ClickRow(line int) bool {
+	oldCursor := m.List.Cursor
+	if !m.List.SelectLine(line) {
+		return false
+	}
+	m.selectedTaskIndex = -1
+	if oldCursor != m.List.Cursor {
+		m.errorScrollOffset = 0
+	}
+	return true
+}
+
 // handleCreateDialogKey handles key presses inside the create dialog
 func (m *Model) handleCreateDialogKey(msg tea.KeyMsg) tea.Cmd {
 	switch m.createDialogStep {

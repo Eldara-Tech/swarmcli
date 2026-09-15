@@ -109,3 +109,53 @@ func TestWideTerminalWidensEveryGapEqually(t *testing.T) {
 	require.Equal(t, 240, lipgloss.Width(m.volumesList.RenderRow(m.volumesList.Filtered[0], true)),
 		"the row still spans the frame, so the selection highlight does too")
 }
+
+// --- Mouse ---
+
+func TestClickRow_SelectsTheLineInTheScrolledWindow(t *testing.T) {
+	m := testModel()
+	loadVolumes(m, fakeVolumes("v1", "v2", "v3", "v4"))
+	m.volumesList.Viewport.YOffset = 1
+
+	require.True(t, m.ClickRow(1))
+	require.Equal(t, "v3", m.volumesList.Filtered[m.volumesList.Cursor].Name)
+}
+
+func TestClickRow_SelectsTheFilteredRow(t *testing.T) {
+	m := testModel()
+	loadVolumes(m, fakeVolumes("v1", "v2", "v3"))
+	m.ApplySearchQuery("v3")
+
+	require.True(t, m.ClickRow(0))
+	require.Equal(t, "v3", m.volumesList.Filtered[m.volumesList.Cursor].Name)
+}
+
+func TestClickRow_BelowTheLastRowSelectsNothing(t *testing.T) {
+	m := testModel()
+	loadVolumes(m, fakeVolumes("v1", "v2", "v3"))
+	m.volumesList.Cursor = 1
+
+	require.False(t, m.ClickRow(3))
+	require.Equal(t, 1, m.volumesList.Cursor)
+}
+
+// Before the first load the content is the loading placeholder, not a row.
+func TestClickRow_WhileLoadingSelectsNothing(t *testing.T) {
+	require.False(t, testModel().ClickRow(0))
+}
+
+func TestClickRow_ResetsScrollLikeTheArrowKeys(t *testing.T) {
+	m := testModel()
+	m.volumesList.Viewport.Width = 70
+	loadVolumes(m, fakeVolumes(longVolName, "z2"))
+	before := m.volumesList.RenderItem(longVolume(m), true, 0)
+	m.Update(key("right"))
+	m.Update(key("right"))
+	scrolled := m.volumesList.RenderItem(longVolume(m), true, 0)
+	require.NotEqual(t, before, scrolled, "precondition: the long row scrolled")
+
+	require.True(t, m.ClickRow(1))
+
+	require.NotEqual(t, scrolled, m.volumesList.RenderItem(longVolume(m), true, 0),
+		"scroll offset must reset when a click moves the cursor")
+}

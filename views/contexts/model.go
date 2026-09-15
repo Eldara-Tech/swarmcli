@@ -293,6 +293,23 @@ func (m *Model) MoveCursor(delta int) {
 	m.cursor = m.List.Cursor
 }
 
+// ClickRow selects the context under a mouse click. Like the cursor keys it
+// does nothing while a switch is pending, and nothing while the list is still
+// loading, when the content is a placeholder rather than rows.
+func (m *Model) ClickRow(line int) bool {
+	if m.IsSwitchPending() || m.IsLoading() {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.List.SelectLine(line) {
+		return false
+	}
+	// Synchronize m.cursor from m.List.Cursor for legacy accessors
+	m.cursor = m.List.Cursor
+	return true
+}
+
 func (m *Model) GetSelectedContext() (docker.ContextInfo, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

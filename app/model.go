@@ -5,6 +5,7 @@ package app
 
 import (
 	"strings"
+	"time"
 
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	swarmlog "github.com/Eldara-Tech/swarmcli/v2/utils/log"
@@ -60,6 +61,15 @@ type Model struct {
 	// stack bar rather than as a dialog. Set once in Init and cleared by the
 	// first keystroke the app handles; see renderStackBar and Update.
 	telemetryNoticeActive bool
+
+	// Mouse capture, on unless MouseEnv switches it off and toggled by
+	// `:mouse`; see mouse.go. mouseNoticeActive shows the toggle's result on
+	// the stack bar until the next keystroke, the way the disclosure above is
+	// shown. lastClickAt and lastClickLine time a double click.
+	mouseOn           bool
+	mouseNoticeActive bool
+	lastClickAt       time.Time
+	lastClickLine     int
 
 	// App-level "the Docker context changed outside swarmcli" prompt. The
 	// session is pinned to one context (docker.SessionContext), so a
@@ -146,6 +156,7 @@ func InitialModel() *Model {
 		contextDriftDialog: confirmdialog.New(terminalWidth, terminalHeight),
 		terminalWidth:      terminalWidth,
 		terminalHeight:     terminalHeight,
+		mouseOn:            mouseFromEnv(),
 	}
 }
 
@@ -265,8 +276,8 @@ func (m *Model) renderStackBar() string {
 	// anything is sent" has to be true on a 46-column terminal too. The
 	// breadcrumbs are back on the next frame; the notice is gone on the next
 	// keystroke.
-	if m.telemetryNoticeActive && m.terminalWidth > 0 {
-		return ui.TruncateANSI(stackBarNoticeStyle.Render(telemetry.NoticeLineShort), m.terminalWidth)
+	if _, short := m.stackBarNotice(); short != "" && m.terminalWidth > 0 {
+		return ui.TruncateANSI(stackBarNoticeStyle.Render(short), m.terminalWidth)
 	}
 	return crumbs
 }
@@ -302,18 +313,34 @@ func (m *Model) stackBarRight() []string {
 	// defensible at all. The short form is the last rung: on a terminal too
 	// narrow for the full line, "reporting is on, type this" is still the
 	// message.
-	if !m.telemetryNoticeActive {
+	line, shortLine := m.stackBarNotice()
+	if line == "" {
 		return candidates
 	}
 
-	notice := stackBarNoticeStyle.Render(telemetry.NoticeLine)
-	short := stackBarNoticeStyle.Render(telemetry.NoticeLineShort)
+	notice := stackBarNoticeStyle.Render(line)
+	short := stackBarNoticeStyle.Render(shortLine)
 
 	withNotice := make([]string, 0, len(candidates)+2)
 	for _, c := range candidates {
 		withNotice = append(withNotice, c+strings.Repeat(" ", stackBarGap)+notice)
 	}
 	return append(withNotice, notice, short)
+}
+
+// stackBarNotice is the one-line notice the stack bar is carrying, in its full
+// and short forms, or two empty strings. The first-run disclosure outranks the
+// result of a `:mouse` toggle while both are pending.
+func (m *Model) stackBarNotice() (line, short string) {
+	switch {
+	case m.telemetryNoticeActive:
+		return telemetry.NoticeLine, telemetry.NoticeLineShort
+	case m.mouseNoticeActive && m.mouseOn:
+		return mouseOnNotice, mouseOnNoticeShort
+	case m.mouseNoticeActive:
+		return mouseOffNotice, mouseOffNoticeShort
+	}
+	return "", ""
 }
 
 // fitBreadcrumbs renders the breadcrumb trail for names, shedding the oldest
