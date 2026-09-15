@@ -85,12 +85,15 @@ func setClock(t *testing.T) *time.Time {
 }
 
 func TestMouseFromEnv(t *testing.T) {
-	for value, want := range map[string]bool{
-		"": true, "on": true, "1": true, "true": true, "bogus": true,
-		"off": false, "OFF": false, " false ": false, "0": false, "no": false,
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{
+		{"", true}, {"on", true}, {"1", true}, {"true", true}, {"bogus", true},
+		{"off", false}, {"OFF", false}, {" false ", false}, {"0", false}, {"no", false},
 	} {
-		t.Setenv(MouseEnv, value)
-		require.Equal(t, want, mouseFromEnv(), "%s=%q", MouseEnv, value)
+		t.Setenv(MouseEnv, tc.value)
+		require.Equal(t, tc.want, mouseFromEnv(), "%s=%q", MouseEnv, tc.value)
 	}
 }
 
