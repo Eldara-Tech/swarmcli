@@ -63,3 +63,24 @@ func TestRenderBreadcrumbs_NoTopLevelInStack(t *testing.T) {
 	assert.Contains(t, result, "inspect")
 	assert.Contains(t, result, "logs")
 }
+
+// Each piece of the bar goes back to the view it names; "…" to the nearest view
+// it hides; arrows and the current view nowhere.
+func TestBreadcrumbTargets(t *testing.T) {
+	for _, tc := range []struct {
+		names []string
+		want  []int
+	}{
+		{[]string{"stacks"}, []int{-1}},
+		{[]string{"stacks", "services", "tasks"}, []int{0, -1, 1, -1, -1}},
+		{[]string{"stacks", "services", "tasks", "inspect", "logs"}, []int{1, -1, 2, -1, 3, -1, -1}},
+		{[]string{"stacks", "services", "configs", "services", "logs"}, []int{2, -1, 3, -1, -1}},
+		{[]string{"services", "tasks", "inspect", "logs"}, []int{0, -1, 1, -1, 2, -1, -1}},
+	} {
+		var got []int
+		for _, c := range breadcrumbs(tc.names, 3) {
+			got = append(got, c.target)
+		}
+		assert.Equal(t, tc.want, got, "%v", tc.names)
+	}
+}

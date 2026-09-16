@@ -206,7 +206,6 @@ func TestReleaseMotionAndOtherButtonsDoNothing(t *testing.T) {
 
 	m.Update(tea.MouseMsg{Y: y, Action: tea.MouseActionRelease, Button: tea.MouseButtonLeft})
 	m.Update(tea.MouseMsg{Y: y, Action: tea.MouseActionMotion, Button: tea.MouseButtonLeft})
-	m.Update(press(tea.MouseButtonRight, y))
 	m.Update(press(tea.MouseButtonMiddle, y))
 
 	require.Empty(t, v.clicks)
@@ -294,15 +293,18 @@ func TestMouseIsIgnoredWhileSomethingHoldsTheKeyboard(t *testing.T) {
 			t.Cleanup(func() { startupOverlay = nil })
 			v := &rowView{rows: 5}
 			m := newMouseModel(t, v)
+			m.viewStack.Push(&stubView{name: view.NameStacks})
 			y := indexOfRow(strings.Split(ansi.Strip(m.View()), "\n"), "row-001")
 			block(m, v)
 			v.received = nil
 
 			m.Update(press(tea.MouseButtonLeft, y))
 			m.Update(press(tea.MouseButtonWheelDown, y))
+			m.Update(press(tea.MouseButtonRight, y))
 
 			require.Empty(t, v.clicks)
 			require.Empty(t, v.keys())
+			require.Same(t, v, m.currentView, "a right click must not go back")
 		})
 	}
 }
@@ -379,4 +381,159 @@ func TestRestoreMouse(t *testing.T) {
 	m.mouseOn = false
 	_, cmd = m.Update(view.RestoreMouseMsg{})
 	require.Nil(t, cmd)
+}
+
+// A right click is Esc, so it takes the steps Esc takes: a passive search bar
+// closes before anything goes back.
+func TestRightClickIsEsc(t *testing.T) {
+	v := &rowView{rows: 5}
+	m := newMouseModel(t, v)
+	parent := &stubView{name: view.NameStacks}
+	m.viewStack.Push(parent)
+	openPassiveSearchBar(m)
+
+	m.Update(press(tea.MouseButtonRight, 10))
+	require.False(t, m.searchInput.Visible())
+	require.Same(t, v, m.currentView)
+
+	m.Update(press(tea.MouseButtonRight, 10))
+	require.Same(t, parent, m.currentView)
+}
+
+func TestRightClickForgetsTheLastClick(t *testing.T) {
+	v := &rowView{rows: 5}
+	m := newMouseModel(t, v)
+	setClock(t)
+	y := indexOfRow(strings.Split(ansi.Strip(m.View()), "\n"), "row-002")
+
+	m.Update(press(tea.MouseButtonLeft, y))
+	m.Update(press(tea.MouseButtonRight, y))
+	m.Update(press(tea.MouseButtonLeft, y))
+
+	require.Empty(t, v.keys())
+}
+
+// trailView counts how often it is entered and left.
+type trailView struct {
+	frameStubView
+	entered, exited int
+}
+
+func (v *trailView) OnEnter() tea.Cmd { v.entered++; return nil }
+func (v *trailView) OnExit() tea.Cmd  { v.exited++; return nil }
+
+// newTrailModel stacks deepTrail, so the stack bar reads
+// " … → tasks → inspect → logs " when there is room for three segments.
+func newTrailModel(t *testing.T, width int, setup func(*Model)) (*Model, []*trailView) {
+	t.Helper()
+	setStackBarSuffix(t, "")
+	views := make([]*trailView, len(deepTrail))
+	for i, name := range deepTrail {
+		views[i] = &trailView{frameStubView: frameStubView{stubView: stubView{name: name}}}
+	}
+	m := newLayoutTestModel(views[len(views)-1])
+	for _, v := range views[:len(views)-1] {
+		m.viewStack.Push(v)
+	}
+	m.mouseOn = true
+	if setup != nil {
+		setup(m)
+	}
+	m.updateForResize(tea.WindowSizeMsg{Width: width, Height: 40})
+	return m, views
+}
+
+// crumbAt finds text on the last row View draws, and returns where to click
+// on it.
+func crumbAt(t *testing.T, m *Model, text string) (x, y int) {
+	t.Helper()
+	screen := strings.Split(ansi.Strip(m.View()), "\n")
+	y = len(screen) - 1
+	i := strings.Index(screen[y], text)
+	require.GreaterOrEqual(t, i, 0, "%q is not on the bottom row %q", text, screen[y])
+	return ansi.StringWidth(screen[y][:i]) + 1, y
+}
+
+func openPassiveSearchBar(m *Model) {
+	m.searchInput.Show()
+	m.searchInput.Update(tea.KeyMsg{Type: tea.KeyEnter})
+}
+
+func TestClickOnABreadcrumbGoesBackToThatView(t *testing.T) {
+	for name, setup := range map[string]func(*Model){
+		"normal":                          nil,
+		"normal with the search bar open": openPassiveSearchBar,
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, views := newTrailModel(t, 100, setup)
+			stacks, services, tasks, inspect, logs := views[0], views[1], views[2], views[3], views[4]
+
+			x, y := crumbAt(t, m, " tasks ")
+			m.Update(tea.MouseMsg{X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+
+			require.Same(t, tasks, m.currentView)
+			require.Equal(t, 2, m.viewStack.Len())
+			require.False(t, m.searchInput.Visible(), "the search bar closes, as Esc closes it first")
+			require.Equal(t, 1, logs.exited)
+			require.Equal(t, 1, tasks.entered)
+			require.Zero(t, inspect.entered+inspect.exited, "a view jumped over is neither entered nor left")
+			require.Zero(t, stacks.entered+services.entered)
+		})
+	}
+}
+
+func TestClickOnTheEllipsisGoesToTheNearestHiddenView(t *testing.T) {
+	m, views := newTrailModel(t, 100, nil)
+
+	x, y := crumbAt(t, m, "…")
+	m.Update(tea.MouseMsg{X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+
+	require.Same(t, views[1], m.currentView)
+	require.Equal(t, 1, m.viewStack.Len())
+}
+
+func TestClicksOnTheStackBarThatGoNowhere(t *testing.T) {
+	for name, text := range map[string]string{
+		"an arrow":             "→",
+		"the current view":     " logs ",
+		"the right-hand block": commandHintText,
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, views := newTrailModel(t, 100, nil)
+
+			x, y := crumbAt(t, m, text)
+			m.Update(tea.MouseMsg{X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+
+			require.Same(t, views[4], m.currentView)
+			require.Equal(t, 4, m.viewStack.Len())
+		})
+	}
+}
+
+func TestFullscreenHasNoBreadcrumbsToClick(t *testing.T) {
+	m, views := newTrailModel(t, 100, nil)
+	x, y := crumbAt(t, m, " tasks ")
+	m.fullscreen = true
+	m.resizeToTerminal()
+
+	m.Update(tea.MouseMsg{X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+
+	require.Same(t, views[4], m.currentView)
+}
+
+// On a terminal too narrow for both, a notice takes the whole bar, and a click
+// where a breadcrumb would be is a click on the notice.
+func TestBreadcrumbsUnderANoticeAreNotClickable(t *testing.T) {
+	m, views := newTrailModel(t, 30, nil)
+	x, y := crumbAt(t, m, "…")
+	click := tea.MouseMsg{X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}
+
+	m.telemetryNoticeActive = true
+	require.Contains(t, ansi.Strip(m.renderStackBar()), "Usage reporting", "the notice must hold the bar")
+	m.Update(click)
+	require.Same(t, views[4], m.currentView)
+
+	m.telemetryNoticeActive = false
+	m.Update(click)
+	require.Same(t, views[2], m.currentView, "the same click on the breadcrumbs goes back")
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/Eldara-Tech/swarmcli/v2/views/view"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // MouseEnv switches mouse capture off. It is on unless the variable says off in
@@ -64,7 +65,8 @@ func ProgramOptions() []tea.ProgramOption {
 // hand unknown messages to a viewport that scrolls and then snaps back to the
 // cursor. The wheel becomes up/down keypresses for the current view; a left
 // click inside the frame selects a row, and a second one on the same line
-// opens it the way Enter does.
+// opens it the way Enter does. A left click on a breadcrumb goes back to that
+// view, and a right click anywhere is Esc.
 func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	if !m.mouseOn || msg.Action != tea.MouseActionPress || m.mouseBlocked() {
 		return nil
@@ -75,7 +77,14 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	case tea.MouseButtonWheelDown:
 		return m.currentView.Update(tea.KeyMsg{Type: tea.KeyDown})
 	case tea.MouseButtonLeft:
+		if !m.fullscreen && msg.Y == m.stackBarRow() {
+			return m.clickBreadcrumb(msg.X)
+		}
 		return m.clickRow(msg.Y)
+	case tea.MouseButtonRight:
+		m.lastClickAt = time.Time{}
+		_, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+		return cmd
 	}
 	return nil
 }
@@ -113,6 +122,41 @@ func (m *Model) clickRow(y int) tea.Cmd {
 	}
 	m.lastClickAt, m.lastClickLine = t, line
 	return nil
+}
+
+// clickBreadcrumb goes back to the view whose breadcrumb is at column x of the
+// stack bar. A passive "/" bar is closed on the way, as Esc closes it before it
+// goes back.
+func (m *Model) clickBreadcrumb(x int) tea.Cmd {
+	m.lastClickAt = time.Time{}
+	names := m.breadcrumbNames()
+	// A notice that needed the whole bar is drawn in place of the breadcrumbs.
+	if !strings.HasPrefix(m.renderStackBar(), m.fitBreadcrumbs(names)) {
+		return nil
+	}
+	end := 0
+	for _, c := range breadcrumbs(names, m.breadcrumbsThatFit(names)) {
+		end += lipgloss.Width(c.text)
+		if x >= end {
+			continue
+		}
+		if c.target < 0 {
+			return nil
+		}
+		m.searchInput.Hide()
+		return m.returnTo(c.target)
+	}
+	return nil
+}
+
+// stackBarRow is the screen row the stack bar is drawn on outside fullscreen:
+// below the help bar, the input bar if one is open, and the frame.
+func (m *Model) stackBarRow() int {
+	row := systeminfoview.Height + max(m.viewport.Height-appChromeRows, 1)
+	if m.commandInput.Visible() || m.searchInput.Visible() {
+		row += inputBarHeight
+	}
+	return row
 }
 
 // contentLine turns a screen row into a line of the current view's content,

@@ -781,6 +781,16 @@ func (m *Model) goBack() tea.Cmd {
 	return tea.Batch(exitCmd, enterCmd, resizeCmd)
 }
 
+// returnTo goes back to the view at index i of the stack. The views above it
+// are dropped without being entered again: each was left when the view above
+// it was opened.
+func (m *Model) returnTo(i int) tea.Cmd {
+	for m.viewStack.Len() > i+1 {
+		m.viewStack.Pop()
+	}
+	return m.goBack()
+}
+
 // watchEventsCmd wraps docker.WatchEvent in a tea.Cmd for the Bubble Tea event loop.
 func watchEventsCmd() tea.Cmd {
 	return func() tea.Msg {

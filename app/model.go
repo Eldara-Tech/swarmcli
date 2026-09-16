@@ -252,12 +252,7 @@ var (
 )
 
 func (m *Model) renderStackBar() string {
-	names := make([]string, 0, m.viewStack.Len()+1)
-	for _, v := range m.viewStack.Views() {
-		names = append(names, v.Name())
-	}
-	names = append(names, m.currentView.Name())
-	crumbs := m.fitBreadcrumbs(names)
+	crumbs := m.fitBreadcrumbs(m.breadcrumbNames())
 
 	// Try the right-aligned renderings widest-first and take the first that
 	// fits. The hint is dropped before the suffix: the suffix carries
@@ -349,17 +344,36 @@ func (m *Model) stackBarNotice() (line, short string) {
 // gracefully and always keeps the current view — the rightmost segment, and
 // the one worth keeping. Truncates only when even a single segment overflows.
 func (m *Model) fitBreadcrumbs(names []string) string {
-	if m.terminalWidth <= 0 {
-		return RenderBreadcrumbs(names, stackBarMaxCrumbs)
+	crumbs := RenderBreadcrumbs(names, m.breadcrumbsThatFit(names))
+	if m.terminalWidth > 0 && lipgloss.Width(crumbs) > m.terminalWidth {
+		return lipgloss.NewStyle().MaxWidth(m.terminalWidth).Render(crumbs)
 	}
-	crumbs := ""
-	for display := stackBarMaxCrumbs; display >= 1; display-- {
-		crumbs = RenderBreadcrumbs(names, display)
-		if lipgloss.Width(crumbs) <= m.terminalWidth {
-			return crumbs
+	return crumbs
+}
+
+// breadcrumbsThatFit is the maxDisplay fitBreadcrumbs renders names with: the
+// most segments that fit terminalWidth, and never fewer than one.
+func (m *Model) breadcrumbsThatFit(names []string) int {
+	if m.terminalWidth <= 0 {
+		return stackBarMaxCrumbs
+	}
+	display := stackBarMaxCrumbs
+	for ; display > 1; display-- {
+		if lipgloss.Width(RenderBreadcrumbs(names, display)) <= m.terminalWidth {
+			break
 		}
 	}
-	return lipgloss.NewStyle().MaxWidth(m.terminalWidth).Render(crumbs)
+	return display
+}
+
+// breadcrumbNames are the names of the views on the stack, oldest first, and
+// then the current view's: the trail the stack bar draws.
+func (m *Model) breadcrumbNames() []string {
+	names := make([]string, 0, m.viewStack.Len()+1)
+	for _, v := range m.viewStack.Views() {
+		names = append(names, v.Name())
+	}
+	return append(names, m.currentView.Name())
 }
 
 func cmdBar() *commandinput.Model {
