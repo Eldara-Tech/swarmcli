@@ -180,6 +180,35 @@ func countLines(s string) int {
 	return strings.Count(s, "\n") + 1
 }
 
+// SelectLine moves the cursor to the item drawn on the given line of the
+// visible window, line 0 being the first line VisibleContent returned, and
+// reports whether that line belongs to an item. A line below the last item
+// selects nothing. The line counts are the ones VisibleContent lays out, so an
+// item spanning several lines is selected from any of them.
+func (f *FilterableList[T]) SelectLine(line int) bool {
+	if line < 0 {
+		return false
+	}
+	target := f.Viewport.YOffset + line
+	start := 0
+	for i := range f.Filtered {
+		start += f.itemLines(i)
+		if target < start {
+			f.Cursor = i
+			return true
+		}
+	}
+	return false
+}
+
+// itemLines is how many lines VisibleContent spends on item i.
+func (f *FilterableList[T]) itemLines(i int) int {
+	if f.RenderItem == nil {
+		return countLines(fmt.Sprintf("%v", f.Filtered[i]))
+	}
+	return countLines(f.RenderItem(f.Filtered[i], i == f.Cursor, f.colWidth))
+}
+
 // VisibleContent returns a string containing exactly `lines` rows of
 // rendered items starting at the current viewport Y offset. It will adjust
 // the internal Y offset to ensure the cursor is visible within the given

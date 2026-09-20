@@ -589,6 +589,26 @@ func (m *Model) dispatchAction(actionName, label, arg string) tea.Cmd {
 	return action(arg)
 }
 
+// ClickRow selects the service drawn on a content line (view.RowClicker). A
+// click anywhere in an expanded service — its task header or a task row —
+// selects the service itself and drops the task selection; tasks are picked
+// with the keys.
+func (m *Model) ClickRow(line int) bool {
+	if !m.Visible {
+		return false
+	}
+	oldCursor := m.List.Cursor
+	if !m.List.SelectLine(line) {
+		return false
+	}
+	m.selectedTaskIndex = -1
+	if oldCursor != m.List.Cursor {
+		m.List.ResetColumnScroll()
+	}
+	m.List.Viewport.SetContent(m.List.View())
+	return true
+}
+
 // selectedTaskID returns the ID of the highlighted task row, or "" when the
 // cursor is on the service row itself. An action that can act on either gets
 // both: the service name always, and one replica only when the user picked one.

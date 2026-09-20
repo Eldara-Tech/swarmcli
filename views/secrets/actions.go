@@ -374,7 +374,7 @@ func openEditorForContentCmd(initialData string) tea.Cmd {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+	return view.ExecProcess(cmd, func(err error) tea.Msg {
 		// Clean up temp file
 		defer func(name string) {
 			_ = os.Remove(name)

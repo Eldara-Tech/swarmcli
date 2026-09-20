@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/Eldara-Tech/swarmcli/v2/views/view"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -52,7 +54,7 @@ func editWithTempFileCmd(baseName string, initialData []byte, onDone func([]byte
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+	return view.ExecProcess(cmd, func(err error) tea.Msg {
 		// Clean up temp file
 		defer func(name string) {
 			_ = os.Remove(name)

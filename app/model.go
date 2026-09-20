@@ -5,6 +5,7 @@ package app
 
 import (
 	"strings"
+	"time"
 
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	swarmlog "github.com/Eldara-Tech/swarmcli/v2/utils/log"
@@ -60,6 +61,15 @@ type Model struct {
 	// stack bar rather than as a dialog. Set once in Init and cleared by the
 	// first keystroke the app handles; see renderStackBar and Update.
 	telemetryNoticeActive bool
+
+	// Mouse capture, on unless MouseEnv switches it off and toggled by
+	// `:mouse`; see mouse.go. mouseNoticeActive shows the toggle's result on
+	// the stack bar until the next keystroke, the way the disclosure above is
+	// shown. lastClickAt and lastClickLine time a double click.
+	mouseOn           bool
+	mouseNoticeActive bool
+	lastClickAt       time.Time
+	lastClickLine     int
 
 	// App-level "the Docker context changed outside swarmcli" prompt. The
 	// session is pinned to one context (docker.SessionContext), so a
@@ -146,6 +156,7 @@ func InitialModel() *Model {
 		contextDriftDialog: confirmdialog.New(terminalWidth, terminalHeight),
 		terminalWidth:      terminalWidth,
 		terminalHeight:     terminalHeight,
+		mouseOn:            mouseFromEnv(),
 	}
 }
 
@@ -241,12 +252,7 @@ var (
 )
 
 func (m *Model) renderStackBar() string {
-	names := make([]string, 0, m.viewStack.Len()+1)
-	for _, v := range m.viewStack.Views() {
-		names = append(names, v.Name())
-	}
-	names = append(names, m.currentView.Name())
-	crumbs := m.fitBreadcrumbs(names)
+	crumbs := m.fitBreadcrumbs(m.breadcrumbNames())
 
 	// Try the right-aligned renderings widest-first and take the first that
 	// fits. The hint is dropped before the suffix: the suffix carries
@@ -265,8 +271,8 @@ func (m *Model) renderStackBar() string {
 	// anything is sent" has to be true on a 46-column terminal too. The
 	// breadcrumbs are back on the next frame; the notice is gone on the next
 	// keystroke.
-	if m.telemetryNoticeActive && m.terminalWidth > 0 {
-		return ui.TruncateANSI(stackBarNoticeStyle.Render(telemetry.NoticeLineShort), m.terminalWidth)
+	if _, short := m.stackBarNotice(); short != "" && m.terminalWidth > 0 {
+		return ui.TruncateANSI(stackBarNoticeStyle.Render(short), m.terminalWidth)
 	}
 	return crumbs
 }
@@ -302,12 +308,13 @@ func (m *Model) stackBarRight() []string {
 	// defensible at all. The short form is the last rung: on a terminal too
 	// narrow for the full line, "reporting is on, type this" is still the
 	// message.
-	if !m.telemetryNoticeActive {
+	line, shortLine := m.stackBarNotice()
+	if line == "" {
 		return candidates
 	}
 
-	notice := stackBarNoticeStyle.Render(telemetry.NoticeLine)
-	short := stackBarNoticeStyle.Render(telemetry.NoticeLineShort)
+	notice := stackBarNoticeStyle.Render(line)
+	short := stackBarNoticeStyle.Render(shortLine)
 
 	withNotice := make([]string, 0, len(candidates)+2)
 	for _, c := range candidates {
@@ -316,23 +323,57 @@ func (m *Model) stackBarRight() []string {
 	return append(withNotice, notice, short)
 }
 
+// stackBarNotice is the one-line notice the stack bar is carrying, in its full
+// and short forms, or two empty strings. The first-run disclosure outranks the
+// result of a `:mouse` toggle while both are pending.
+func (m *Model) stackBarNotice() (line, short string) {
+	switch {
+	case m.telemetryNoticeActive:
+		return telemetry.NoticeLine, telemetry.NoticeLineShort
+	case m.mouseNoticeActive && m.mouseOn:
+		return mouseOnNotice, mouseOnNoticeShort
+	case m.mouseNoticeActive:
+		return mouseOffNotice, mouseOffNoticeShort
+	}
+	return "", ""
+}
+
 // fitBreadcrumbs renders the breadcrumb trail for names, shedding the oldest
 // segments until the line fits terminalWidth. RenderBreadcrumbs already
 // collapses what it drops into a "…" prefix, so narrowing maxDisplay degrades
 // gracefully and always keeps the current view — the rightmost segment, and
 // the one worth keeping. Truncates only when even a single segment overflows.
 func (m *Model) fitBreadcrumbs(names []string) string {
-	if m.terminalWidth <= 0 {
-		return RenderBreadcrumbs(names, stackBarMaxCrumbs)
+	crumbs := RenderBreadcrumbs(names, m.breadcrumbsThatFit(names))
+	if m.terminalWidth > 0 && lipgloss.Width(crumbs) > m.terminalWidth {
+		return lipgloss.NewStyle().MaxWidth(m.terminalWidth).Render(crumbs)
 	}
-	crumbs := ""
-	for display := stackBarMaxCrumbs; display >= 1; display-- {
-		crumbs = RenderBreadcrumbs(names, display)
-		if lipgloss.Width(crumbs) <= m.terminalWidth {
-			return crumbs
+	return crumbs
+}
+
+// breadcrumbsThatFit is the maxDisplay fitBreadcrumbs renders names with: the
+// most segments that fit terminalWidth, and never fewer than one.
+func (m *Model) breadcrumbsThatFit(names []string) int {
+	if m.terminalWidth <= 0 {
+		return stackBarMaxCrumbs
+	}
+	display := stackBarMaxCrumbs
+	for ; display > 1; display-- {
+		if lipgloss.Width(RenderBreadcrumbs(names, display)) <= m.terminalWidth {
+			break
 		}
 	}
-	return lipgloss.NewStyle().MaxWidth(m.terminalWidth).Render(crumbs)
+	return display
+}
+
+// breadcrumbNames are the names of the views on the stack, oldest first, and
+// then the current view's: the trail the stack bar draws.
+func (m *Model) breadcrumbNames() []string {
+	names := make([]string, 0, m.viewStack.Len()+1)
+	for _, v := range m.viewStack.Views() {
+		names = append(names, v.Name())
+	}
+	return append(names, m.currentView.Name())
 }
 
 func cmdBar() *commandinput.Model {

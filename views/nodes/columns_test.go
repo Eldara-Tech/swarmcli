@@ -71,3 +71,48 @@ func TestResetScrollOnCursorMove(t *testing.T) {
 	require.NotEqual(t, scrolled, m.List.RenderItem(longNode(m), true, 0),
 		"scroll offset must reset when the cursor moves")
 }
+
+// --- Mouse ---
+
+func TestClickRow_SelectsTheLineInTheScrolledWindow(t *testing.T) {
+	m := testModel()
+	loadNodes(m, fakeNodes("n1", "n2", "n3", "n4"))
+	m.List.Viewport.YOffset = 1
+
+	require.True(t, m.ClickRow(1))
+	require.Equal(t, "n3", m.List.Filtered[m.List.Cursor].Hostname)
+}
+
+func TestClickRow_SelectsTheFilteredRow(t *testing.T) {
+	m := testModel()
+	loadNodes(m, fakeNodes("n1", "n2", "n3"))
+	m.ApplySearchQuery("n3")
+
+	require.True(t, m.ClickRow(0))
+	require.Equal(t, "n3", m.List.Filtered[m.List.Cursor].Hostname)
+}
+
+func TestClickRow_BelowTheLastRowSelectsNothing(t *testing.T) {
+	m := testModel()
+	loadNodes(m, fakeNodes("n1", "n2", "n3"))
+	m.List.Cursor = 1
+
+	require.False(t, m.ClickRow(3))
+	require.Equal(t, 1, m.List.Cursor)
+}
+
+func TestClickRow_ResetsScrollLikeTheArrowKeys(t *testing.T) {
+	m := testModel()
+	readyNodes(m, 70, longHostname, "w2")
+	require.True(t, m.ClickRow(1))
+	before := m.List.RenderItem(longNode(m), true, 0)
+	m.Update(key("right"))
+	m.Update(key("right"))
+	scrolled := m.List.RenderItem(longNode(m), true, 0)
+	require.NotEqual(t, before, scrolled, "precondition: the long row scrolled")
+
+	require.True(t, m.ClickRow(0))
+
+	require.NotEqual(t, scrolled, m.List.RenderItem(longNode(m), true, 0),
+		"scroll offset must reset when a click moves the cursor")
+}

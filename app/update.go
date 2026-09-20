@@ -46,9 +46,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// handles — not the first key of the session. While a startup overlay is up
 	// it covers the screen and takes every keystroke, so retiring the notice
 	// there would retire something nobody could have read.
-	if m.telemetryNoticeActive {
+	if m.telemetryNoticeActive || m.mouseNoticeActive {
 		if _, isKey := msg.(tea.KeyMsg); isKey {
 			m.telemetryNoticeActive = false
+			m.mouseNoticeActive = false
 		}
 	}
 
@@ -293,6 +294,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		return m.handleKey(msg)
+
+	case tea.MouseMsg:
+		return m, m.handleMouse(msg)
+
+	case view.ToggleMouseMsg:
+		m.mouseOn = !m.mouseOn
+		m.mouseNoticeActive = true
+		if m.mouseOn {
+			return m, tea.EnableMouseCellMotion
+		}
+		return m, tea.DisableMouse
+
+	case view.RestoreMouseMsg:
+		if m.mouseOn {
+			return m, tea.EnableMouseCellMotion
+		}
+		return m, nil
 
 	case tickMsg:
 		return m.handleTick(msg)
@@ -761,6 +779,16 @@ func (m *Model) goBack() tea.Cmd {
 
 	// Execute all lifecycle commands
 	return tea.Batch(exitCmd, enterCmd, resizeCmd)
+}
+
+// returnTo goes back to the view at index i of the stack. The views above it
+// are dropped without being entered again: each was left when the view above
+// it was opened.
+func (m *Model) returnTo(i int) tea.Cmd {
+	for m.viewStack.Len() > i+1 {
+		m.viewStack.Pop()
+	}
+	return m.goBack()
 }
 
 // watchEventsCmd wraps docker.WatchEvent in a tea.Cmd for the Bubble Tea event loop.

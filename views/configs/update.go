@@ -1067,6 +1067,24 @@ func (m *Model) handleUsedByViewKey(msg tea.KeyMsg) tea.Cmd {
 	}
 }
 
+// ClickRow selects the row under a mouse click: in the UsedBy list while it is
+// open, otherwise in the configs list, resetting the horizontal scroll the way a
+// cursor key does.
+func (m *Model) ClickRow(line int) bool {
+	if m.usedByViewActive {
+		return m.usedByList.SelectLine(line)
+	}
+	oldCursor := m.configsList.Cursor
+	if !m.configsList.SelectLine(line) {
+		return false
+	}
+	if m.configsList.Cursor != oldCursor {
+		m.configsList.ResetColumnScroll()
+		m.configsList.Viewport.SetContent(m.configsList.View())
+	}
+	return true
+}
+
 // HelpContent implements the app's optional help-screen contract: "?" is
 // handled centrally, and a view carrying its own screen supplies it here.
 func (m *Model) HelpContent() []helpview.HelpCategory { return GetConfigsHelpContent() }

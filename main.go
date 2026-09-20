@@ -40,7 +40,7 @@ func main() {
 		os.Exit(cli.Dispatch(os.Args[1:], version))
 	}
 
-	p := tea.NewProgram(app.InitialModel(), tea.WithAltScreen())
+	p := tea.NewProgram(app.InitialModel(), app.ProgramOptions()...)
 
 	if _, err := p.Run(); err != nil {
 		// Log full stack trace to aid debugging panic-causes inside the TUI
