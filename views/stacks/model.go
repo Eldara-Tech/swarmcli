@@ -9,6 +9,7 @@ import (
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	"github.com/Eldara-Tech/swarmcli/v2/views/confirmdialog"
 	"github.com/Eldara-Tech/swarmcli/v2/views/helpbar"
+	"github.com/Eldara-Tech/swarmcli/v2/views/taskutil"
 	"strings"
 	"time"
 
@@ -67,6 +68,8 @@ type Model struct {
 	stackHasError map[string]bool
 	// stackErrorText stores a representative error text for the stack (first found)
 	stackErrorText map[string]string
+	// stackConverging marks a stack with a converging service and no error
+	stackConverging map[string]bool
 	// selectedTaskIndex when navigating tasks within an expanded stack
 	selectedTaskIndex int
 	// errorScrollOffset for horizontal scrolling of error messages
@@ -126,6 +129,7 @@ func New(width, height int) *Model {
 		stackTasks:        make(map[string][]docker.TaskEntry),
 		stackHasError:     make(map[string]bool),
 		stackErrorText:    make(map[string]string),
+		stackConverging:   make(map[string]bool),
 		selectedTaskIndex: -1,
 		createDialogStep:  "source",
 		createStackSource: "file",
@@ -284,6 +288,17 @@ func (m *Model) LoadStacksCmd(nodeID string) tea.Cmd {
 }
 
 // checkStacksCmd checks if stacks have changed and returns update message if so
+// pollHash is what the poll compares: the stack list, and the health verdict
+// its rows are tinted by. A stack that finishes converging, or stops failing,
+// changes the verdict and not the list, and would otherwise keep its colour
+// until something else about the stacks changed.
+func pollHash(stacks []docker.StackEntry, snap *docker.SwarmSnapshot) (uint64, error) {
+	return hash.Compute(struct {
+		Stacks []docker.StackEntry
+		Health taskutil.SwarmHealth
+	}{stacks, taskutil.AssessSwarm(snap)})
+}
+
 func (m *Model) checkStacksCmd(lastHash uint64, nodeID string) tea.Cmd {
 	snapOps := m.deps.Snapshot
 	clusterOps := m.deps.ClusterInfo
@@ -303,7 +318,7 @@ func (m *Model) checkStacksCmd(lastHash uint64, nodeID string) tea.Cmd {
 		}
 		stacks := snap.ToStackEntries()
 
-		newHash, err := hash.Compute(stacks)
+		newHash, err := pollHash(stacks, snap)
 		if err != nil {
 			l().Errorf("checkStacksCmd: Error computing hash: %v", err)
 			// Keep polling on error instead of returning nil which would stop the tick loop
@@ -382,6 +397,17 @@ func (m *Model) CapturesInput() bool {
 func (m *Model) HasErrors() bool {
 	for _, hasErr := range m.stackHasError {
 		if hasErr {
+			return true
+		}
+	}
+	return false
+}
+
+// HasWarnings returns true if any stack is converging, which turns the logo
+// amber when nothing is failing.
+func (m *Model) HasWarnings() bool {
+	for _, converging := range m.stackConverging {
+		if converging {
 			return true
 		}
 	}

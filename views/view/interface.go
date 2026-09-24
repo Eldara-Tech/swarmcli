@@ -31,6 +31,13 @@ type View interface {
 	FrameContent() string // unframed content (may include dialog overlays)
 }
 
+// Warner is an opt-in interface for views whose rows can be converging: not
+// failing, but not settled either. The logo turns amber when the current view
+// has warnings and no errors. Checked via type assertion in app/view.go.
+type Warner interface {
+	HasWarnings() bool
+}
+
 // Filterable is an opt-in interface for views that support app-level "/"
 // search filtering. Checked via type assertion in app/update.go.
 type Filterable interface {

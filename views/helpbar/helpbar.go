@@ -69,7 +69,9 @@ const (
 	colGap     = "   " // between help columns
 )
 
-func (m *Model) View(systemInfo string, hasError bool) string {
+// View renders the help bar. hasError turns the logo red and, failing wins,
+// hasWarning otherwise turns it amber.
+func (m *Model) View(systemInfo string, hasError, hasWarning bool) string {
 	allHelp := append(m.globalHelp, m.viewHelp...)
 	if len(allHelp) == 0 {
 		return systemInfo
@@ -80,7 +82,7 @@ func (m *Model) View(systemInfo string, hasError bool) string {
 	// Render every candidate help column at its natural width and build the
 	// logo once, so the packing below can budget against real widths.
 	cols, colWidths := renderColumns(allHelp)
-	logo := buildLogo(hasError)
+	logo := buildLogo(hasError, hasWarning)
 	logoWidth := lipgloss.Width(logo)
 
 	// Decide whether the logo fits, and how much room is left for help. The
@@ -184,7 +186,7 @@ func renderColumns(allHelp []HelpEntry) (blocks []string, widths []int) {
 
 // buildLogo renders the SWC logo with the edition label right-aligned on its
 // last line. The label is truncated if it would overflow the logo's width.
-func buildLogo(hasError bool) string {
+func buildLogo(hasError, hasWarning bool) string {
 	logoTop := `  ___________      ___________
  /   _____/  \    /  \_   ___ \
  \_____  \\   \/\/   /    \  \/
@@ -194,8 +196,11 @@ func buildLogo(hasError bool) string {
 	logoBottom := `        \/       \/          \/`
 
 	logoColor := lipgloss.Color("214") // yellow by default
-	if hasError {
+	switch {
+	case hasError:
 		logoColor = lipgloss.Color("9") // red when errors exist
+	case hasWarning:
+		logoColor = lipgloss.Color("3") // amber while converging, as its rows are
 	}
 	logoStyle := lipgloss.NewStyle().Foreground(logoColor).Bold(true)
 	editionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Bold(true)

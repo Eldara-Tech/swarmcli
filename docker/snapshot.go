@@ -29,6 +29,23 @@ type NodeEntry struct {
 	ManagerStatus string // Leader, Reachable, Unreachable, or ""
 }
 
+// UnhealthyReason says why a node needs the operator's attention, or "" when it
+// does not: swarm reports it down, disconnected or unknown (the reason is that
+// state), or it is a manager its peers cannot reach ("unreachable").
+// Availability is deliberately not consulted — drain and pause are set by the
+// operator, not something that went wrong. An empty state is not flagged, so a
+// node the snapshot knows nothing about stays uncoloured.
+func (n NodeEntry) UnhealthyReason() string {
+	switch swarm.NodeState(n.State) {
+	case swarm.NodeStateDown, swarm.NodeStateUnknown, swarm.NodeStateDisconnected:
+		return n.State
+	}
+	if swarm.Reachability(n.ManagerStatus) == swarm.ReachabilityUnreachable {
+		return string(swarm.ReachabilityUnreachable)
+	}
+	return ""
+}
+
 // StackEntry is a lightweight representation of a Docker stack,
 // used for display and cached in SwarmSnapshot.
 type StackEntry struct {

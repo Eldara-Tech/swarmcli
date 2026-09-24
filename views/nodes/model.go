@@ -14,7 +14,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/docker/docker/api/types/swarm"
 )
 
 type SortField int
@@ -221,17 +220,11 @@ func (m *Model) HasErrors() bool {
 	return false
 }
 
-// nodeIsUnhealthy reports whether a node needs the operator's attention: swarm
-// reports it down, disconnected or unknown, or it is a manager its peers cannot
-// reach. Availability is deliberately not consulted — drain and pause are set by
-// the operator, not something that went wrong. An empty state is not flagged, so
-// a node the snapshot knows nothing about stays uncoloured.
+// nodeIsUnhealthy reports whether a node needs the operator's attention, by
+// the rule docker.NodeEntry.UnhealthyReason documents and the swarm health
+// verdict shares.
 func nodeIsUnhealthy(n docker.NodeEntry) bool {
-	switch swarm.NodeState(n.State) {
-	case swarm.NodeStateDown, swarm.NodeStateUnknown, swarm.NodeStateDisconnected:
-		return true
-	}
-	return swarm.Reachability(n.ManagerStatus) == swarm.ReachabilityUnreachable
+	return n.UnhealthyReason() != ""
 }
 
 // HasActiveFilter reports whether a filter query is active.

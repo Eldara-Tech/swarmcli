@@ -678,6 +678,9 @@ func (m *Model) refreshServiceErrorsFromSnapshot() {
 	for k := range m.serviceErrorText {
 		delete(m.serviceErrorText, k)
 	}
+	for k := range m.serviceConverging {
+		delete(m.serviceConverging, k)
+	}
 
 	snap := m.deps.Snapshot.GetSnapshot()
 	if snap == nil {
@@ -693,6 +696,10 @@ func (m *Model) refreshServiceErrorsFromSnapshot() {
 	for svcID, errMsg := range taskutil.ActiveDeploymentErrorsByService(snap.Tasks) {
 		m.serviceHasError[svcID] = true
 		m.serviceErrorText[svcID] = errMsg
+	}
+	// AssessSwarm never lists a failing service as converging.
+	for _, r := range taskutil.AssessSwarm(snap).Converging {
+		m.serviceConverging[r.ID] = true
 	}
 }
 
@@ -722,6 +729,8 @@ func (m *Model) setRenderItem() {
 			// Color non-selected error rows red
 			errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 			lineStr = errStyle.Render(rowText)
+		} else if m.serviceConverging[e.ServiceID] {
+			lineStr = taskutil.ConvergingStyle.Render(rowText)
 		} else {
 			// Normal rendering
 			lineStr = itemStyle.Render(rowText)
