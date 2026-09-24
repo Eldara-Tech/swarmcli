@@ -35,6 +35,11 @@ type ServiceConvergence struct {
 	// never Complete, so counting only completed tasks keeps the distinction
 	// that matters: finished versus broken.
 	Job bool
+	// NativeJob reports swarm's own job modes, replicated-job and global-job.
+	// Their target is a number of completions, so a running task is progress
+	// towards it rather than arrival, and Completed counts only the current
+	// run (JobIteration) of the job (issue #666).
+	NativeJob bool
 	// UpdateState is the raw swarm UpdateStatus.State, empty when the service
 	// has never been updated. Note that a nil UpdateStatus means "no rollout has
 	// ever run", NOT "the rollout finished".
@@ -124,6 +129,7 @@ func (snap *SwarmSnapshot) StackConvergence(stackName string) []ServiceConvergen
 		}
 
 		job := isJobService(svc)
+		native := isNativeJob(svc)
 
 		running, completed, dead := 0, 0, 0
 		deadReason := ""
@@ -142,8 +148,18 @@ func (snap *SwarmSnapshot) StackConvergence(stackName string) []ServiceConvergen
 			if _, ok := active[t.NodeID]; !ok {
 				continue
 			}
+			// A job's earlier runs stay in the task list, and a rerun reuses
+			// their slots, so a slot not yet reached this run would otherwise
+			// still offer last run's Complete task. swarmkit's own count
+			// (ListServiceStatuses) filters the same way.
+			if native && !inCurrentJobIteration(svc, t) {
+				continue
+			}
 			switch {
-			case t.DesiredState == swarm.TaskStateRunning && t.Status.State == swarm.TaskStateRunning:
+			// A native job's tasks carry DesiredState=complete from creation,
+			// including while they run.
+			case (t.DesiredState == swarm.TaskStateRunning || (native && t.DesiredState == swarm.TaskStateComplete)) &&
+				t.Status.State == swarm.TaskStateRunning:
 				running++
 			case job && t.Status.State == swarm.TaskStateComplete:
 				// Swarm sets DesiredState=shutdown once a job's task exits, so
@@ -176,6 +192,7 @@ func (snap *SwarmSnapshot) StackConvergence(stackName string) []ServiceConvergen
 			Running:        running,
 			Completed:      completed,
 			Job:            job,
+			NativeJob:      native,
 			Desired:        desiredOverNodes(svc, schedulable),
 			UpdateState:    updateState(svc),
 			Monitor:        monitorWindow(svc),
@@ -201,16 +218,16 @@ func ageSince(t time.Time) time.Duration {
 	return 0
 }
 
-// isJobService reports a service swarm will not restart after a clean exit.
-//
-// Swarm's native mode: replicated-job is not the shape to look for — the
-// compose v3 schema `docker stack deploy` accepts cannot express it, so the
-// only way to run a one-shot task in a stack is a normal replicated service
-// with a restart policy that declines to restart it. That is what init and
-// migration steps in charts use, there being no depends_on in swarm.
+// isJobService reports a service swarm will not restart after a clean exit:
+// one of swarm's native job modes, or a normal service with a restart policy
+// that declines to restart it — the shape init and migration steps in charts
+// have long used, there being no depends_on in swarm.
 //
 // An omitted restart policy means "any", swarm's default, which is not a job.
 func isJobService(svc swarm.Service) bool {
+	if isNativeJob(svc) {
+		return true
+	}
 	rp := svc.Spec.TaskTemplate.RestartPolicy
 	if rp == nil {
 		return false
@@ -221,6 +238,17 @@ func isJobService(svc swarm.Service) bool {
 	default:
 		return false
 	}
+}
+
+// isNativeJob reports swarm's own job modes, which `docker stack deploy`
+// renders from `deploy.mode: replicated-job` and `global-job`.
+func isNativeJob(svc swarm.Service) bool {
+	return svc.Spec.Mode.ReplicatedJob != nil || svc.Spec.Mode.GlobalJob != nil
+}
+
+// inCurrentJobIteration reports a task belonging to the job's current run.
+func inCurrentJobIteration(svc swarm.Service, t swarm.Task) bool {
+	return svc.JobStatus != nil && t.JobIteration != nil && t.JobIteration.Index == svc.JobStatus.JobIteration.Index
 }
 
 // neverRestarts reports a restart policy of "none": swarm leaves a task that
@@ -261,11 +289,17 @@ func (snap *SwarmSnapshot) DesiredReplicas(svc swarm.Service) int {
 // A replicated service's declared count is its target wherever the replicas can
 // land, which is what swarm reports and what --wait must keep waiting for: a
 // constraint no node satisfies leaves it pending, not converged.
+//
+// A job's target is completions: TotalCompletions for a replicated job, and for
+// a global job one per eligible node, which is where swarmkit's global job
+// reconciler creates a task each run.
 func desiredOverNodes(svc swarm.Service, nodes []swarm.Node) int {
 	switch {
 	case svc.Spec.Mode.Replicated != nil && svc.Spec.Mode.Replicated.Replicas != nil:
 		return int(*svc.Spec.Mode.Replicated.Replicas)
-	case svc.Spec.Mode.Global != nil:
+	case svc.Spec.Mode.ReplicatedJob != nil && svc.Spec.Mode.ReplicatedJob.TotalCompletions != nil:
+		return int(*svc.Spec.Mode.ReplicatedJob.TotalCompletions)
+	case svc.Spec.Mode.Global != nil, svc.Spec.Mode.GlobalJob != nil:
 		return eligibleNodeCount(svc, nodes)
 	default:
 		return 1
