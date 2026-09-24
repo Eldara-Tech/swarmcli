@@ -244,8 +244,8 @@ Forwarding to a task on the **protected (infrastructure) stack** is
 denied for **every role, including admin** — stricter than exec, where
 admins are allowed.
 
-Forwarding to any non-protected task is allowed for all authenticated
-users (same as exec).
+Forwarding to any non-protected task is allowed for every role that
+grants port-forward — the built-in `operator` and `admin` (same as exec).
 
 See [RBAC — Roles](rbac.md#roles).
 
