@@ -20,6 +20,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/docker/docker/api/types/swarm"
 )
 
@@ -561,6 +562,10 @@ func (m *Model) setRenderItem() {
 		row := m.List.RenderRow(n, selected)
 		if selected {
 			return ui.ListSelectedStyle.Render(row)
+		}
+		if nodeIsUnhealthy(n) {
+			// Color non-selected unhealthy rows red, like the services view
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(row)
 		}
 		return ui.ListItemStyle.Render(row)
 	}
