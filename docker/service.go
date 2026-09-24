@@ -360,9 +360,10 @@ type ServiceEntry struct {
 	// two together say what one ratio cannot: how many replicas are serving, and
 	// how many of those are the version being rolled out (issue #480).
 	UpToDate int
-	// RollingOut reports a rollout in flight — updating, paused, or either
-	// rollback state. It gates the display of UpToDate: outside a rollout a
-	// replica short of the current generation is a restart, not a stale version.
+	// RollingOut reports an update in flight — updating or paused. It gates the
+	// display of UpToDate: outside a rollout a replica short of the current
+	// generation is a restart, not a stale version. A rollback is excluded
+	// because UpToDate cannot be measured there (see countUpToDateTasks).
 	RollingOut bool
 	Status     string
 	Mode       string
@@ -415,7 +416,7 @@ func LoadNodeServices(nodeID string) []ServiceEntry {
 			ServiceID:      svc.ID,
 			ReplicasOnNode: onNode,
 			ReplicasTotal:  desired,
-			UpToDate:       countUpToDateTasks(svc.ID, snap),
+			UpToDate:       countUpToDateTasks(svc, snap),
 			RollingOut:     isRollingOut(svc),
 			Status:         getServiceStatus(svc),
 			Mode:           getServiceMode(svc),
@@ -461,7 +462,7 @@ func (snap *SwarmSnapshot) StackServices(stackName string) []ServiceEntry {
 			ServiceID:      svc.ID,
 			ReplicasOnNode: onNode,
 			ReplicasTotal:  desired,
-			UpToDate:       countUpToDateTasks(svc.ID, snap),
+			UpToDate:       countUpToDateTasks(svc, snap),
 			RollingOut:     isRollingOut(svc),
 			Status:         getServiceStatus(svc),
 			Mode:           getServiceMode(svc),
@@ -500,7 +501,7 @@ func LoadAllServices() []ServiceEntry {
 			ServiceID:      svc.ID,
 			ReplicasOnNode: onNode,
 			ReplicasTotal:  desired,
-			UpToDate:       countUpToDateTasks(svc.ID, snap),
+			UpToDate:       countUpToDateTasks(svc, snap),
 			RollingOut:     isRollingOut(svc),
 			Status:         getServiceStatus(svc),
 			Mode:           getServiceMode(svc),
@@ -585,14 +586,26 @@ func hasIntendedTaskOnNode(serviceID, nodeID string, snap *SwarmSnapshot) bool {
 // start-first the outgoing task keeps DesiredState=running until its replacement
 // is up — which is precisely the window where the count matters.
 //
+// During an update, a slot the rollout has not reached yet still has its old
+// task as its newest, so a slot counts only if that task was created after the
+// update started (issue #667). Creation order is generation order here too:
+// swarm replaces a slot's task, restarts included, from the spec it now holds.
+// A rollback cannot be judged this way — swarmkit keeps the update's StartedAt,
+// so both generations in play were created after it — which is why isRollingOut
+// leaves the rollback states out.
+//
 // This is deliberately not taskutil.LatestTasksByServiceKey: that helper prefers
 // a task that wants to be running over a newer terminal one, because it picks a
 // task worth surfacing an error from. Here that preference would pick the
 // outgoing task and report the old generation as current.
-func countUpToDateTasks(serviceID string, snap *SwarmSnapshot) int {
+func countUpToDateTasks(svc swarm.Service, snap *SwarmSnapshot) int {
+	var since time.Time
+	if isRollingOut(svc) && svc.UpdateStatus.StartedAt != nil {
+		since = *svc.UpdateStatus.StartedAt
+	}
 	count := 0
-	for _, t := range newestTaskPerSlot(serviceID, snap.Tasks) {
-		if t.Status.State == swarm.TaskStateRunning {
+	for _, t := range newestTaskPerSlot(svc.ID, snap.Tasks) {
+		if t.Status.State == swarm.TaskStateRunning && t.CreatedAt.After(since) {
 			count++
 		}
 	}
@@ -632,17 +645,17 @@ func taskSlotKey(t swarm.Task) string {
 	return t.NodeID
 }
 
-// isRollingOut reports a rollout in flight. The paused states count: a rollout
+// isRollingOut reports an update in flight. The paused state counts: a rollout
 // halted by a failing task is the case where an operator most needs to see how
 // far it got. The completed states do not — the generation on show is the
-// current one.
+// current one — and neither do the rollback states, whose progress
+// countUpToDateTasks cannot measure (issue #667).
 func isRollingOut(svc swarm.Service) bool {
 	if svc.UpdateStatus == nil {
 		return false
 	}
 	switch svc.UpdateStatus.State {
-	case swarm.UpdateStateUpdating, swarm.UpdateStatePaused,
-		swarm.UpdateStateRollbackStarted, swarm.UpdateStateRollbackPaused:
+	case swarm.UpdateStateUpdating, swarm.UpdateStatePaused:
 		return true
 	default:
 		return false

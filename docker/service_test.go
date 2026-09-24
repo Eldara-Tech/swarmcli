@@ -288,7 +288,7 @@ func TestCountUpToDateTasks_SteadyState(t *testing.T) {
 		slotTask("svc1", "n1", 1, swarm.TaskStateRunning, 3600),
 		slotTask("svc1", "n2", 2, swarm.TaskStateRunning, 3600),
 	}}
-	require.Equal(t, 2, countUpToDateTasks("svc1", snap))
+	require.Equal(t, 2, countUpToDateTasks(swarm.Service{ID: "svc1"}, snap))
 }
 
 // The reported case: a start-first rollout where every running replica is still
@@ -305,7 +305,7 @@ func TestCountUpToDateTasks_StartFirstRolloutExcludesOutgoing(t *testing.T) {
 	snap := &SwarmSnapshot{Tasks: []swarm.Task{outgoing, incoming, replaced, landed}}
 
 	require.Equal(t, 2, countTasksForNode("svc1", "", snap), "two containers are up")
-	require.Equal(t, 1, countUpToDateTasks("svc1", snap), "only one replica is on the new generation")
+	require.Equal(t, 1, countUpToDateTasks(swarm.Service{ID: "svc1"}, snap), "only one replica is on the new generation")
 }
 
 // The window start-first opens: the incoming task is up before the outgoing one
@@ -320,7 +320,7 @@ func TestCountUpToDateTasks_BoundedBySlotsDuringOverlap(t *testing.T) {
 	}}
 
 	require.Equal(t, 3, countTasksForNode("svc1", "", snap))
-	require.Equal(t, 2, countUpToDateTasks("svc1", snap))
+	require.Equal(t, 2, countUpToDateTasks(swarm.Service{ID: "svc1"}, snap))
 }
 
 // A global service's tasks carry no slot, so the node is what identifies the
@@ -331,7 +331,7 @@ func TestCountUpToDateTasks_GlobalKeysByNode(t *testing.T) {
 		slotTask("svc1", "n2", 0, swarm.TaskStateShutdown, 3600),
 		slotTask("svc1", "n2", 0, swarm.TaskStatePreparing, 10),
 	}}
-	require.Equal(t, 1, countUpToDateTasks("svc1", snap))
+	require.Equal(t, 1, countUpToDateTasks(swarm.Service{ID: "svc1"}, snap))
 }
 
 // A task with neither slot nor node has not been assigned yet. It identifies no
@@ -341,7 +341,7 @@ func TestCountUpToDateTasks_SkipsUnassignedTasks(t *testing.T) {
 		slotTask("svc1", "", 0, swarm.TaskStatePending, 5),
 		slotTask("svc1", "n1", 0, swarm.TaskStateRunning, 3600),
 	}}
-	require.Equal(t, 1, countUpToDateTasks("svc1", snap))
+	require.Equal(t, 1, countUpToDateTasks(swarm.Service{ID: "svc1"}, snap))
 }
 
 func TestCountUpToDateTasks_IgnoresOtherServices(t *testing.T) {
@@ -349,7 +349,7 @@ func TestCountUpToDateTasks_IgnoresOtherServices(t *testing.T) {
 		slotTask("svc1", "n1", 1, swarm.TaskStateRunning, 3600),
 		slotTask("svc2", "n1", 1, swarm.TaskStateRunning, 3600),
 	}}
-	require.Equal(t, 1, countUpToDateTasks("svc1", snap))
+	require.Equal(t, 1, countUpToDateTasks(swarm.Service{ID: "svc1"}, snap))
 }
 
 func TestIsRollingOut(t *testing.T) {
@@ -358,8 +358,8 @@ func TestIsRollingOut(t *testing.T) {
 	cases := map[swarm.UpdateState]bool{
 		swarm.UpdateStateUpdating:          true,
 		swarm.UpdateStatePaused:            true,
-		swarm.UpdateStateRollbackStarted:   true,
-		swarm.UpdateStateRollbackPaused:    true,
+		swarm.UpdateStateRollbackStarted:   false,
+		swarm.UpdateStateRollbackPaused:    false,
 		swarm.UpdateStateCompleted:         false,
 		swarm.UpdateStateRollbackCompleted: false,
 	}
