@@ -198,3 +198,15 @@ func TestStackConvergenceDoesNotBuryARetryableFailure(t *testing.T) {
 	require.True(t, conv[0].Job, "on-failure is still a job")
 	require.False(t, conv[0].DeadTask, "swarm will create a replacement, so nothing is settled yet")
 }
+
+// A global job runs once on every eligible node, so that is its target — not
+// the 1 an unknown mode used to fall back to (issue #666).
+func TestStackConvergenceTargetsAGlobalJobPerNode(t *testing.T) {
+	svc := svcInStack("sweep", "s")
+	svc.Spec.Mode = swarm.ServiceMode{GlobalJob: &swarm.GlobalJob{}}
+	snap := &SwarmSnapshot{Nodes: []swarm.Node{readyNode("n1"), readyNode("n2")}, Services: []swarm.Service{svc}}
+
+	conv := snap.StackConvergence("s")
+	require.Len(t, conv, 1)
+	require.Equal(t, 2, conv[0].Desired)
+}
