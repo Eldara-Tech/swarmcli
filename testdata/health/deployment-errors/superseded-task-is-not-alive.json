@@ -1,0 +1,75 @@
+{
+  "description": "A task that still runs but is desired shutdown (being replaced) is no sign of life, even when it was created after the failure.",
+  "tasks": [
+    {
+      "ID": "api-a1",
+      "Version": {
+        "Index": 4691
+      },
+      "CreatedAt": "2026-09-24T11:16:00Z",
+      "UpdatedAt": "2026-09-24T11:16:02Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:02Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "457bdb6e3defba3694d1ff1d402afde200870993d0b85bb668ebb68f1c840b6b",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "api-a2",
+      "Version": {
+        "Index": 4698
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "3d27ba5cb7f491970f16aecb3ab96c3edf37371ca246326afb4ad9a9c81d8491",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    }
+  ],
+  "expect": {
+    "svc-api": "task: non-zero exit (1)"
+  }
+}

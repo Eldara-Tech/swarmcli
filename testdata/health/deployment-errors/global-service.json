@@ -1,0 +1,138 @@
+{
+  "description": "Global tasks carry no Slot; the node is the slot. svc-agent fails on node-2 while node-1 runs fine. svc-exporter failed on node-2 and then came up there again.",
+  "tasks": [
+    {
+      "ID": "agent-n1",
+      "Version": {
+        "Index": 4873
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-agent",
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "60b5333ee80ab55347b42a10fb03b69d877399441d4d1757f1d6f21eeb90bf2d",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "agent-n2",
+      "Version": {
+        "Index": 4880
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:12Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-agent",
+      "NodeID": "node-2",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:12Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "cd4c42caabdb0223c50155c2658fb892db95229048fcf48993d22ea8ade443d7",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "exp-n2a",
+      "Version": {
+        "Index": 4887
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:12Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-exporter",
+      "NodeID": "node-2",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:12Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "1bf4f69a7e1cefe430fdc724f0dacebd6e2a3b4e0eb45eddd0c582ec869dea97",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "exp-n2b",
+      "Version": {
+        "Index": 4894
+      },
+      "CreatedAt": "2026-09-24T11:16:20Z",
+      "UpdatedAt": "2026-09-24T11:16:21Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-exporter",
+      "NodeID": "node-2",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:21Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "722a75399c26e3cb7b1df7452d3a665bff97da5777d3ac43c633a1abade58e24",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    }
+  ],
+  "expect": {
+    "svc-agent": "task: non-zero exit (1)"
+  }
+}

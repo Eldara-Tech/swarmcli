@@ -1,0 +1,107 @@
+{
+  "description": "Two failed attempts followed by a newer task that is running: the slot recovered.",
+  "tasks": [
+    {
+      "ID": "api-a1",
+      "Version": {
+        "Index": 4656
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:12Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:12Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "457bdb6e3defba3694d1ff1d402afde200870993d0b85bb668ebb68f1c840b6b",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "api-a2",
+      "Version": {
+        "Index": 4663
+      },
+      "CreatedAt": "2026-09-24T11:16:15Z",
+      "UpdatedAt": "2026-09-24T11:16:17Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:17Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "3d27ba5cb7f491970f16aecb3ab96c3edf37371ca246326afb4ad9a9c81d8491",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "api-a3",
+      "Version": {
+        "Index": 4670
+      },
+      "CreatedAt": "2026-09-24T11:16:20Z",
+      "UpdatedAt": "2026-09-24T11:16:21Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:21Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "5e9678d6e4bd5b8ec3776367cb7d0a32764fe465e89766c92a8a22c2b01cb259",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    }
+  ],
+  "expect": {}
+}

@@ -1,0 +1,593 @@
+{
+  "description": "Placement constraints narrow a global service's target: managers only (3 of 5), one label (1 of 5), and != on a label most nodes lack, which matches the nodes without it (4 of 5).",
+  "nodes": [
+    {
+      "ID": "node-1",
+      "Version": {
+        "Index": 5139
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "manager-1",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.1"
+      },
+      "ManagerStatus": {
+        "Leader": true,
+        "Reachability": "reachable",
+        "Addr": "10.0.0.1:2377"
+      }
+    },
+    {
+      "ID": "node-2",
+      "Version": {
+        "Index": 5146
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "manager-2",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.2"
+      },
+      "ManagerStatus": {
+        "Reachability": "reachable",
+        "Addr": "10.0.0.2:2377"
+      }
+    },
+    {
+      "ID": "node-3",
+      "Version": {
+        "Index": 5153
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "manager-3",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.3"
+      },
+      "ManagerStatus": {
+        "Reachability": "reachable",
+        "Addr": "10.0.0.3:2377"
+      }
+    },
+    {
+      "ID": "node-4",
+      "Version": {
+        "Index": 5160
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {
+          "zone": "eu"
+        },
+        "Role": "worker",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "worker-1",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.4"
+      }
+    },
+    {
+      "ID": "node-5",
+      "Version": {
+        "Index": 5167
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {
+          "gpu": "true"
+        },
+        "Role": "worker",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "worker-2",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.5"
+      }
+    }
+  ],
+  "services": [
+    {
+      "ID": "svc-mgr",
+      "Version": {
+        "Index": 5174
+      },
+      "CreatedAt": "2026-09-24T11:06:00Z",
+      "UpdatedAt": "2026-09-24T11:06:00Z",
+      "Spec": {
+        "Name": "shop_mgr",
+        "Labels": {
+          "com.docker.stack.image": "redis:7.4-alpine",
+          "com.docker.stack.namespace": "shop"
+        },
+        "TaskTemplate": {
+          "ContainerSpec": {
+            "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+            "Labels": {
+              "com.docker.stack.namespace": "shop"
+            },
+            "Args": [
+              "sh",
+              "-c",
+              "sleep 100000"
+            ],
+            "Privileges": {
+              "CredentialSpec": null,
+              "SELinuxContext": null,
+              "NoNewPrivileges": false
+            },
+            "Isolation": "default"
+          },
+          "Resources": {},
+          "Placement": {
+            "Constraints": [
+              "node.role==manager"
+            ]
+          },
+          "ForceUpdate": 0,
+          "Runtime": "container"
+        },
+        "Mode": {
+          "Global": {}
+        },
+        "EndpointSpec": {
+          "Mode": "vip"
+        }
+      },
+      "Endpoint": {
+        "Spec": {
+          "Mode": "vip"
+        }
+      }
+    },
+    {
+      "ID": "svc-eu",
+      "Version": {
+        "Index": 5181
+      },
+      "CreatedAt": "2026-09-24T11:06:00Z",
+      "UpdatedAt": "2026-09-24T11:06:00Z",
+      "Spec": {
+        "Name": "shop_eu",
+        "Labels": {
+          "com.docker.stack.image": "redis:7.4-alpine",
+          "com.docker.stack.namespace": "shop"
+        },
+        "TaskTemplate": {
+          "ContainerSpec": {
+            "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+            "Labels": {
+              "com.docker.stack.namespace": "shop"
+            },
+            "Args": [
+              "sh",
+              "-c",
+              "sleep 100000"
+            ],
+            "Privileges": {
+              "CredentialSpec": null,
+              "SELinuxContext": null,
+              "NoNewPrivileges": false
+            },
+            "Isolation": "default"
+          },
+          "Resources": {},
+          "Placement": {
+            "Constraints": [
+              "node.labels.zone == eu"
+            ]
+          },
+          "ForceUpdate": 0,
+          "Runtime": "container"
+        },
+        "Mode": {
+          "Global": {}
+        },
+        "EndpointSpec": {
+          "Mode": "vip"
+        }
+      },
+      "Endpoint": {
+        "Spec": {
+          "Mode": "vip"
+        }
+      }
+    },
+    {
+      "ID": "svc-nogpu",
+      "Version": {
+        "Index": 5188
+      },
+      "CreatedAt": "2026-09-24T11:06:00Z",
+      "UpdatedAt": "2026-09-24T11:06:00Z",
+      "Spec": {
+        "Name": "shop_nogpu",
+        "Labels": {
+          "com.docker.stack.image": "redis:7.4-alpine",
+          "com.docker.stack.namespace": "shop"
+        },
+        "TaskTemplate": {
+          "ContainerSpec": {
+            "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+            "Labels": {
+              "com.docker.stack.namespace": "shop"
+            },
+            "Args": [
+              "sh",
+              "-c",
+              "sleep 100000"
+            ],
+            "Privileges": {
+              "CredentialSpec": null,
+              "SELinuxContext": null,
+              "NoNewPrivileges": false
+            },
+            "Isolation": "default"
+          },
+          "Resources": {},
+          "Placement": {
+            "Constraints": [
+              "node.labels.gpu!=true"
+            ]
+          },
+          "ForceUpdate": 0,
+          "Runtime": "container"
+        },
+        "Mode": {
+          "Global": {}
+        },
+        "EndpointSpec": {
+          "Mode": "vip"
+        }
+      },
+      "Endpoint": {
+        "Spec": {
+          "Mode": "vip"
+        }
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "ID": "mgr-n1",
+      "Version": {
+        "Index": 5195
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-mgr",
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "bf2b005337a78ed441062264ce67e7bf52841fdecba39b385526ab237b14a479",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "mgr-n2",
+      "Version": {
+        "Index": 5202
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-mgr",
+      "NodeID": "node-2",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "d21e75e918aaf30bb5e5da73c34c0c08527d4bfd9c8499049cb1b880efadab96",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "mgr-n3",
+      "Version": {
+        "Index": 5209
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-mgr",
+      "NodeID": "node-3",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "7419e0fe321235ca4ddcdbecf516a74eaedd54be65f9f64fa5c3ba4fe29e2af2",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "eu-n4",
+      "Version": {
+        "Index": 5216
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-eu",
+      "NodeID": "node-4",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "7127de01fbf3469b8bf9dec35729b62ba68fd09bebcdda491e3597999df8adc7",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "nogpu-n1",
+      "Version": {
+        "Index": 5223
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-nogpu",
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "e4d926c920d6aaf59f64a41ea0087799fe30417a954fd157574a13dc0b0f8d47",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "nogpu-n2",
+      "Version": {
+        "Index": 5230
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-nogpu",
+      "NodeID": "node-2",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "4abc09ebf8862df0a70f6ca16a49701008dc3f0f8cad11bb2ad1c4deb3bf48df",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "nogpu-n3",
+      "Version": {
+        "Index": 5237
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-nogpu",
+      "NodeID": "node-3",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "4343b42ad8a126181b21c3e5cc4b57d9ea1c97e4f65920af3ee6868990d2b116",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    }
+  ],
+  "expect": {
+    "svc-mgr": {
+      "running": 3,
+      "desired": 3,
+      "upToDate": 3,
+      "convergedRunning": 3,
+      "completed": 0,
+      "job": false,
+      "deadTask": false
+    },
+    "svc-eu": {
+      "running": 1,
+      "desired": 1,
+      "upToDate": 1,
+      "convergedRunning": 1,
+      "completed": 0,
+      "job": false,
+      "deadTask": false
+    },
+    "svc-nogpu": {
+      "running": 3,
+      "desired": 4,
+      "upToDate": 3,
+      "convergedRunning": 3,
+      "completed": 0,
+      "job": false,
+      "deadTask": false
+    }
+  }
+}

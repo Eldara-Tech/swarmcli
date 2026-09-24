@@ -1,0 +1,238 @@
+{
+  "description": "A crash loop: every attempt in slot 1 exited non-zero and the newest attempt has not started yet, so the slot has no sign of life. A healthy neighbour is not reported.",
+  "tasks": [
+    {
+      "ID": "crash-a1",
+      "Version": {
+        "Index": 4607
+      },
+      "CreatedAt": "2026-09-24T11:16:44.196239482Z",
+      "UpdatedAt": "2026-09-24T11:16:46.518014048Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-crash",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:46.518014048Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "0655f8641c6ac8ef9af47d52e2456d6a7b6981650242c1a4fffb91ff02d15afc",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "crash-a2",
+      "Version": {
+        "Index": 4614
+      },
+      "CreatedAt": "2026-09-24T11:16:46.538264525Z",
+      "UpdatedAt": "2026-09-24T11:16:48.886263013Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-crash",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:48.886263013Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "9cce0cdc2b9ccbbe8acdac972ef2e41af6463bc26d7e1edc0cc134eec5a82323",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "crash-a3",
+      "Version": {
+        "Index": 4621
+      },
+      "CreatedAt": "2026-09-24T11:16:48.978008141Z",
+      "UpdatedAt": "2026-09-24T11:16:51.293900964Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-crash",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:51.293900964Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "ae6d9c29e023682b69a4e6e6ebf4ed1e439ee620255952576be67475f9089474",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "crash-a4",
+      "Version": {
+        "Index": 4628
+      },
+      "CreatedAt": "2026-09-24T11:16:51.329599643Z",
+      "UpdatedAt": "2026-09-24T11:16:53.666674111Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-crash",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:53.666674111Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "47d70c9c01bb8958879d8f30223a2f0330cc54b0048eeb10f3b862d88bb81065",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "crash-a5",
+      "Version": {
+        "Index": 4635
+      },
+      "CreatedAt": "2026-09-24T11:16:53.765433942Z",
+      "UpdatedAt": "2026-09-24T11:16:53.946542061Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-crash",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:53.946542061Z",
+        "State": "ready",
+        "Message": "prepared",
+        "PortStatus": {}
+      },
+      "DesiredState": "ready"
+    },
+    {
+      "ID": "web-1",
+      "Version": {
+        "Index": 4642
+      },
+      "CreatedAt": "2026-09-24T11:16:35.321094763Z",
+      "UpdatedAt": "2026-09-24T11:16:35.666064252Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-web",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:35.666064252Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "c4719afa76fa448b5eca99e6736885846501d17956f2fcb2de5c916d723f3a87",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "web-2",
+      "Version": {
+        "Index": 4649
+      },
+      "CreatedAt": "2026-09-24T11:16:35.321201305Z",
+      "UpdatedAt": "2026-09-24T11:16:35.679754446Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-web",
+      "Slot": 2,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:35.679754446Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "612f7a0edd33d5c1a7f59b38db605f5f0f9bf63cb4ce753b9bad0ff3aa941412",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    }
+  ],
+  "expect": {
+    "svc-crash": "task: non-zero exit (1)"
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "description": "Attempts are ordered by CreatedAt, not Status.Timestamp. The failed attempt's status was touched long after the successful attempt was created, but it was created first, so the slot is fine.",
+  "tasks": [
+    {
+      "ID": "ord-1",
+      "Version": {
+        "Index": 4943
+      },
+      "CreatedAt": "2026-09-24T11:16:00Z",
+      "UpdatedAt": "2026-09-24T11:18:00Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-ord",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:18:00Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "da724c619bef80eed591da798d33cf9336311d8931e7d64e1a732d9ea4860999",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "ord-2",
+      "Version": {
+        "Index": 4950
+      },
+      "CreatedAt": "2026-09-24T11:16:50Z",
+      "UpdatedAt": "2026-09-24T11:16:51Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-ord",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:51Z",
+        "State": "complete",
+        "Message": "finished",
+        "ContainerStatus": {
+          "ContainerID": "3d245b631ef4f9a500754b6f91939536a8191ef24360fdb0712dc4e2e2b61c64",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    }
+  ],
+  "expect": {}
+}

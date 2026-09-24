@@ -1,0 +1,75 @@
+{
+  "description": "Attempts ordered by creation time 400 ns apart. The failure is newer, so the slot is failing; truncating to microseconds would make them equal and hide it.",
+  "tasks": [
+    {
+      "ID": "ns-1",
+      "Version": {
+        "Index": 4761
+      },
+      "CreatedAt": "2026-09-24T11:16:50.0000001Z",
+      "UpdatedAt": "2026-09-24T11:16:51Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-ns",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:51Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "7a6379f31660b9ad559f91b92fdb2c754c0857a67da9bd514c43ebd691f538c5",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "ns-2",
+      "Version": {
+        "Index": 4768
+      },
+      "CreatedAt": "2026-09-24T11:16:50.0000005Z",
+      "UpdatedAt": "2026-09-24T11:16:52Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-ns",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:52Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "3000694ef1d1d1900ea523d9dec916d993368b98c93d2108bbdc88d59aeba9ce",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    }
+  ],
+  "expect": {
+    "svc-ns": "task: non-zero exit (1)"
+  }
+}
