@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/Eldara-Tech/swarmcli/v2/charts"
-	"github.com/Eldara-Tech/swarmcli/v2/core/primitives/hash"
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	"github.com/Eldara-Tech/swarmcli/v2/ui"
 	"github.com/Eldara-Tech/swarmcli/v2/ui/dialog"
@@ -41,7 +40,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		l().Infof("[update]: Received Msg with %d entries", len(msg.Stacks))
 		// Update the hash with new data
 		var err error
-		m.lastSnapshot, err = hash.Compute(msg.Stacks)
+		m.lastSnapshot, err = pollHash(msg.Stacks, m.deps.Snapshot.GetSnapshot())
 		if err != nil {
 			l().Errorf("[update] Error computing hash: %v", err)
 			return nil

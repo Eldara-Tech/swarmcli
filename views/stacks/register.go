@@ -4,7 +4,6 @@
 package stacksview
 
 import (
-	"github.com/Eldara-Tech/swarmcli/v2/core/primitives/hash"
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	"github.com/Eldara-Tech/swarmcli/v2/views/view"
 
@@ -27,7 +26,7 @@ func factory(deps docker.Deps, w, h int, payload any) (view.View, tea.Cmd) {
 	// Pre-populate from cached snapshot so keys work immediately.
 	if snap := deps.Snapshot.GetSnapshot(); snap != nil {
 		stacks := snap.ToStackEntries()
-		model.lastSnapshot, _ = hash.Compute(stacks)
+		model.lastSnapshot, _ = pollHash(stacks, snap)
 		model.nodeID = nodeID
 		model.setStacks(stacks)
 	}

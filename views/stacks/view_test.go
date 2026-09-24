@@ -344,3 +344,34 @@ func TestView_ConvergingStackIsAmber(t *testing.T) {
 func TestHasWarnings_Default(t *testing.T) {
 	require.False(t, testModel().HasWarnings())
 }
+
+// A stack that finishes converging changes its colour and not the stack list,
+// so the poll must see the verdict change too, or the row stays amber.
+func TestPoll_SeesConvergenceFinish(t *testing.T) {
+	two := uint64(2)
+	task := func(slot int, state swarm.TaskState) swarm.Task {
+		return swarm.Task{ServiceID: "rolling_api", Slot: slot, NodeID: "n1", DesiredState: swarm.TaskStateRunning,
+			Meta:   swarm.Meta{CreatedAt: time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)},
+			Status: swarm.TaskStatus{State: state}}
+	}
+	snap := &docker.SwarmSnapshot{
+		Nodes: []swarm.Node{{ID: "n1", Status: swarm.NodeStatus{State: swarm.NodeStateReady}}},
+		Services: []swarm.Service{{ID: "rolling_api", Spec: swarm.ServiceSpec{
+			Annotations: swarm.Annotations{Name: "rolling_api", Labels: map[string]string{"com.docker.stack.namespace": "rolling"}},
+			Mode:        swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: &two}},
+		}}},
+		Tasks: []swarm.Task{task(1, swarm.TaskStateRunning), task(2, swarm.TaskStateStarting)},
+	}
+	m := stacksModelWithSnapshot(snap)
+	m.Update(Msg{Stacks: snap.ToStackEntries()})
+	require.True(t, m.HasWarnings())
+
+	_, unchanged := m.checkStacksCmd(m.lastSnapshot, "")().(PollRetryMsg)
+	require.True(t, unchanged, "nothing changed yet")
+
+	snap.Tasks[1].Status.State = swarm.TaskStateRunning
+	msg, changed := m.checkStacksCmd(m.lastSnapshot, "")().(Msg)
+	require.True(t, changed, "the stack list is the same, but the stack finished converging")
+	m.Update(msg)
+	require.False(t, m.HasWarnings())
+}
