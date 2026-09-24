@@ -23,7 +23,7 @@ flowchart LR
   user -- "presents" --> cert
   cert -- "mTLS" --> proxy
   proxy -- "lookup CN" --> store
-  store -- "user, role, enabled" --> proxy
+  store -- "user, roles, enabled" --> proxy
   proxy -- "if allowed" --> docker
 ```
 
@@ -37,26 +37,45 @@ Disabled or missing users get **403** before any Docker API call.
 
 ## Roles
 
-Two roles are defined: `admin` and `user`.
+Every request, reads included, is authorised against the roles bound to
+the caller. The policy is default-deny: a request passes only if one of
+those roles grants its resource and verb. Three roles are built in:
 
-| Capability | `admin` | `user` |
+| Role | Grants |
+|---|---|
+| `viewer` | Read-only: stacks, stack logs, services, nodes, networks. No secrets, volumes or configs; no exec, port-forward, deploy or other mutation. |
+| `operator` | Everything `viewer` reads, plus volumes and configs; deploy and update stacks and services; exec and port-forward into non-protected tasks. No deletes, no reading secrets, no swarm-level state. |
+| `admin` | Everything. |
+
+`swcproxy user add` binds a new user to `operator`, or to `admin` with
+`--admin`. Admins can also define **custom roles** — named sets of
+resource/verb rules — and bind users to them. A user's permissions are
+the union of all their bindings; there are no deny rules. `/events`
+(it streams cluster-wide resource names) and `GET /swarm` (it exposes
+the join tokens) are admin-only, as is anything the proxy does not map
+to a resource.
+
+The full resource × verb matrix, the role and binding API, and the
+upgrade path from the old `admin` / `user` model are documented in the
+[rbac-proxy RBAC guide](https://github.com/Eldara-Tech/swarmcli-rbac-proxy/blob/main/docs/rbac.md).
+
+On top of the roles, a guard protects the bootstrap stack itself
+(default `swarmcli-infra`, the "protected stack"):
+
+| Operation | admin | everyone else |
 |---|---|---|
-| Read API (list, inspect, logs) | ✓ | ✓ |
-| Service create / update / remove on protected stack | ✓ | ✗ (403) |
+| Update a service or other resource on protected stack | ✓ | ✗ (403) |
+| Create in / remove from protected stack | ✗ | ✗ |
 | Exec / attach into a service task on protected stack | ✓ | ✗ (403) |
-| Exec / attach into a non-protected service task | ✓ | ✓ |
-| Port-forward (`:port-forward`) to a non-protected service task | ✓ | ✓ |
 | Port-forward to a service task on protected stack | ✗ | ✗ |
 | Connect a container to / disconnect from the bootstrap overlay (`swarmcli-agent-net`) | ✗ | ✗ |
 | `docker swarm leave` | ✗ | ✗ |
 
-The "protected stack" is the bootstrap stack itself (default
-`swarmcli-infra`). Read-only operations are unrestricted; mutations and
-exec into the proxy/agent infrastructure are blocked for non-admins, and
-**port-forwarding into the protected stack is blocked even for admins**.
-Network-pivot, swarm-leave, and protected-stack port-forward are blocked
-for **everyone** going through the proxy — these are guards against
-admin-cert compromise, not role gates.
+Here *admin* means a user created with `--admin` (or seeded with
+`PROXY_SEED_ROLE=admin`): the guard reads that flag, not the role
+bindings. Every ✗ in the admin column holds for **everyone** going
+through the proxy — these are guards against admin-cert compromise, not
+role gates.
 
 The bootstrap admin user (default username `admin`) is created at proxy
 startup from the `PROXY_SEED_USERNAME` / `PROXY_SEED_ROLE` env vars in the
@@ -77,9 +96,11 @@ Subcommands:
 | Command | Purpose |
 |---|---|
 | `swcproxy user ls` | List users (`USERNAME`, `ROLE`, `ENABLED`, `CREATED`). |
-| `swcproxy user add <name> [--admin]` | Create a user (role `user`, or `admin` with the flag). Prints an onboarding token + `curl` + `docker context import` snippet. |
+| `swcproxy user add <name> [--admin]` | Create a user bound to `operator`, or to `admin` with the flag. Prints an onboarding token + `curl` + `docker context import` snippet. |
 | `swcproxy user delete <name>` | Remove a user from the store. See [Revocation](#revocation). |
 | `swcproxy user regenerate-token <name>` | Issue a fresh onboarding token for an existing user. Use this for the bootstrap admin or when an onboarding token has expired. |
+| `swcproxy role ls` / `role show <name>` | List roles, or show one role's rules. |
+| `swcproxy binding ls` / `binding add <user> <role>` / `binding rm <id>` | List, add or remove user→role bindings. The last binding granting `admin` cannot be removed. |
 | `swcproxy audit ls [--limit N]` | List the audit log (default 50). |
 
 All commands operate on the SQLite store mounted on the `proxy-data`
@@ -96,9 +117,9 @@ context).
 docker exec -it $(docker ps -q -f name=swarmcli-infra_rbac-proxy.1) sh
 
 # 2. Inside the container: create the user.
-swcproxy user add alice            # role: user
+swcproxy user add alice            # bound to operator
 # or
-swcproxy user add alice --admin    # role: admin
+swcproxy user add alice --admin    # bound to admin
 
 # Output (paraphrased):
 #   Onboard token: 5f2c…a8
@@ -148,8 +169,9 @@ SwarmCLI picks up the certificate of the new context for every subsequent
 Docker API call and shell connection — no environment variables to set.
 
 This is also the easiest way to verify your RBAC configuration: import a
-non-admin user, switch to that context, try `x` on a service. You should
-get a 403; switching back to an admin context unblocks it.
+non-admin user, switch to that context, try `x` on a service of the
+protected stack (any service, for a `viewer`). You should get a 403;
+switching back to an admin context unblocks it.
 
 ## Revocation
 
