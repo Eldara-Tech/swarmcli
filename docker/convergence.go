@@ -16,6 +16,7 @@ import (
 // here drops the outgoing generation, which is the question --wait asks and the
 // services view answers with UpToDate instead (see issue #480).
 type ServiceConvergence struct {
+	ID   string
 	Name string
 	Mode string
 	// Running counts tasks that are actually running, on an active node.
@@ -119,12 +120,24 @@ func LoadStackConvergence(stackName string) []ServiceConvergence {
 // so a caller polling one specific swarm for convergence does not read another
 // swarm's tasks out of the process-wide cache.
 func (snap *SwarmSnapshot) StackConvergence(stackName string) []ServiceConvergence {
+	return snap.convergence(func(svc swarm.Service) bool {
+		return svc.Spec.Labels["com.docker.stack.namespace"] == stackName
+	})
+}
+
+// ServicesConvergence is StackConvergence for every service in the swarm,
+// stacked or not: the swarm-wide health verdict judges them all by one rule.
+func (snap *SwarmSnapshot) ServicesConvergence() []ServiceConvergence {
+	return snap.convergence(func(swarm.Service) bool { return true })
+}
+
+func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceConvergence {
 	schedulable := schedulableNodes(snap)
 	active := nodeIDSet(schedulable)
 
 	var out []ServiceConvergence
 	for _, svc := range snap.Services {
-		if svc.Spec.Labels["com.docker.stack.namespace"] != stackName {
+		if !keep(svc) {
 			continue
 		}
 
@@ -187,6 +200,7 @@ func (snap *SwarmSnapshot) StackConvergence(stackName string) []ServiceConvergen
 		}
 
 		out = append(out, ServiceConvergence{
+			ID:             svc.ID,
 			Name:           svc.Spec.Name,
 			Mode:           getServiceMode(svc),
 			Running:        running,

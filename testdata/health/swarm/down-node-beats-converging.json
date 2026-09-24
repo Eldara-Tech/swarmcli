@@ -1,0 +1,211 @@
+{
+  "description": "worker-down is down, which is failing, so the swarm is degraded. Its task is not counted as running, so shop_web is short of its target and listed as converging too.",
+  "nodes": [
+    {
+      "ID": "node-1",
+      "Version": {
+        "Index": 4985
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "manager-1",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.1"
+      },
+      "ManagerStatus": {
+        "Leader": true,
+        "Reachability": "reachable",
+        "Addr": "10.0.0.1:2377"
+      }
+    },
+    {
+      "ID": "node-2",
+      "Version": {
+        "Index": 5244
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "worker",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "worker-down",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "down",
+        "Addr": "10.0.0.2"
+      }
+    }
+  ],
+  "services": [
+    {
+      "ID": "svc-web",
+      "Version": {
+        "Index": 5251
+      },
+      "CreatedAt": "2026-09-24T11:06:00Z",
+      "UpdatedAt": "2026-09-24T11:06:00Z",
+      "Spec": {
+        "Name": "shop_web",
+        "Labels": {
+          "com.docker.stack.image": "redis:7.4-alpine",
+          "com.docker.stack.namespace": "shop"
+        },
+        "TaskTemplate": {
+          "ContainerSpec": {
+            "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+            "Labels": {
+              "com.docker.stack.namespace": "shop"
+            },
+            "Args": [
+              "sh",
+              "-c",
+              "sleep 100000"
+            ],
+            "Privileges": {
+              "CredentialSpec": null,
+              "SELinuxContext": null,
+              "NoNewPrivileges": false
+            },
+            "Isolation": "default"
+          },
+          "Resources": {},
+          "ForceUpdate": 0,
+          "Runtime": "container"
+        },
+        "Mode": {
+          "Replicated": {
+            "Replicas": 2
+          }
+        },
+        "EndpointSpec": {
+          "Mode": "vip"
+        }
+      },
+      "Endpoint": {
+        "Spec": {
+          "Mode": "vip"
+        }
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "ID": "web-1",
+      "Version": {
+        "Index": 5258
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-web",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "c4719afa76fa448b5eca99e6736885846501d17956f2fcb2de5c916d723f3a87",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "web-2",
+      "Version": {
+        "Index": 5265
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-web",
+      "Slot": 2,
+      "NodeID": "node-2",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "612f7a0edd33d5c1a7f59b38db605f5f0f9bf63cb4ce753b9bad0ff3aa941412",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    }
+  ],
+  "expect": {
+    "state": "degraded",
+    "failing": [
+      {
+        "kind": "node",
+        "id": "node-2",
+        "name": "worker-down",
+        "detail": "down"
+      }
+    ],
+    "converging": [
+      {
+        "kind": "replicas",
+        "id": "svc-web",
+        "name": "shop_web",
+        "detail": "1/2 tasks running"
+      }
+    ]
+  }
+}
