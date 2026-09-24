@@ -12,8 +12,8 @@ import (
 )
 
 // jobSvc is svcInStack with a restart policy that declines to restart a task
-// after a clean exit — the only way a compose v3 stack can express a one-shot
-// step, since `docker stack deploy` cannot render mode: replicated-job.
+// after a clean exit — the shape charts have long given a one-shot step, beside
+// swarm's native job modes.
 func jobSvc(id, stack string, cond swarm.RestartPolicyCondition) swarm.Service {
 	svc := svcInStack(id, stack)
 	svc.Spec.TaskTemplate.RestartPolicy = &swarm.RestartPolicy{Condition: cond}

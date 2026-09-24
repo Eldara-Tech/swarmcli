@@ -17,9 +17,8 @@ import (
 	swarmlog "github.com/Eldara-Tech/swarmcli/v2/utils/log"
 )
 
-// oneShotStack is the shape a compose v3 stack has to give an init or migration
-// step: a replicated service whose restart policy declines to replace the task,
-// since `docker stack deploy` cannot render mode: replicated-job.
+// oneShotStack is the shape charts have long given an init or migration step: a
+// replicated service whose restart policy declines to replace the task.
 //
 // The marker only exists to make one revision's spec differ from the next, so
 // the second deploy is an UPDATE. That is the whole precondition: swarm records
