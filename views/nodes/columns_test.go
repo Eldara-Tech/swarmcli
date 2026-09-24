@@ -7,8 +7,10 @@ import (
 	"testing"
 
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
+	"github.com/Eldara-Tech/swarmcli/v2/ui"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -115,4 +117,32 @@ func TestClickRow_ResetsScrollLikeTheArrowKeys(t *testing.T) {
 
 	require.NotEqual(t, scrolled, m.List.RenderItem(longNode(m), true, 0),
 		"scroll offset must reset when a click moves the cursor")
+}
+
+// An unhealthy node renders red unless the cursor is on it, where the selection
+// highlight wins as it does in the services view; a drained node stays plain.
+func TestRowStyle_UnhealthyNodeIsRed(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+
+	m := testModel()
+	entries := fakeNodes("up", "gone", "drained")
+	entries[1].State = "down"
+	entries[2].Availability = "drain"
+	loadNodes(m, entries)
+	m.List.Viewport.Width = 220
+
+	red := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	for _, n := range m.List.Filtered {
+		row := m.List.RenderRow(n, false)
+		got := m.List.RenderItem(n, false, 0)
+		if n.Hostname == "gone" {
+			require.Equal(t, red.Render(row), got)
+		} else {
+			require.Equal(t, ui.ListItemStyle.Render(row), got, n.Hostname)
+		}
+		require.Equal(t, ui.ListSelectedStyle.Render(m.List.RenderRow(n, true)),
+			m.List.RenderItem(n, true, 0), n.Hostname)
+	}
 }

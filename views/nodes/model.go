@@ -14,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/docker/docker/api/types/swarm"
 )
 
 type SortField int
@@ -209,8 +210,28 @@ func (m *Model) OnExit() tea.Cmd {
 	return nil
 }
 
+// HasErrors reports whether any node in the current filtered list is unhealthy,
+// which turns the logo red the same way a failing service or stack does.
 func (m *Model) HasErrors() bool {
+	for _, n := range m.List.Filtered {
+		if nodeIsUnhealthy(n) {
+			return true
+		}
+	}
 	return false
+}
+
+// nodeIsUnhealthy reports whether a node needs the operator's attention: swarm
+// reports it down, disconnected or unknown, or it is a manager its peers cannot
+// reach. Availability is deliberately not consulted — drain and pause are set by
+// the operator, not something that went wrong. An empty state is not flagged, so
+// a node the snapshot knows nothing about stays uncoloured.
+func nodeIsUnhealthy(n docker.NodeEntry) bool {
+	switch swarm.NodeState(n.State) {
+	case swarm.NodeStateDown, swarm.NodeStateUnknown, swarm.NodeStateDisconnected:
+		return true
+	}
+	return swarm.Reachability(n.ManagerStatus) == swarm.ReachabilityUnreachable
 }
 
 // HasActiveFilter reports whether a filter query is active.

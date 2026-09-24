@@ -251,6 +251,55 @@ func TestHasErrors(t *testing.T) {
 	require.False(t, m.HasErrors())
 }
 
+func TestNodeIsUnhealthy(t *testing.T) {
+	cases := []struct {
+		name  string
+		entry docker.NodeEntry
+		want  bool
+	}{
+		{"ready worker", docker.NodeEntry{State: "ready", Availability: "active"}, false},
+		{"down", docker.NodeEntry{State: "down", Availability: "active"}, true},
+		{"unknown", docker.NodeEntry{State: "unknown", Availability: "active"}, true},
+		{"disconnected", docker.NodeEntry{State: "disconnected", Availability: "active"}, true},
+		{"empty state", docker.NodeEntry{}, false},
+		{"drained is an operator choice", docker.NodeEntry{State: "ready", Availability: "drain"}, false},
+		{"paused is an operator choice", docker.NodeEntry{State: "ready", Availability: "pause"}, false},
+		{"leader", docker.NodeEntry{State: "ready", Manager: true, ManagerStatus: "Leader"}, false},
+		{"reachable manager", docker.NodeEntry{State: "ready", Manager: true, ManagerStatus: "reachable"}, false},
+		{"unreachable manager", docker.NodeEntry{State: "ready", Manager: true, ManagerStatus: "unreachable"}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			require.Equal(t, c.want, nodeIsUnhealthy(c.entry))
+		})
+	}
+}
+
+func TestHasErrors_DownNode(t *testing.T) {
+	m := testModel()
+	entries := fakeNodes("n1", "n2")
+	entries[1].State = "down"
+	loadNodes(m, entries)
+	require.True(t, m.HasErrors())
+}
+
+func TestHasErrors_DrainedNodeIsNotAnError(t *testing.T) {
+	m := testModel()
+	entries := fakeNodes("n1", "n2")
+	entries[1].Availability = "drain"
+	loadNodes(m, entries)
+	require.False(t, m.HasErrors())
+}
+
+func TestHasErrors_FollowsFilter(t *testing.T) {
+	m := testModel()
+	entries := fakeNodes("n1", "n2")
+	entries[1].State = "down"
+	loadNodes(m, entries)
+	m.ApplySearchQuery("n1")
+	require.False(t, m.HasErrors(), "a down node filtered out of view must not turn the logo red")
+}
+
 func TestShortHelpItems(t *testing.T) {
 	m := testModel()
 	items := m.ShortHelpItems()
