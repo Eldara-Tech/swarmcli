@@ -1,0 +1,432 @@
+{
+  "description": "Captured from a live swarm: the same failing rollout with failure_action rollback, caught in rollback_started. swarmkit keeps the update's StartedAt through a rollback, and slot 1's and slot 3's rolled-back tasks were created after it while untouched slot 2's was created before, so creation time cannot say which generation a slot is on. Up to date is not shown during a rollback (rollingOut false) and counts every slot whose newest task runs.",
+  "nodes": [
+    {
+      "ID": "node-1",
+      "Version": {
+        "Index": 4985
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "manager-1",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.1"
+      },
+      "ManagerStatus": {
+        "Leader": true,
+        "Reachability": "reachable",
+        "Addr": "10.0.0.1:2377"
+      }
+    }
+  ],
+  "services": [
+    {
+      "ID": "svc-api",
+      "Version": {
+        "Index": 6601
+      },
+      "CreatedAt": "2026-09-24T13:16:09.303277738Z",
+      "UpdatedAt": "2026-09-24T13:16:48.274818835Z",
+      "Spec": {
+        "Name": "shop_api",
+        "Labels": {
+          "com.docker.stack.namespace": "shop"
+        },
+        "TaskTemplate": {
+          "ContainerSpec": {
+            "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+            "Labels": {
+              "com.docker.stack.namespace": "shop"
+            },
+            "Args": [
+              "sh",
+              "-c",
+              "exec sleep 100000"
+            ],
+            "Env": [
+              "SLOT={{.Task.Slot}}"
+            ],
+            "Isolation": "default"
+          },
+          "Resources": {
+            "Limits": {},
+            "Reservations": {}
+          },
+          "ForceUpdate": 0,
+          "Runtime": "container"
+        },
+        "Mode": {
+          "Replicated": {
+            "Replicas": 3
+          }
+        },
+        "UpdateConfig": {
+          "Parallelism": 1,
+          "Delay": 2000000000,
+          "FailureAction": "rollback",
+          "Monitor": 5000000000,
+          "MaxFailureRatio": 0,
+          "Order": "stop-first"
+        },
+        "RollbackConfig": {
+          "Parallelism": 1,
+          "Delay": 60000000000,
+          "FailureAction": "pause",
+          "Monitor": 5000000000,
+          "MaxFailureRatio": 0,
+          "Order": "stop-first"
+        },
+        "EndpointSpec": {
+          "Mode": "vip"
+        }
+      },
+      "Endpoint": {
+        "Spec": {}
+      },
+      "UpdateStatus": {
+        "State": "rollback_started",
+        "StartedAt": "2026-09-24T13:16:23.087621772Z",
+        "Message": "update rolled back due to failure or early termination of task uupa7ucvnmxvvy4rohxzcyda6"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "ID": "api-1",
+      "Version": {
+        "Index": 6568
+      },
+      "CreatedAt": "2026-09-24T13:16:09.305112074Z",
+      "UpdatedAt": "2026-09-24T13:16:34.409752102Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T13:16:34.384756731Z",
+        "State": "shutdown",
+        "Message": "shutdown",
+        "ContainerStatus": {
+          "ContainerID": "08d24aceb2c45cddea8398ef300a40e7ef467eb4778562fbe173ba19c8f13edb",
+          "PID": 0,
+          "ExitCode": 137
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "api-2",
+      "Version": {
+        "Index": 6634
+      },
+      "CreatedAt": "2026-09-24T13:16:23.087858023Z",
+      "UpdatedAt": "2026-09-24T13:16:59.61333758Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "[ \"$SLOT\" = 3 ] && exit 1; exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T13:16:59.547551096Z",
+        "State": "shutdown",
+        "Message": "shutdown",
+        "ContainerStatus": {
+          "ContainerID": "30aa72f9da73923cb1a2f19d25d09e4e9411fcb3103849f004ae4d7088725472",
+          "PID": 0,
+          "ExitCode": 137
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "api-3",
+      "Version": {
+        "Index": 6636
+      },
+      "CreatedAt": "2026-09-24T13:16:48.275786837Z",
+      "UpdatedAt": "2026-09-24T13:16:59.820917009Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T13:16:59.773671514Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "b5f6f7d6b3c7754663bc1f04d30ba9337ed14303d4a9aef33db09ef755ba6183",
+          "PID": 3083100,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "api-4",
+      "Version": {
+        "Index": 6557
+      },
+      "CreatedAt": "2026-09-24T13:16:09.305251366Z",
+      "UpdatedAt": "2026-09-24T13:16:09.631442274Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 2,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T13:16:09.590101633Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "df0882cf2dd748b6c43db528d440e3569b2d79541207a8b0398831413558002d",
+          "PID": 3080101,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "api-5",
+      "Version": {
+        "Index": 6596
+      },
+      "CreatedAt": "2026-09-24T13:16:09.305282908Z",
+      "UpdatedAt": "2026-09-24T13:16:47.961804209Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 3,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T13:16:47.896309063Z",
+        "State": "shutdown",
+        "Message": "shutdown",
+        "ContainerStatus": {
+          "ContainerID": "cbc2eb83b19e02a80a0de318e1e901bf39f207dffc5e9b4b68cd8f4071382f12",
+          "PID": 0,
+          "ExitCode": 137
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "api-6",
+      "Version": {
+        "Index": 6606
+      },
+      "CreatedAt": "2026-09-24T13:16:36.61374418Z",
+      "UpdatedAt": "2026-09-24T13:16:48.475297198Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "[ \"$SLOT\" = 3 ] && exit 1; exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 3,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T13:16:48.198148129Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "c3ff9d47626250e60094a3b473856ed4374c89950877f3dda573a953cafc3a83",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "api-7",
+      "Version": {
+        "Index": 6622
+      },
+      "CreatedAt": "2026-09-24T13:16:48.274133751Z",
+      "UpdatedAt": "2026-09-24T13:16:53.742264874Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "[ \"$SLOT\" = 3 ] && exit 1; exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 3,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T13:16:53.518007759Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "6362c54b7d80ec1224074857545f768ca68069e4d80aecdced6c5518e2f217a6",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "api-8",
+      "Version": {
+        "Index": 6633
+      },
+      "CreatedAt": "2026-09-24T13:16:53.540072212Z",
+      "UpdatedAt": "2026-09-24T13:16:58.805482656Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 3,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T13:16:58.717056635Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "cd8fa6fa3b1ce2bf8425dc403a6da0cbc2d1d4db1aa5b95652a7472f1e2aa8c8",
+          "PID": 3083003,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    }
+  ],
+  "expect": {
+    "svc-api": {
+      "running": 3,
+      "desired": 3,
+      "upToDate": 3,
+      "rollingOut": false,
+      "convergedRunning": 3,
+      "completed": 0,
+      "job": false,
+      "deadTask": false
+    }
+  }
+}

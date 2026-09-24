@@ -14,12 +14,14 @@ import (
 )
 
 // fixtureReplicas is what one service row shows: the REPLICAS column
-// (running/desired), the rollout progress (upToDate), and the convergence facts
+// (running/desired), the rollout progress (upToDate, shown only while
+// rollingOut), and the convergence facts
 // a job-aware reading of that ratio needs.
 type fixtureReplicas struct {
 	Running          int  `json:"running"`
 	Desired          int  `json:"desired"`
 	UpToDate         int  `json:"upToDate"`
+	RollingOut       bool `json:"rollingOut"`
 	ConvergedRunning int  `json:"convergedRunning"`
 	Completed        int  `json:"completed"`
 	Job              bool `json:"job"`
@@ -58,7 +60,7 @@ func TestReplicaFixtures(t *testing.T) {
 				var r fixtureReplicas
 				for _, e := range snap.StackServices(row) {
 					if e.ServiceID == svc.ID {
-						r.Running, r.Desired, r.UpToDate = e.ReplicasOnNode, e.ReplicasTotal, e.UpToDate
+						r.Running, r.Desired, r.UpToDate, r.RollingOut = e.ReplicasOnNode, e.ReplicasTotal, e.UpToDate, e.RollingOut
 					}
 				}
 				for _, conv := range snap.StackConvergence(stack) {

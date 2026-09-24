@@ -1,5 +1,5 @@
 {
-  "description": "Start-first rollout halfway: slot 1's replacement is starting while its old task still runs; slot 2 has not been touched. REPLICAS counts every running task (2/2). Up to date and convergence both judge the newest task per slot, and slot 2's newest task is still the old one, so each reads 1.",
+  "description": "Start-first rollout halfway: the update started at 11:15:30, slot 1's replacement is starting while its old task still runs, and slot 2 has not been touched. REPLICAS counts every running task (2/2). Up to date counts a slot only when its newest task is running and was created after the update started, so it reads 0 of 2 (issue #667); convergence judges the newest task per slot and reads 1.",
   "nodes": [
     {
       "ID": "node-1",
@@ -45,7 +45,7 @@
         "Index": 5034
       },
       "CreatedAt": "2026-09-24T11:06:00Z",
-      "UpdatedAt": "2026-09-24T11:06:00Z",
+      "UpdatedAt": "2026-09-24T11:15:30Z",
       "Spec": {
         "Name": "shop_api",
         "Labels": {
@@ -101,8 +101,8 @@
       "Version": {
         "Index": 5041
       },
-      "CreatedAt": "2026-09-24T11:16:00Z",
-      "UpdatedAt": "2026-09-24T11:16:01Z",
+      "CreatedAt": "2026-09-24T11:06:00Z",
+      "UpdatedAt": "2026-09-24T11:16:31Z",
       "Labels": {},
       "Spec": {
         "ContainerSpec": {
@@ -117,7 +117,7 @@
       "Slot": 1,
       "NodeID": "node-1",
       "Status": {
-        "Timestamp": "2026-09-24T11:16:01Z",
+        "Timestamp": "2026-09-24T11:06:01Z",
         "State": "running",
         "Message": "started",
         "ContainerStatus": {
@@ -162,8 +162,8 @@
       "Version": {
         "Index": 5055
       },
-      "CreatedAt": "2026-09-24T11:16:00Z",
-      "UpdatedAt": "2026-09-24T11:16:01Z",
+      "CreatedAt": "2026-09-24T11:06:00Z",
+      "UpdatedAt": "2026-09-24T11:06:01Z",
       "Labels": {},
       "Spec": {
         "ContainerSpec": {
@@ -178,7 +178,7 @@
       "Slot": 2,
       "NodeID": "node-1",
       "Status": {
-        "Timestamp": "2026-09-24T11:16:01Z",
+        "Timestamp": "2026-09-24T11:06:01Z",
         "State": "running",
         "Message": "started",
         "ContainerStatus": {
@@ -195,11 +195,12 @@
     "svc-api": {
       "running": 2,
       "desired": 2,
-      "upToDate": 1,
+      "upToDate": 0,
       "convergedRunning": 1,
       "completed": 0,
       "job": false,
-      "deadTask": false
+      "deadTask": false,
+      "rollingOut": true
     }
   }
 }
