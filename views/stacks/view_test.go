@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/require"
 )
@@ -294,4 +295,52 @@ func TestView_Toast_ShownThenExpires(t *testing.T) {
 	require.NotContains(t, out, "deployed")
 	require.Contains(t, out, "Stack 1 of")
 	require.Equal(t, "", m.toastMessage, "an expired toast is cleared")
+}
+
+// A stack with a converging service and none failing reads amber; one with a
+// failing service reads red even though another of its services converges.
+func TestView_ConvergingStackIsAmber(t *testing.T) {
+	trueColour(t)
+	one, two := uint64(1), uint64(2)
+	svc := func(id, stack string, replicas *uint64) swarm.Service {
+		return swarm.Service{ID: id, Spec: swarm.ServiceSpec{
+			Annotations: swarm.Annotations{Name: id, Labels: map[string]string{"com.docker.stack.namespace": stack}},
+			Mode:        swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: replicas}},
+		}}
+	}
+	task := func(svcID string, slot int, state swarm.TaskState, errText string) swarm.Task {
+		return swarm.Task{ServiceID: svcID, Slot: slot, NodeID: "n1", DesiredState: swarm.TaskStateRunning,
+			Meta:   swarm.Meta{CreatedAt: time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)},
+			Status: swarm.TaskStatus{State: state, Err: errText}}
+	}
+	snap := &docker.SwarmSnapshot{
+		Nodes: []swarm.Node{{ID: "n1", Status: swarm.NodeStatus{State: swarm.NodeStateReady}}},
+		Services: []swarm.Service{
+			svc("calm_web", "calm", &one),
+			svc("rolling_api", "rolling", &two),
+			svc("broken_api", "broken", &two), svc("broken_bad", "broken", &one),
+		},
+		Tasks: []swarm.Task{
+			task("calm_web", 1, swarm.TaskStateRunning, ""),
+			task("rolling_api", 1, swarm.TaskStateRunning, ""),
+			task("rolling_api", 2, swarm.TaskStateStarting, ""),
+			task("broken_api", 1, swarm.TaskStateStarting, ""),
+			task("broken_bad", 1, swarm.TaskStateFailed, "task: non-zero exit (1)"),
+		},
+	}
+	m := stacksModelWithSnapshot(snap)
+	loadStacks(m, fakeStacks("calm", "rolling", "broken"))
+	m.List.Viewport.Width = 120
+
+	want := map[string]lipgloss.Color{"calm": "117", "rolling": "3", "broken": "9"}
+	for _, s := range m.List.Filtered {
+		require.Equal(t, fgSeq(want[s.Name]), rowTint(t, m.List.RenderItem(s, false, 0), s.Name), s.Name)
+	}
+	require.True(t, m.stackConverging["rolling"])
+	require.False(t, m.stackConverging["broken"], "failing wins over converging")
+	require.True(t, m.HasWarnings())
+}
+
+func TestHasWarnings_Default(t *testing.T) {
+	require.False(t, testModel().HasWarnings())
 }

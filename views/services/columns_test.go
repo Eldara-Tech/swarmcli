@@ -7,14 +7,17 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	"github.com/Eldara-Tech/swarmcli/v2/features"
+	"github.com/Eldara-Tech/swarmcli/v2/ui"
 	filterlist "github.com/Eldara-Tech/swarmcli/v2/ui/components/filterable/list"
 	"github.com/Eldara-Tech/swarmcli/v2/views/view"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/muesli/termenv"
 	"github.com/stretchr/testify/require"
 )
@@ -479,4 +482,60 @@ func TestWideTerminalFillsTheColumnsAnOperatorReads(t *testing.T) {
 		at, _ := colWidth(t, m, label, natural)
 		require.Greater(t, wide, at, "%s must take a share of the leftover", label)
 	}
+}
+
+// convergingSnapshot has one service of each verdict on one ready node: web runs
+// its one replica, api runs one of two with the other starting, and bad has a
+// failed attempt nothing has since undone while also running short.
+func convergingSnapshot() *docker.SwarmSnapshot {
+	one, two := uint64(1), uint64(2)
+	svc := func(id string, replicas *uint64) swarm.Service {
+		return swarm.Service{ID: id, Spec: swarm.ServiceSpec{
+			Annotations: swarm.Annotations{Name: id},
+			Mode:        swarm.ServiceMode{Replicated: &swarm.ReplicatedService{Replicas: replicas}},
+		}}
+	}
+	task := func(svcID string, slot int, state swarm.TaskState, errText string) swarm.Task {
+		return swarm.Task{ServiceID: svcID, Slot: slot, NodeID: "n1", DesiredState: swarm.TaskStateRunning,
+			Meta:   swarm.Meta{CreatedAt: time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)},
+			Status: swarm.TaskStatus{State: state, Err: errText}}
+	}
+	return &docker.SwarmSnapshot{
+		Nodes:    []swarm.Node{{ID: "n1", Status: swarm.NodeStatus{State: swarm.NodeStateReady}}},
+		Services: []swarm.Service{svc("id-web", &one), svc("id-api", &two), svc("id-bad", &two)},
+		Tasks: []swarm.Task{
+			task("id-web", 1, swarm.TaskStateRunning, ""),
+			task("id-api", 1, swarm.TaskStateRunning, ""),
+			task("id-api", 2, swarm.TaskStateStarting, ""),
+			task("id-bad", 1, swarm.TaskStateRunning, ""),
+			task("id-bad", 2, swarm.TaskStateFailed, "task: non-zero exit (1)"),
+		},
+	}
+}
+
+// A converging service reads amber, a failing one red whether or not it is also
+// short, and the cursor's highlight still wins over both.
+func TestRowStyle_ConvergingServiceIsAmber(t *testing.T) {
+	trueColour(t)
+	snap := convergingSnapshot()
+	m := testModel(func(m *Model) {
+		m.deps.Snapshot = &mockSnapshotOps{getSnapshotFn: func() *docker.SwarmSnapshot { return snap }}
+	})
+	loadWithFilter(m, AllFilter, fakeEntries("web", "api", "bad"))
+
+	for _, e := range m.List.Filtered {
+		out := m.List.RenderItem(e, false, 0)
+		want := map[string]lipgloss.Color{"web": "117", "api": "3", "bad": "9"}[e.ServiceName]
+		require.Equal(t, fgSeq(want), rowTint(t, out, e.ServiceName), e.ServiceName)
+		require.Equal(t, sgrPrefix.FindString(ui.ListSelectedStyle.Render("x")),
+			rowTint(t, m.List.RenderItem(e, true, 0), e.ServiceName), "under cursor: %s", e.ServiceName)
+	}
+	require.True(t, m.HasWarnings())
+	require.True(t, m.HasErrors())
+
+	m.ApplySearchQuery("web")
+	require.False(t, m.HasWarnings(), "a converging service filtered out of view must not turn the logo amber")
+	m.ApplySearchQuery("api")
+	require.True(t, m.HasWarnings())
+	require.False(t, m.HasErrors())
 }

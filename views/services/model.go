@@ -71,6 +71,8 @@ type Model struct {
 	serviceTasks     map[string][]docker.TaskEntry // cached tasks per service
 	// serviceHasError marks if a service has a running task with an error
 	serviceHasError map[string]bool
+	// serviceConverging marks a service that is converging and not failing
+	serviceConverging map[string]bool
 	// serviceErrorText stores a representative error text per service
 	serviceErrorText map[string]string
 
@@ -99,6 +101,7 @@ func New(width, height int) *Model {
 		expandedServices:  make(map[string]bool),
 		serviceTasks:      make(map[string][]docker.TaskEntry),
 		serviceHasError:   make(map[string]bool),
+		serviceConverging: make(map[string]bool),
 		serviceErrorText:  make(map[string]string),
 		selectedTaskIndex: -1,
 		sortField:         SortByName,
@@ -208,6 +211,17 @@ func (m *Model) HasErrors() bool {
 	// Only check errors for services that are actually in the current view
 	for _, svc := range m.List.Filtered {
 		if m.serviceHasError[svc.ServiceID] {
+			return true
+		}
+	}
+	return false
+}
+
+// HasWarnings reports whether any service in the current filtered list is
+// converging, which turns the logo amber when nothing is failing.
+func (m *Model) HasWarnings() bool {
+	for _, svc := range m.List.Filtered {
+		if m.serviceConverging[svc.ServiceID] {
 			return true
 		}
 	}

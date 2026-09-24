@@ -42,13 +42,17 @@ func (m *Model) View() string {
 
 	systemInfo := m.systemInfo.View()
 
-	// Check if current view has errors for logo color
+	// Check if current view has errors or warnings for logo color
 	hasError := m.currentView.HasErrors()
+	hasWarning := false
+	if w, ok := m.currentView.(view.Warner); ok {
+		hasWarning = w.HasWarnings()
+	}
 
 	help := helpbar.New(m.viewport.Width, systeminfoview.Height).
 		WithGlobalHelp(m.globalHelpEntries()).
 		WithViewHelp(m.currentView.ShortHelpItems()).
-		View(systemInfo, hasError)
+		View(systemInfo, hasError, hasWarning)
 
 	// Subtract help bar and stack bar from the viewport height so the frame
 	// fits between the chrome elements.

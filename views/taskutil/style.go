@@ -13,6 +13,11 @@ import (
 var (
 	taskFailedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	taskStoppedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+
+	// ConvergingStyle tints a service or stack row that is converging and not
+	// failing (see AssessSwarm): the yellow a starting task already gets, so a
+	// row and the tasks beneath it say the same thing.
+	ConvergingStyle = taskStoppedStyle
 )
 
 // TaskRowStyle tints one task row by what the row is telling the operator, and

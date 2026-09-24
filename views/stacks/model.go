@@ -67,6 +67,8 @@ type Model struct {
 	stackHasError map[string]bool
 	// stackErrorText stores a representative error text for the stack (first found)
 	stackErrorText map[string]string
+	// stackConverging marks a stack with a converging service and no error
+	stackConverging map[string]bool
 	// selectedTaskIndex when navigating tasks within an expanded stack
 	selectedTaskIndex int
 	// errorScrollOffset for horizontal scrolling of error messages
@@ -126,6 +128,7 @@ func New(width, height int) *Model {
 		stackTasks:        make(map[string][]docker.TaskEntry),
 		stackHasError:     make(map[string]bool),
 		stackErrorText:    make(map[string]string),
+		stackConverging:   make(map[string]bool),
 		selectedTaskIndex: -1,
 		createDialogStep:  "source",
 		createStackSource: "file",
@@ -382,6 +385,17 @@ func (m *Model) CapturesInput() bool {
 func (m *Model) HasErrors() bool {
 	for _, hasErr := range m.stackHasError {
 		if hasErr {
+			return true
+		}
+	}
+	return false
+}
+
+// HasWarnings returns true if any stack is converging, which turns the logo
+// amber when nothing is failing.
+func (m *Model) HasWarnings() bool {
+	for _, converging := range m.stackConverging {
+		if converging {
 			return true
 		}
 	}

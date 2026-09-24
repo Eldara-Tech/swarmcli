@@ -1286,6 +1286,9 @@ func (m *Model) setStacks(stacks []docker.StackEntry) {
 	for k := range m.stackErrorText {
 		delete(m.stackErrorText, k)
 	}
+	for k := range m.stackConverging {
+		delete(m.stackConverging, k)
+	}
 
 	snap := m.deps.Snapshot.GetSnapshot()
 	if snap != nil {
@@ -1316,6 +1319,13 @@ func (m *Model) setStacks(stacks []docker.StackEntry) {
 			}
 			m.stackHasError[stackName] = true
 			m.stackErrorText[stackName] = errMsg
+		}
+
+		// A stack is converging when one of its services is and none fails.
+		for _, r := range taskutil.AssessSwarm(snap).Converging {
+			if stackName := svcToStack[r.ID]; stackName != "" && !m.stackHasError[stackName] {
+				m.stackConverging[stackName] = true
+			}
 		}
 	}
 
@@ -1460,6 +1470,8 @@ func (m *Model) setRenderItem() {
 		var baseStyle = itemStyle
 		if stackHasError {
 			baseStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+		} else if m.stackConverging[s.Name] {
+			baseStyle = taskutil.ConvergingStyle
 		}
 
 		line := baseStyle.Render(fmt.Sprintf(" %-*.*s%-*.*s%-*.*s%-*.*s",
