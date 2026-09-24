@@ -1,0 +1,262 @@
+{
+  "description": "Swarm-reported state decides: down, disconnected and unknown are flagged; ready is not, and neither is a node with no state. Availability (drain, pause) is the operator's choice and never flagged on its own.",
+  "nodes": [
+    {
+      "ID": "node-1",
+      "Version": {
+        "Index": 5419
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "worker",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "ready",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.1"
+      }
+    },
+    {
+      "ID": "node-2",
+      "Version": {
+        "Index": 5426
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "worker",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "down",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "down",
+        "Addr": "10.0.0.2"
+      }
+    },
+    {
+      "ID": "node-3",
+      "Version": {
+        "Index": 5433
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "worker",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "disconnected",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "disconnected",
+        "Addr": "10.0.0.3"
+      }
+    },
+    {
+      "ID": "node-4",
+      "Version": {
+        "Index": 5440
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "worker",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "unknown",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "unknown",
+        "Addr": "10.0.0.4"
+      }
+    },
+    {
+      "ID": "node-5",
+      "Version": {
+        "Index": 5447
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "worker",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "no-state",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "Addr": "10.0.0.5"
+      }
+    },
+    {
+      "ID": "node-6",
+      "Version": {
+        "Index": 5454
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "worker",
+        "Availability": "drain"
+      },
+      "Description": {
+        "Hostname": "drained",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.6"
+      }
+    },
+    {
+      "ID": "node-7",
+      "Version": {
+        "Index": 5461
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "worker",
+        "Availability": "pause"
+      },
+      "Description": {
+        "Hostname": "paused",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.7"
+      }
+    },
+    {
+      "ID": "node-8",
+      "Version": {
+        "Index": 5468
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "worker",
+        "Availability": "drain"
+      },
+      "Description": {
+        "Hostname": "down-and-drained",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "down",
+        "Addr": "10.0.0.8"
+      }
+    }
+  ],
+  "expect": {
+    "node-1": false,
+    "node-2": true,
+    "node-3": true,
+    "node-4": true,
+    "node-5": false,
+    "node-6": false,
+    "node-7": false,
+    "node-8": true
+  }
+}

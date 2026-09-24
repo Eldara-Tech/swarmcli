@@ -1,0 +1,142 @@
+{
+  "description": "A task that ran to completion is a sign of life: svc-init failed once and then completed, so it is fine. svc-migrate completed once and then failed, so it is failing.",
+  "tasks": [
+    {
+      "ID": "init-1",
+      "Version": {
+        "Index": 4901
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-init",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "c8aa414b2da301fa730236c57efcc25ad730ad1382e70f7715d4e435e1a0c1c1",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "init-2",
+      "Version": {
+        "Index": 4908
+      },
+      "CreatedAt": "2026-09-24T11:16:20Z",
+      "UpdatedAt": "2026-09-24T11:16:21Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-init",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:21Z",
+        "State": "complete",
+        "Message": "finished",
+        "ContainerStatus": {
+          "ContainerID": "146a188d6cefd14532294a94e140b1cdfc7d0b0725c70f8e6c64fa08f897def4",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "mig-1",
+      "Version": {
+        "Index": 4915
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-migrate",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:11Z",
+        "State": "complete",
+        "Message": "finished",
+        "ContainerStatus": {
+          "ContainerID": "be21995e9bde323791d0e984f1dd4d57037484109cb42eaa9decd1b9d57e852d",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "mig-2",
+      "Version": {
+        "Index": 4922
+      },
+      "CreatedAt": "2026-09-24T11:16:20Z",
+      "UpdatedAt": "2026-09-24T11:16:21Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-migrate",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:21Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "0942b46723dc8770fa99e4f7f6e8add90ff731f2afeb6e434de0b2e4bbe4ad53",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    }
+  ],
+  "expect": {
+    "svc-migrate": "task: non-zero exit (1)"
+  }
+}

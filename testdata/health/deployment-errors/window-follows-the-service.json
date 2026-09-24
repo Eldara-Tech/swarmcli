@@ -1,0 +1,142 @@
+{
+  "description": "Only failures within 5 minutes of the service's own newest task count. svc-old failed, then a newer task in another slot came up 6 minutes later, so the failure is stale. svc-quiet failed long ago and nothing of it ran since; its newest task is the failure itself, so it is still reported however new svc-busy's tasks are.",
+  "tasks": [
+    {
+      "ID": "old-1",
+      "Version": {
+        "Index": 4705
+      },
+      "CreatedAt": "2026-09-24T11:16:00Z",
+      "UpdatedAt": "2026-09-24T11:16:02Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-old",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:02Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "6e99d1912563f14121e4e99a14ea65fb569e718a9c12c284f3ef8dcc8f11122a",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "old-2",
+      "Version": {
+        "Index": 4712
+      },
+      "CreatedAt": "2026-09-24T11:22:00Z",
+      "UpdatedAt": "2026-09-24T11:22:01Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-old",
+      "Slot": 2,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:22:01Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "feaedce15852eb933efa35dd212ff9cdb0986ee029d2426f217175d980c2e72c",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "quiet-1",
+      "Version": {
+        "Index": 4719
+      },
+      "CreatedAt": "2026-09-23T11:16:00Z",
+      "UpdatedAt": "2026-09-23T11:16:02Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-quiet",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-23T11:16:02Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "d5416878714c5e105a05db3e476811c7b6ad06ac15179343c8dc09eff2154c24",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "busy-1",
+      "Version": {
+        "Index": 4726
+      },
+      "CreatedAt": "2026-09-24T12:16:00Z",
+      "UpdatedAt": "2026-09-24T12:16:01Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-busy",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T12:16:01Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "f8aceaf9b30ece160b43ee77373b68e4eaacb5a62256dcb24189b3b790975f4e",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    }
+  ],
+  "expect": {
+    "svc-quiet": "task: non-zero exit (1)"
+  }
+}

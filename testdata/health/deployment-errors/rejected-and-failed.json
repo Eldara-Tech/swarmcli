@@ -1,0 +1,212 @@
+{
+  "description": "Rejected counts like Failed. The reported text is Status.Err, or 'task <state>' when the daemon recorded none. Err on any other state counts too; an orphaned task without Err does not.",
+  "tasks": [
+    {
+      "ID": "rej-1",
+      "Version": {
+        "Index": 4775
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:10.2Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-rejected",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:10.2Z",
+        "State": "rejected",
+        "Message": "preparing",
+        "Err": "invalid mount config for type \"bind\": bind source path does not exist: /data",
+        "ContainerStatus": {
+          "ContainerID": "",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "rej-2",
+      "Version": {
+        "Index": 4782
+      },
+      "CreatedAt": "2026-09-24T11:16:15Z",
+      "UpdatedAt": "2026-09-24T11:16:15.2Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-rejected",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:15.2Z",
+        "State": "rejected",
+        "Message": "preparing",
+        "Err": "invalid mount config for type \"bind\": bind source path does not exist: /data",
+        "ContainerStatus": {
+          "ContainerID": "",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "ready"
+    },
+    {
+      "ID": "fail-1",
+      "Version": {
+        "Index": 4789
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:12Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-failed-bare",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:12Z",
+        "State": "failed",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "d108618f13d03bd1fe3b6c0d712235e3bbfc8ccc2e5ae20af46cd4a2ad475d4e",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "rjb-1",
+      "Version": {
+        "Index": 4796
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:10.2Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-rejected-bare",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:10.2Z",
+        "State": "rejected",
+        "Message": "preparing",
+        "ContainerStatus": {
+          "ContainerID": "",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "shd-1",
+      "Version": {
+        "Index": 4803
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:12Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-shutdown-err",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:12Z",
+        "State": "shutdown",
+        "Message": "shutdown",
+        "Err": "starting container failed: No such image: redis:9",
+        "ContainerStatus": {
+          "ContainerID": "01f7f06a91fcce77b6c80a84c1998dc52daa4d06371b6a02e34b7c89d7d0e76a",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "orp-1",
+      "Version": {
+        "Index": 4810
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:12Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-orphaned",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:12Z",
+        "State": "orphaned",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "e2b7cf745e8e4385d2b4e36a9fba87f187e4cd9f0da60d83572d39395b822076",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    }
+  ],
+  "expect": {
+    "svc-rejected": "invalid mount config for type \"bind\": bind source path does not exist: /data",
+    "svc-failed-bare": "task failed",
+    "svc-rejected-bare": "task rejected",
+    "svc-shutdown-err": "starting container failed: No such image: redis:9"
+  }
+}

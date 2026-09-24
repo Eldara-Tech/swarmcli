@@ -1,0 +1,5 @@
+{
+  "description": "No tasks at all: nothing is failing.",
+  "tasks": [],
+  "expect": {}
+}

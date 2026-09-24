@@ -1,0 +1,257 @@
+{
+  "description": "A manager its peers cannot reach is flagged even while its own state reads ready. The leader is shown as Leader whatever its reachability field says, so it is never flagged by reachability; a reachability of unknown is not flagged either.",
+  "nodes": [
+    {
+      "ID": "node-1",
+      "Version": {
+        "Index": 5475
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "leader",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.1"
+      },
+      "ManagerStatus": {
+        "Leader": true,
+        "Reachability": "reachable",
+        "Addr": "10.0.0.1:2377"
+      }
+    },
+    {
+      "ID": "node-2",
+      "Version": {
+        "Index": 5482
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "reachable",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.2"
+      },
+      "ManagerStatus": {
+        "Reachability": "reachable",
+        "Addr": "10.0.0.2:2377"
+      }
+    },
+    {
+      "ID": "node-3",
+      "Version": {
+        "Index": 5489
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "unreachable",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.3"
+      },
+      "ManagerStatus": {
+        "Reachability": "unreachable",
+        "Addr": "10.0.0.3:2377"
+      }
+    },
+    {
+      "ID": "node-4",
+      "Version": {
+        "Index": 5496
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "unreachable-and-down",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "down",
+        "Addr": "10.0.0.4"
+      },
+      "ManagerStatus": {
+        "Reachability": "unreachable",
+        "Addr": "10.0.0.4:2377"
+      }
+    },
+    {
+      "ID": "node-5",
+      "Version": {
+        "Index": 5503
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "leader-unreachable",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.5"
+      },
+      "ManagerStatus": {
+        "Leader": true,
+        "Reachability": "unreachable",
+        "Addr": "10.0.0.5:2377"
+      }
+    },
+    {
+      "ID": "node-6",
+      "Version": {
+        "Index": 5510
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "reachability-unknown",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.6"
+      },
+      "ManagerStatus": {
+        "Reachability": "unknown",
+        "Addr": "10.0.0.6:2377"
+      }
+    },
+    {
+      "ID": "node-7",
+      "Version": {
+        "Index": 5517
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "worker",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "worker",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.7"
+      }
+    }
+  ],
+  "expect": {
+    "node-1": false,
+    "node-2": false,
+    "node-3": true,
+    "node-4": true,
+    "node-5": false,
+    "node-6": false,
+    "node-7": false
+  }
+}

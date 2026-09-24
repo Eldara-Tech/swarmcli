@@ -1,0 +1,142 @@
+{
+  "description": "The window is inclusive and nanosecond-exact: a failure exactly 5 minutes older than the service's newest task still counts; one nanosecond older does not. A client that parses timestamps to microseconds gets this wrong.",
+  "tasks": [
+    {
+      "ID": "edge-1",
+      "Version": {
+        "Index": 4733
+      },
+      "CreatedAt": "2026-09-24T11:17:40.000000001Z",
+      "UpdatedAt": "2026-09-24T11:17:42Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-edge",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:17:42Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "df594d71a145abdc3d2b8d6c6fa910dd4bb21f63de731ecd11fe97b6ff6ce691",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "edge-2",
+      "Version": {
+        "Index": 4740
+      },
+      "CreatedAt": "2026-09-24T11:22:40.000000001Z",
+      "UpdatedAt": "2026-09-24T11:22:41Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-edge",
+      "Slot": 2,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:22:41Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "a5daf75309e66ad7df3c4d53c016403fc60f72e0d9f92900ba008306a818de64",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "past-1",
+      "Version": {
+        "Index": 4747
+      },
+      "CreatedAt": "2026-09-24T11:17:40.000000001Z",
+      "UpdatedAt": "2026-09-24T11:17:42Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-past",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:17:42Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "9b5bcc4e8146d338942034f2b5215169e1d66636588472a6175331c45f49f99e",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "past-2",
+      "Version": {
+        "Index": 4754
+      },
+      "CreatedAt": "2026-09-24T11:22:40.000000002Z",
+      "UpdatedAt": "2026-09-24T11:22:41Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-past",
+      "Slot": 2,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:22:41Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "8e13c89bc9a50bf6d99f89ea71a1600c9b5bb2a316296e79a41e94c8a1586e16",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    }
+  ],
+  "expect": {
+    "svc-edge": "task: non-zero exit (1)"
+  }
+}

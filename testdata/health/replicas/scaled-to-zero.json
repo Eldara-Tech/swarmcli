@@ -1,0 +1,139 @@
+{
+  "description": "A service scaled to 0 wants nothing; its last task was shut down.",
+  "nodes": [
+    {
+      "ID": "node-1",
+      "Version": {
+        "Index": 4985
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "manager-1",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.1"
+      },
+      "ManagerStatus": {
+        "Leader": true,
+        "Reachability": "reachable",
+        "Addr": "10.0.0.1:2377"
+      }
+    }
+  ],
+  "services": [
+    {
+      "ID": "svc-idle",
+      "Version": {
+        "Index": 5377
+      },
+      "CreatedAt": "2026-09-24T11:06:00Z",
+      "UpdatedAt": "2026-09-24T11:06:00Z",
+      "Spec": {
+        "Name": "shop_idle",
+        "Labels": {
+          "com.docker.stack.image": "redis:7.4-alpine",
+          "com.docker.stack.namespace": "shop"
+        },
+        "TaskTemplate": {
+          "ContainerSpec": {
+            "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+            "Labels": {
+              "com.docker.stack.namespace": "shop"
+            },
+            "Args": [
+              "sh",
+              "-c",
+              "sleep 100000"
+            ],
+            "Privileges": {
+              "CredentialSpec": null,
+              "SELinuxContext": null,
+              "NoNewPrivileges": false
+            },
+            "Isolation": "default"
+          },
+          "Resources": {},
+          "ForceUpdate": 0,
+          "Runtime": "container"
+        },
+        "Mode": {
+          "Replicated": {
+            "Replicas": 0
+          }
+        },
+        "EndpointSpec": {
+          "Mode": "vip"
+        }
+      },
+      "Endpoint": {
+        "Spec": {
+          "Mode": "vip"
+        }
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "ID": "idle-1",
+      "Version": {
+        "Index": 5384
+      },
+      "CreatedAt": "2026-09-24T11:16:10Z",
+      "UpdatedAt": "2026-09-24T11:16:20Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-idle",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:20Z",
+        "State": "shutdown",
+        "Message": "shutdown",
+        "ContainerStatus": {
+          "ContainerID": "d969c3c5f9220ec93b2350db636dc02703c7f5fac7200770858f884edc3646e9",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    }
+  ],
+  "expect": {
+    "svc-idle": {
+      "running": 0,
+      "desired": 0,
+      "upToDate": 0,
+      "convergedRunning": 0,
+      "completed": 0,
+      "job": false,
+      "deadTask": false
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "description": "Without CreatedAt a task is ordered by Status.Timestamp. The failure's timestamp is newer than the running task's, so the slot is failing.",
+  "tasks": [
+    {
+      "ID": "mca-1",
+      "Version": {
+        "Index": 4957
+      },
+      "UpdatedAt": "2026-09-24T11:16:10Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-mca",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:10Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "53920a9d6b36ac88497d820333ab282818f497b5f2131c2d51925d63ae63195d",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "mca-2",
+      "Version": {
+        "Index": 4964
+      },
+      "UpdatedAt": "2026-09-24T11:16:20Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-mca",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T11:16:20Z",
+        "State": "failed",
+        "Message": "started",
+        "Err": "task: non-zero exit (1)",
+        "ContainerStatus": {
+          "ContainerID": "bc2de19236183b68e7df837b7f93f0f10895ed209aeea4f5e29db395601bf6cb",
+          "PID": 0,
+          "ExitCode": 1
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    }
+  ],
+  "expect": {
+    "svc-mca": "task: non-zero exit (1)"
+  }
+}
