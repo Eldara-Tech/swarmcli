@@ -10,12 +10,17 @@ import (
 	"github.com/docker/docker/api/types/swarm"
 )
 
-// getServiceMode returns "replicated" or "global"
+// getServiceMode returns the mode as `docker service ls` names it.
 func getServiceMode(svc swarm.Service) string {
-	if svc.Spec.Mode.Replicated != nil {
+	switch {
+	case svc.Spec.Mode.Replicated != nil:
 		return "replicated"
-	} else if svc.Spec.Mode.Global != nil {
+	case svc.Spec.Mode.Global != nil:
 		return "global"
+	case svc.Spec.Mode.ReplicatedJob != nil:
+		return "replicated job"
+	case svc.Spec.Mode.GlobalJob != nil:
+		return "global job"
 	}
 	return "-"
 }

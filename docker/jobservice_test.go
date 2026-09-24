@@ -12,8 +12,8 @@ import (
 )
 
 // jobSvc is svcInStack with a restart policy that declines to restart a task
-// after a clean exit — the only way a compose v3 stack can express a one-shot
-// step, since `docker stack deploy` cannot render mode: replicated-job.
+// after a clean exit — the shape charts have long given a one-shot step, beside
+// swarm's native job modes.
 func jobSvc(id, stack string, cond swarm.RestartPolicyCondition) swarm.Service {
 	svc := svcInStack(id, stack)
 	svc.Spec.TaskTemplate.RestartPolicy = &swarm.RestartPolicy{Condition: cond}
@@ -36,6 +36,11 @@ func TestIsJobServiceRecognisesOnlyNonRestartingPolicies(t *testing.T) {
 	require.False(t, isJobService(jobSvc("api", "s", swarm.RestartPolicyConditionAny)))
 	require.True(t, isJobService(jobSvc("init", "s", swarm.RestartPolicyConditionNone)))
 	require.True(t, isJobService(jobSvc("init", "s", swarm.RestartPolicyConditionOnFailure)))
+	job := svcInStack("batch", "s")
+	job.Spec.Mode = swarm.ServiceMode{ReplicatedJob: &swarm.ReplicatedJob{}}
+	require.True(t, isJobService(job), "swarm's native job modes need no restart policy")
+	job.Spec.Mode = swarm.ServiceMode{GlobalJob: &swarm.GlobalJob{}}
+	require.True(t, isJobService(job))
 }
 
 // The bug in #443: swarm sets DesiredState=shutdown once a job's task exits, so
@@ -192,4 +197,16 @@ func TestStackConvergenceDoesNotBuryARetryableFailure(t *testing.T) {
 	require.Len(t, conv, 1)
 	require.True(t, conv[0].Job, "on-failure is still a job")
 	require.False(t, conv[0].DeadTask, "swarm will create a replacement, so nothing is settled yet")
+}
+
+// A global job runs once on every eligible node, so that is its target — not
+// the 1 an unknown mode used to fall back to (issue #666).
+func TestStackConvergenceTargetsAGlobalJobPerNode(t *testing.T) {
+	svc := svcInStack("sweep", "s")
+	svc.Spec.Mode = swarm.ServiceMode{GlobalJob: &swarm.GlobalJob{}}
+	snap := &SwarmSnapshot{Nodes: []swarm.Node{readyNode("n1"), readyNode("n2")}, Services: []swarm.Service{svc}}
+
+	conv := snap.StackConvergence("s")
+	require.Len(t, conv, 1)
+	require.Equal(t, 2, conv[0].Desired)
 }

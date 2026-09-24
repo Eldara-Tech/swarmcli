@@ -1,0 +1,136 @@
+{
+  "description": "Swarm's native global-job mode, captured from a live swarm: one task per eligible node, carrying DesiredState complete and the JobIteration it ran in. The target is the eligible node count, and the finished task counts towards it.",
+  "nodes": [
+    {
+      "ID": "node-1",
+      "Version": {
+        "Index": 4985
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "manager-1",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.1"
+      },
+      "ManagerStatus": {
+        "Leader": true,
+        "Reachability": "reachable",
+        "Addr": "10.0.0.1:2377"
+      }
+    }
+  ],
+  "services": [
+    {
+      "ID": "svc-sweep",
+      "Version": {
+        "Index": 6424
+      },
+      "CreatedAt": "2026-09-24T13:09:08.212442026Z",
+      "UpdatedAt": "2026-09-24T13:09:08.212442026Z",
+      "Spec": {
+        "Name": "shop_sweep",
+        "Labels": {
+          "com.docker.stack.namespace": "shop"
+        },
+        "TaskTemplate": {
+          "ContainerSpec": {
+            "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+            "Labels": {
+              "com.docker.stack.namespace": "shop"
+            },
+            "Args": [
+              "sh",
+              "-c",
+              "sleep 2"
+            ],
+            "Isolation": "default"
+          },
+          "Resources": {
+            "Limits": {},
+            "Reservations": {}
+          },
+          "ForceUpdate": 0,
+          "Runtime": "container"
+        },
+        "Mode": {
+          "GlobalJob": {}
+        },
+        "EndpointSpec": {
+          "Mode": "vip"
+        }
+      },
+      "Endpoint": {
+        "Spec": {}
+      },
+      "JobStatus": {
+        "JobIteration": {},
+        "LastExecution": "2026-09-24T13:09:08.212414735Z"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "ID": "sweep-1",
+      "Version": {
+        "Index": 6435
+      },
+      "CreatedAt": "2026-09-24T13:09:08.213370406Z",
+      "UpdatedAt": "2026-09-24T13:09:10.546082195Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          }
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-sweep",
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-09-24T13:09:10.483608649Z",
+        "State": "complete",
+        "Message": "finished",
+        "ContainerStatus": {
+          "ContainerID": "069147e4894729827bc1ff0cbdc0ca2192c1e0807beba7b04af6e2546770b23d",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "complete",
+      "JobIteration": {}
+    }
+  ],
+  "expect": {
+    "svc-sweep": {
+      "running": 0,
+      "desired": 1,
+      "upToDate": 0,
+      "convergedRunning": 0,
+      "completed": 1,
+      "job": true,
+      "deadTask": false
+    }
+  }
+}

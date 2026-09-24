@@ -140,6 +140,42 @@ func TestServiceStatesFromReportsAFinishedJobAsCompleted(t *testing.T) {
 	require.Equal(t, PhaseConverged, Rollup(states).Phase, "and the release is converged, not degraded")
 }
 
+// A native job's ratio is its progress, completions against TotalCompletions,
+// and it reads "completed" only once every completion is in (issue #666).
+func TestServiceStatesFromReportsNativeJobProgress(t *testing.T) {
+	total, maxConc := uint64(3), uint64(1)
+	svc := stackService("batch", "mystack", 1)
+	svc.Spec.Mode = swarm.ServiceMode{ReplicatedJob: &swarm.ReplicatedJob{MaxConcurrent: &maxConc, TotalCompletions: &total}}
+	svc.JobStatus = &swarm.JobStatus{}
+	task := func(slot int, state swarm.TaskState) swarm.Task {
+		return swarm.Task{
+			ServiceID: "batch", NodeID: "n1", Slot: slot,
+			Meta:         swarm.Meta{CreatedAt: time.Now().Add(-time.Hour)},
+			DesiredState: swarm.TaskStateComplete,
+			Status:       swarm.TaskStatus{State: state},
+			JobIteration: &swarm.Version{},
+		}
+	}
+	snap := &docker.SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{svc},
+		Tasks:    []swarm.Task{task(0, swarm.TaskStateComplete), task(1, swarm.TaskStateRunning)},
+	}
+
+	states := ServiceStatesFrom(snap, "mystack")
+	require.Len(t, states, 1)
+	require.Equal(t, "replicated job", states[0].Mode)
+	require.Equal(t, "1/3", states[0].Replicas)
+	require.Equal(t, "active", states[0].Status)
+	require.Equal(t, PhaseProgressing, Rollup(states).Phase)
+
+	snap.Tasks = []swarm.Task{task(0, swarm.TaskStateComplete), task(1, swarm.TaskStateComplete), task(2, swarm.TaskStateComplete)}
+	states = ServiceStatesFrom(snap, "mystack")
+	require.Equal(t, "3/3", states[0].Replicas)
+	require.Equal(t, "completed", states[0].Status)
+	require.Equal(t, PhaseConverged, Rollup(states).Phase)
+}
+
 // A snapshot holding several stacks answers about one of them.
 func TestServiceStatesFromIsScopedToTheStack(t *testing.T) {
 	snap := &docker.SwarmSnapshot{

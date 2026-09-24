@@ -195,6 +195,7 @@ func ServiceStatesFrom(snap *docker.SwarmSnapshot, name string) []ServiceState {
 			st.Desired = c.Desired
 			st.Completed = c.Completed
 			st.Job = c.Job
+			st.NativeJob = c.NativeJob
 			st.UpdateState = c.UpdateState
 			st.Monitor = c.Monitor
 			st.NewestTaskAge = c.NewestTaskAge
@@ -204,7 +205,15 @@ func ServiceStatesFrom(snap *docker.SwarmSnapshot, name string) []ServiceState {
 			// from ServiceEntry reads 0/N and the release looks degraded when
 			// it is complete. Count the completed tasks toward the target and
 			// say so in the status column (issue #443).
-			if c.Job && c.Completed > 0 {
+			switch {
+			// A native job's ratio is its progress, as `docker service ls`
+			// shows it: completions against the target.
+			case c.NativeJob:
+				st.Replicas = fmt.Sprintf("%d/%d", c.Completed, c.Desired)
+				if c.Completed >= c.Desired {
+					st.Status = "completed"
+				}
+			case c.Job && c.Completed > 0:
 				st.Replicas = fmt.Sprintf("%d/%d", c.Running+c.Completed, c.Desired)
 				st.Status = "completed"
 			}
