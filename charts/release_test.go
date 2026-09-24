@@ -749,6 +749,18 @@ func TestConvergenceAcceptsACompletedJob(t *testing.T) {
 	require.Equal(t, PhaseProgressing, phaseOf(ServiceState{Running: 0, Completed: 0, Desired: 1, Job: true, Status: "active", NewestTaskAge: stableAge}))
 }
 
+// A native job (replicated-job, global-job) targets completions, so a running
+// task is progress, not arrival: --wait holds until the job has finished
+// (issue #666).
+func TestConvergenceWaitsForANativeJobToComplete(t *testing.T) {
+	running := ServiceState{Running: 1, Completed: 2, Desired: 3, Job: true, NativeJob: true, NewestTaskAge: stableAge}.Convergence()
+	require.Equal(t, PhaseProgressing, running.Phase, "the last task is still running")
+	require.Equal(t, "2/3 tasks completed", running.Reason)
+
+	done := ServiceState{Completed: 3, Desired: 3, Job: true, NativeJob: true, NewestTaskAge: stableAge}
+	require.Equal(t, PhaseConverged, phaseOf(done))
+}
+
 // A one-shot's task ends inside the monitor window by design, and swarmkit
 // counts any task leaving RUNNING there as an update failure with no exemption
 // for a restart policy of none. So the default failure_action leaves EVERY

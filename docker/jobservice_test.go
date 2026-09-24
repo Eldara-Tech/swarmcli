@@ -36,6 +36,11 @@ func TestIsJobServiceRecognisesOnlyNonRestartingPolicies(t *testing.T) {
 	require.False(t, isJobService(jobSvc("api", "s", swarm.RestartPolicyConditionAny)))
 	require.True(t, isJobService(jobSvc("init", "s", swarm.RestartPolicyConditionNone)))
 	require.True(t, isJobService(jobSvc("init", "s", swarm.RestartPolicyConditionOnFailure)))
+	job := svcInStack("batch", "s")
+	job.Spec.Mode = swarm.ServiceMode{ReplicatedJob: &swarm.ReplicatedJob{}}
+	require.True(t, isJobService(job), "swarm's native job modes need no restart policy")
+	job.Spec.Mode = swarm.ServiceMode{GlobalJob: &swarm.GlobalJob{}}
+	require.True(t, isJobService(job))
 }
 
 // The bug in #443: swarm sets DesiredState=shutdown once a job's task exits, so

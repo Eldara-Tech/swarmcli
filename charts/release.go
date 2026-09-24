@@ -60,6 +60,10 @@ type ServiceState struct {
 	// finished job reads as a service that never came up (issue #443).
 	Completed int
 	Job       bool
+	// NativeJob marks swarm's own job modes (replicated-job, global-job), whose
+	// Desired is a number of completions: a running task there is not yet done,
+	// so only Completed counts towards it (issue #666).
+	NativeJob bool
 	// UpdateState is swarm's UpdateStatus.State, empty when the service has
 	// never been updated. Empty means "no rollout has ever run" — NOT "the
 	// rollout finished", which is why a fresh install cannot rely on it.
@@ -1219,7 +1223,7 @@ func (s ServiceState) Convergence() Convergence {
 	// reads exactly the same. Reporting it as progressing spent the caller's
 	// whole timeout on a release that had already failed, and said "0/1 tasks
 	// running" rather than the exit status or the node's refusal (issue #651).
-	if s.DeadTask && s.Running+s.Completed < s.Desired {
+	if s.DeadTask && s.done() < s.Desired {
 		if s.DeadTaskReason != "" {
 			return Convergence{PhaseWedged, fmt.Sprintf("the one-shot task did not complete and swarm will not retry it: %s", s.DeadTaskReason)}
 		}
@@ -1234,7 +1238,7 @@ func (s ServiceState) Convergence() Convergence {
 	// exited 3 both leave the service "paused". Judge a job by its own task.
 	state := s.UpdateState
 	if s.Job && state == "paused" {
-		if up := s.Running + s.Completed; up < s.Desired {
+		if up := s.done(); up < s.Desired {
 			return Convergence{PhaseWedged, fmt.Sprintf("the one-shot task did not complete (%d/%d); swarm paused the rollout", up, s.Desired)}
 		}
 		// Not "converged" outright: the checks below still apply, and this is
@@ -1273,7 +1277,10 @@ func (s ServiceState) Convergence() Convergence {
 	// task would report a step that succeeded as one that never came up. A
 	// completed task fills its slot; a failed one ends in state Failed and is
 	// not counted, so a broken job still blocks (issue #443).
-	if up := s.Running + s.Completed; up < s.Desired {
+	if up := s.done(); up < s.Desired {
+		if s.NativeJob {
+			return Convergence{PhaseProgressing, fmt.Sprintf("%d/%d tasks completed", up, s.Desired)}
+		}
 		return Convergence{PhaseProgressing, fmt.Sprintf("%d/%d tasks running", up, s.Desired)}
 	}
 	// Parity is necessary but not sufficient: a task that starts and then dies
@@ -1284,6 +1291,15 @@ func (s ServiceState) Convergence() Convergence {
 		return Convergence{PhaseProgressing, fmt.Sprintf("%s of the stability window remains", left.Round(time.Millisecond))}
 	}
 	return Convergence{Phase: PhaseConverged}
+}
+
+// done counts the tasks that meet the target. A native job is done only when
+// its tasks complete; for anything else a running task has arrived.
+func (s ServiceState) done() int {
+	if s.NativeJob {
+		return s.Completed
+	}
+	return s.Running + s.Completed
 }
 
 // stabilityRemaining is how much of the monitor window this service still has

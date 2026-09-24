@@ -38,6 +38,12 @@ func TestGetServiceMode_Neither(t *testing.T) {
 	require.Equal(t, "-", getServiceMode(svc))
 }
 
+// Named as `docker service ls` names them.
+func TestGetServiceMode_Jobs(t *testing.T) {
+	require.Equal(t, "replicated job", getServiceMode(swarm.Service{Spec: swarm.ServiceSpec{Mode: swarm.ServiceMode{ReplicatedJob: &swarm.ReplicatedJob{}}}}))
+	require.Equal(t, "global job", getServiceMode(swarm.Service{Spec: swarm.ServiceSpec{Mode: swarm.ServiceMode{GlobalJob: &swarm.GlobalJob{}}}}))
+}
+
 func TestGetServiceImage_Basic(t *testing.T) {
 	svc := swarm.Service{
 		Spec: swarm.ServiceSpec{
