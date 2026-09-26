@@ -12,6 +12,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.11.8
+	github.com/containerd/errdefs v1.0.0
 	// Pinned, do not bump without reading Eldara-Tech/swarmcli#504. We import
 	// exactly one package from this module (cli/connhelper), but at v29 its
 	// cli/compose/convert moved to github.com/moby/moby's API types, which are
@@ -44,7 +45,6 @@ require (
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect

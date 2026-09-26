@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -651,8 +652,9 @@ func (e *Engine) Uninstall(ctx context.Context, release string, purgeVolumes boo
 			errs = append(errs, fmt.Errorf("listing volumes: %w", err))
 		} else {
 			for _, v := range vols {
-				if err := e.Backend.RemoveVolume(ctx, v); err != nil {
-					errs = append(errs, fmt.Errorf("removing volume '%s': %w", v, err))
+				if err := RemoveWhenReleased(ctx, volumeReleaseTimeout, volumeReleaseInterval,
+					func(ctx context.Context) error { return e.Backend.RemoveVolume(ctx, v) }); err != nil {
+					errs = append(errs, err)
 				}
 			}
 		}
@@ -669,6 +671,39 @@ func (e *Engine) Uninstall(ctx context.Context, release string, purgeVolumes boo
 		}
 	}
 	return result, errors.Join(errs...)
+}
+
+// How long Uninstall waits for one volume to be released by the containers of
+// the stack it has just removed, and how often it retries. Variables so a test
+// does not spend the real interval.
+var (
+	volumeReleaseTimeout  = 30 * time.Second
+	volumeReleaseInterval = 2 * time.Second
+)
+
+// RemoveWhenReleased calls remove until it stops failing with a conflict, which
+// is how the daemon refuses to delete a volume a container still references.
+//
+// `docker stack rm` returns once the services are deleted, while their
+// containers are still stopping, so a volume removed straight afterwards is
+// routinely still in use for up to the tasks' stop_grace_period. Any other error
+// is returned at once. A conflict that outlasts timeout is returned wrapped.
+func RemoveWhenReleased(ctx context.Context, timeout, interval time.Duration, remove func(context.Context) error) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		err := remove(ctx)
+		if err == nil || !cerrdefs.IsConflict(err) {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("still in use after %s: %w", timeout, err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
+	}
 }
 
 // orphanedManagedNetworks returns the sorted, de-duplicated set of networks
