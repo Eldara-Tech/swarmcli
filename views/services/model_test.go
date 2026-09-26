@@ -403,6 +403,16 @@ func TestKey_P_TogglesExpansion(t *testing.T) {
 	require.False(t, m.expandedServices["id-web"])
 }
 
+func TestKey_Enter_TogglesExpansion(t *testing.T) {
+	m := testModel()
+	loadServices(m, fakeEntries("web"))
+	cmd := m.Update(key("enter"))
+	require.True(t, m.expandedServices["id-web"])
+	require.NotNil(t, cmd) // fetches tasks
+	m.Update(key("enter"))
+	require.False(t, m.expandedServices["id-web"])
+}
+
 func TestKey_L_NavigatesToLogs(t *testing.T) {
 	m := testModel()
 	loadServices(m, fakeEntries("web"))

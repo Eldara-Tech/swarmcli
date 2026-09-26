@@ -142,7 +142,7 @@ func (m *Model) ShortHelpItems() []helpbar.HelpEntry {
 	return []helpbar.HelpEntry{
 		{Key: "i", Desc: "Inspect"},
 		{Key: "↑/↓", Desc: "Navigate"},
-		{Key: "p", Desc: "Show/hide tasks"},
+		{Key: "p/enter", Desc: "Show/hide tasks"},
 		{Key: "s", Desc: "Scale service"},
 		{Key: "r", Desc: "Restart service"},
 		{Key: "ctrl+r", Desc: "Rollback service"},

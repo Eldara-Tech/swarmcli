@@ -363,7 +363,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 				entry := m.List.Filtered[m.List.Cursor]
 				m.scaleDialog.Show(entry.ServiceName, uint64(entry.ReplicasTotal))
 			}
-		case "p":
+		case "p", "enter":
 			// Toggle tasks expansion for selected service
 			if m.List.Cursor < len(m.List.Filtered) {
 				entry := m.List.Filtered[m.List.Cursor]
@@ -946,7 +946,7 @@ func GetServicesHelpContent() []helpview.HelpCategory {
 			Title: "General",
 			Items: []helpview.HelpItem{
 				{Keys: "<i>", Description: "Inspect service"},
-				{Keys: "<p>", Description: "Show/hide tasks"},
+				{Keys: "<p/enter>", Description: "Show/hide tasks"},
 				{Keys: "<l>", Description: "View logs"},
 				{Keys: "<s>", Description: "Scale service"},
 				{Keys: "<r>", Description: "Restart service"},
