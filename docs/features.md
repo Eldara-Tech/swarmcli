@@ -265,9 +265,9 @@ See [RBAC — Roles](rbac.md#roles).
 ## Container statistics
 
 Press `t` on any row in the Services view to graph one container's CPU,
-memory, network and block I/O over time. Press `p` first to expand a
-service's tasks and the graph opens on the replica you highlighted;
-from the service row it opens on the first.
+memory, network and block I/O over time. Press `p` or `Enter` first to
+expand a service's tasks and the graph opens on the replica you
+highlighted; from the service row it opens on the first.
 
 The last fifteen minutes are already there when the view opens. Each
 node collects its containers' usage in the background while SwarmCLI is
