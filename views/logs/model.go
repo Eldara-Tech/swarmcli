@@ -362,6 +362,7 @@ func (m *Model) ShortHelpItems() []helpbar.HelpEntry {
 		{Key: "o", Desc: "Filter node"},
 		{Key: "t", Desc: "Show/hide stopped"},
 		{Key: "enter", Desc: "Mark"},
+		{Key: "/", Desc: "Filter (!x hides)"},
 	}
 
 	// Show left/right help only when wrap is off

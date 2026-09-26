@@ -147,6 +147,7 @@ func TestShortHelpItems_NormalMode(t *testing.T) {
 	require.True(t, keys["w"])
 	require.True(t, keys["o"])
 	require.True(t, keys["t"])
+	require.True(t, keys["/"])
 	require.True(t, keys["esc"])
 }
 
