@@ -730,6 +730,59 @@ func TestFilterAndNodeFilter_Combined(t *testing.T) {
 	require.NotContains(t, content, "info on node2")
 }
 
+func TestMatchesFilter(t *testing.T) {
+	// The prefix every streamed line carries, colour codes included.
+	const prefix = "\033[38;5;117mweb.abc@node-a\033[0m | "
+	cases := []struct {
+		name, line, query string
+		want              bool
+	}{
+		{"term matches", "GET /healthz", "healthz", true},
+		{"term misses", "GET /api", "healthz", false},
+		{"ignores case", "GET /HealthZ", "hEALTHz", true},
+		{"any alternative matches", "WARN disk", "error|warn", true},
+		{"no alternative matches", "INFO ok", "error|warn", false},
+		{"exclude hides a match", "GET /healthz", "!healthz", false},
+		{"exclude keeps a miss", "GET /api", "!healthz", true},
+		{"exclude hides any alternative", "GET /metrics", "!healthz|metrics", false},
+		{"exclude keeps a miss of every alternative", "GET /api", "!healthz|metrics", true},
+		{"empty alternatives are dropped", "GET /api", "!healthz||", true},
+		{"a lone bang hides nothing", "GET /api", "!", true},
+		{"a bang and bars hide nothing", "GET /api", "!|", true},
+		{"bars alone hide nothing", "GET /api", "||", true},
+		{"a space is literal", "connection refused", "connection refused", true},
+		{"colour codes do not match", prefix + "GET /api", "5", false},
+		{"colour codes do not match an exclude", prefix + "GET /api", "!1", true},
+		{"the prefix text still matches", prefix + "GET /api", "node-a", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, matchesFilter(tc.line, tc.query))
+		})
+	}
+}
+
+// TestExcludeFilter_OnALiveStream drives the `tail -f | grep -v` case from
+// #641 end to end: the hidden lines leave the count and the search matches,
+// not just the screen.
+func TestExcludeFilter_OnALiveStream(t *testing.T) {
+	m := testModel()
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	for _, msg := range []string{"GET /healthz", "POST /api/orders", "GET /metrics", "GET /api/orders"} {
+		m.Update(LineMsg{Line: "node-a\x00task-1\x00\033[38;5;117mweb.task-1@node-a\033[0m | " + msg})
+	}
+
+	m.ApplySearchQuery("!healthz|metrics")
+	search(m, "orders")
+
+	content := ansi.Strip(m.buildContent())
+	require.NotContains(t, content, "healthz")
+	require.NotContains(t, content, "metrics")
+	require.Equal(t, 2, m.getVisibleCount())
+	require.Equal(t, []int{0, 1}, m.searchMatches)
+	require.Equal(t, "Logs(web)[2] </!healthz|metrics>", ansi.Strip(m.FrameTitle()))
+}
+
 func TestEsc_ClearsFilterBeforeClosing(t *testing.T) {
 	m := testModel()
 	m.Visible = true

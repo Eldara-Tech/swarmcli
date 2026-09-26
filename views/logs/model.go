@@ -14,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/docker/docker/api/types/swarm"
 )
 
@@ -437,7 +438,7 @@ func (m *Model) lineVisible(i int, stopped map[string]bool) bool {
 		return false
 	}
 	// app-level "/" text filter
-	if m.filterQuery != "" && !strings.Contains(strings.ToLower(m.lines[i]), strings.ToLower(m.filterQuery)) {
+	if m.filterQuery != "" && !matchesFilter(m.lines[i], m.filterQuery) {
 		return false
 	}
 	// hide-stopped filter: hide only lines from tasks known to be terminal.
@@ -454,6 +455,30 @@ func (m *Model) lineVisible(i int, stopped map[string]bool) bool {
 		}
 	}
 	return true
+}
+
+// matchesFilter reports whether line passes the app-level "/" query. The query
+// is one or more "|"-separated terms, and a line matches when it contains any
+// of them, ignoring case. A leading "!" inverts that: it is the `grep -v` a
+// reader reaches for to drop a health check's lines (#641). Matching runs on
+// the text as read, not on the colour codes around the task prefix, which every
+// line carries and which would otherwise match a "5" on every line. A query
+// with no terms — a lone "!" while the rest is still being typed — hides
+// nothing.
+func matchesFilter(line, query string) bool {
+	query, exclude := strings.CutPrefix(query, "!")
+	text := strings.ToLower(ansi.Strip(line))
+	hasTerm := false
+	for _, term := range strings.Split(strings.ToLower(query), "|") {
+		if term == "" {
+			continue
+		}
+		if strings.Contains(text, term) {
+			return !exclude
+		}
+		hasTerm = true
+	}
+	return !hasTerm || exclude
 }
 
 // extractUniqueNodes returns a sorted list of nodes where the service has running tasks
