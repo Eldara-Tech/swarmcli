@@ -12,6 +12,7 @@ import (
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -135,6 +136,22 @@ func TestReconstructStackCompose(t *testing.T) {
 		if single.Logging.Options["max-size"] != "10m" {
 			t.Errorf("Issue #428: logging option max-size = %q, want \"10m\"", single.Logging.Options["max-size"])
 		}
+	}
+
+	// Issue #662: whoami's secret and config set no uid/gid/mode, so the
+	// defaults `docker stack deploy` filled in must not be echoed back, and
+	// no service sets an endpoint mode, so the daemon's "vip" must not be.
+	whoami := composed.Services["whoami"]
+	wantSecrets := []map[string]any{{"source": "demo_whoami_secret", "target": "/run/secrets/whoami_secret"}}
+	if !reflect.DeepEqual(whoami.Secrets, wantSecrets) {
+		t.Errorf("Issue #662: whoami secrets = %#v, want %#v", whoami.Secrets, wantSecrets)
+	}
+	wantConfigs := []map[string]any{{"source": "demo_whoami_config", "target": "/etc/whoami/config"}}
+	if !reflect.DeepEqual(whoami.Configs, wantConfigs) {
+		t.Errorf("Issue #662: whoami configs = %#v, want %#v", whoami.Configs, wantConfigs)
+	}
+	if strings.Contains(yaml, "endpoint_mode: vip") {
+		t.Error("Issue #662: reconstructed YAML pins the default 'endpoint_mode: vip'")
 	}
 
 	t.Logf("Successfully reconstructed stack YAML (%d bytes)", len(yaml))

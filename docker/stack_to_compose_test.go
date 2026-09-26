@@ -492,7 +492,7 @@ func TestReconstruct_DropsRichSpec(t *testing.T) {
 	        "StopSignal": "SIGTERM",
 	        "StopGracePeriod": 30000000000,
 	        "Secrets": [
-	          {"SecretName": "demo_api_key", "File": {"Name": "api_key", "UID": "100", "GID": "101", "Mode": 292}}
+	          {"SecretName": "demo_api_key", "File": {"Name": "api_key", "UID": "100", "GID": "101", "Mode": 256}}
 	        ]
 	      },
 	      "Resources": {"Limits": {"NanoCPUs": 500000000, "MemoryBytes": 268435456, "Pids": 100}},
@@ -536,13 +536,13 @@ func TestReconstruct_DropsRichSpec(t *testing.T) {
 	require.Equal(t, "json-file", cs.Logging.Driver)
 	require.Equal(t, "10m", cs.Logging.Options["max-size"])
 
-	// Secret target permissions (mode 292 == 0o444)
+	// Secret target permissions (mode 256 == 0o400)
 	require.Len(t, cs.Secrets, 1)
 	require.Equal(t, "demo_api_key", cs.Secrets[0]["source"])
 	require.Equal(t, "api_key", cs.Secrets[0]["target"])
 	require.Equal(t, "100", cs.Secrets[0]["uid"])
 	require.Equal(t, "101", cs.Secrets[0]["gid"])
-	require.Equal(t, 292, cs.Secrets[0]["mode"])
+	require.Equal(t, fileMode(0o400), cs.Secrets[0]["mode"])
 
 	// Deploy block
 	dep := cs.Deploy
@@ -587,10 +587,46 @@ func TestReconstruct_DropsRichSpec(t *testing.T) {
 		"stop_signal: SIGTERM", "stop_grace_period: 30s",
 		"endpoint_mode: dnsrr", "max_replicas_per_node:", "pids:",
 		"delay: 5s", "window: 2m0s", "update_config:", "rollback_config:",
-		"mode: 292", "uid:", "gid:", "logging:", "driver: json-file",
+		"mode: 0o400", "uid:", "gid:", "logging:", "driver: json-file",
 	} {
 		require.Contains(t, y, want, "reconstructed YAML missing %q", want)
 	}
+
+	// The octal mode decodes back to the same bits.
+	var back ComposeFile
+	require.NoError(t, yaml.Unmarshal(out, &back))
+	require.Equal(t, 256, back.Services["web"].Secrets[0]["mode"])
+}
+
+// TestReconstruct_OmitsDeployDefaults is the #662 regression: `docker stack
+// deploy` fills unset target/uid/gid/mode with source/"0"/"0"/0o444 and the
+// daemon reports an unset endpoint mode as "vip", so none may be echoed back.
+func TestReconstruct_OmitsDeployDefaults(t *testing.T) {
+	const raw = `{
+	  "Spec": {
+	    "Name": "ci_runner",
+	    "TaskTemplate": {
+	      "ContainerSpec": {
+	        "Image": "gitlab/gitlab-runner:latest",
+	        "Secrets": [
+	          {"SecretName": "gitlab-runner-cache-access-key", "File": {"Name": "gitlab-runner-cache-access-key", "UID": "0", "GID": "0", "Mode": 292}}
+	        ],
+	        "Configs": [
+	          {"ConfigName": "runner-config", "File": {"Name": "runner-config", "UID": "0", "GID": "0", "Mode": 292}}
+	        ]
+	      }
+	    },
+	    "EndpointSpec": {"Mode": "vip"}
+	  }
+	}`
+
+	var si ServiceInspect
+	require.NoError(t, json.Unmarshal([]byte(raw), &si))
+
+	cs := assembleCompose([]ServiceInspect{si}, "ci", nil).Services["runner"]
+	require.Equal(t, []map[string]any{{"source": "gitlab-runner-cache-access-key"}}, cs.Secrets)
+	require.Equal(t, []map[string]any{{"source": "runner-config"}}, cs.Configs)
+	require.NotContains(t, cs.Deploy, "endpoint_mode")
 }
 
 func TestComposeUpdateConfig_FullAndNil(t *testing.T) {
@@ -623,11 +659,12 @@ func TestComposeUlimits_MapShape(t *testing.T) {
 }
 
 func TestApplyFilePerms(t *testing.T) {
-	ref := map[string]any{"source": "s"}
-	applyFilePerms(ref, "0", "0", 0o444)
-	require.Equal(t, "0", ref["uid"])
-	require.Equal(t, "0", ref["gid"])
-	require.Equal(t, 292, ref["mode"]) // 0o444 == 292
+	ref := map[string]any{}
+	applyFilePerms(ref, "100", "101", 0o400)
+	require.Equal(t, map[string]any{"uid": "100", "gid": "101", "mode": fileMode(0o400)}, ref)
+	defaults := map[string]any{}
+	applyFilePerms(defaults, "0", "0", 0o444) // what `docker stack deploy` fills in
+	require.Empty(t, defaults)
 	bare := map[string]any{}
 	applyFilePerms(bare, "", "", 0)
 	require.Empty(t, bare)

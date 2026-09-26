@@ -498,7 +498,8 @@ func (cf *ComposeFile) buildService(si *ServiceInspect, stackName string, netID2
 			cf.declareSecretExternal(s.SecretName)
 			ref := map[string]any{"source": s.SecretName}
 			if s.File != nil {
-				if s.File.Name != "" {
+				// stack deploy defaults the target to the source (#662)
+				if s.File.Name != "" && s.File.Name != s.SecretName {
 					ref["target"] = s.File.Name
 				}
 				applyFilePerms(ref, s.File.UID, s.File.GID, s.File.Mode)
@@ -514,7 +515,7 @@ func (cf *ComposeFile) buildService(si *ServiceInspect, stackName string, netID2
 			cf.declareConfigExternal(c.ConfigName)
 			ref := map[string]any{"source": c.ConfigName}
 			if c.File != nil {
-				if c.File.Name != "" {
+				if c.File.Name != "" && c.File.Name != c.ConfigName {
 					ref["target"] = c.File.Name
 				}
 				applyFilePerms(ref, c.File.UID, c.File.GID, c.File.Mode)
@@ -620,8 +621,8 @@ func (cf *ComposeFile) buildService(si *ServiceInspect, stackName string, netID2
 		deploy["mode"] = "global"
 	}
 
-	// Endpoint mode (vip/dnsrr)
-	if si.Spec.EndpointSpec != nil && si.Spec.EndpointSpec.Mode != "" {
+	// Endpoint mode (vip/dnsrr); the daemon reports an unset mode as vip (#662)
+	if si.Spec.EndpointSpec != nil && si.Spec.EndpointSpec.Mode != "" && si.Spec.EndpointSpec.Mode != "vip" {
 		deploy["endpoint_mode"] = si.Spec.EndpointSpec.Mode
 	}
 
@@ -980,19 +981,29 @@ func composeExtraHosts(hosts []string) []string {
 	return out
 }
 
+// fileMode is a secret/config target mode, rendered in octal (0o400) rather
+// than as the decimal Swarm reports (256); yaml.v3, the compose loader's parser,
+// decodes it back to the same bits. Not 0400: YAML 1.2 reads that as decimal.
+type fileMode uint32
+
+// MarshalYAML renders the mode as an octal !!int scalar.
+func (m fileMode) MarshalYAML() (any, error) {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprintf("0o%o", uint32(m))}, nil
+}
+
 // applyFilePerms adds the compose secret/config target uid/gid/mode keys to a
-// reference map when set. mode is the raw permission bits as Swarm reports them
-// (decimal); 0o444 and its decimal form 292 denote the same uint32, so emitting
-// the decimal value round-trips unambiguously through the compose loader.
+// reference map when set. mode is the raw permission bits as Swarm reports them.
+// `docker stack deploy` fills unset keys with "0"/"0"/0o444, so those are
+// omitted: the next deploy writes them back unchanged (#662).
 func applyFilePerms(ref map[string]any, uid, gid string, mode uint32) {
-	if uid != "" {
+	if uid != "" && uid != "0" {
 		ref["uid"] = uid
 	}
-	if gid != "" {
+	if gid != "" && gid != "0" {
 		ref["gid"] = gid
 	}
-	if mode != 0 {
-		ref["mode"] = int(mode)
+	if mode != 0 && mode != 0o444 {
+		ref["mode"] = fileMode(mode)
 	}
 }
 
