@@ -146,6 +146,59 @@ func TestEnvLookupsFollowsAnchorsAndMerges(t *testing.T) {
 	require.Equal(t, []string{"BLOCK_ALIAS", "ENTRY_MERGE", "SERVICE_MERGE", "VALUE_ALIAS"}, got)
 }
 
+// The docker CLI reads the decoded document, so this does too: a tag, a key
+// anchor or a merge key means here exactly what it means there.
+func TestEnvLookupsReadsTheDecodedDocument(t *testing.T) {
+	t.Run("a binary value that decodes to a reference is refused", func(t *testing.T) {
+		// JEZPTw== is "$FOO".
+		_, err := EnvLookups(envManifest("A: !!binary JEZPTw=="), nil)
+		require.ErrorContains(t, err, "services.web.environment.A:")
+	})
+	t.Run("a key anchor used as a value is refused", func(t *testing.T) {
+		manifest := "x-k:\n  &a \"${FOO}\": 1\n" + envManifest("GREETING: *a")
+		_, err := EnvLookups(manifest, nil)
+		require.ErrorContains(t, err, "services.web.environment.GREETING:")
+	})
+	t.Run("a merged reference is refused where it is used", func(t *testing.T) {
+		manifest := "x-base: &base\n  GREETING: \"${FOO}\"\n" + envManifest("<<: *base")
+		_, err := EnvLookups(manifest, nil)
+		require.ErrorContains(t, err, "services.web.environment.GREETING:")
+	})
+	for name, env := range map[string]string{
+		"a tagged empty value":        `FOO: !x ""`,
+		"a binary empty value":        `FOO: !!binary ""`,
+		"a tagged empty list entry":   `- !x "FOO="`,
+		"a merged empty value":        "<<: {FOO: \"\"}",
+		"an aliased empty list entry": "- *e",
+	} {
+		t.Run(name+" is withheld", func(t *testing.T) {
+			manifest := "x-e: &e FOO\n" + envManifest(env)
+			got, err := EnvLookups(manifest, nil)
+			require.NoError(t, err)
+			require.Equal(t, []string{"FOO"}, got)
+		})
+	}
+	t.Run("an aliased env_file is read", func(t *testing.T) {
+		manifest := "x-ef: &ef\n  - files/app.env\n" +
+			"services:\n  web:\n    image: nginx\n    env_file: *ef\n"
+		got, err := EnvLookups(manifest, map[string][]byte{"files/app.env": []byte("FOO=\n")})
+		require.NoError(t, err)
+		require.Equal(t, []string{"FOO"}, got)
+
+		_, err = EnvLookups(manifest, nil)
+		require.ErrorContains(t, err, "env_file 'files/app.env' is not among the chart's resolved files")
+	})
+}
+
+// A mapping with a key that is not a string decodes differently from every other
+// mapping, so it is refused rather than read around.
+func TestEnvLookupsRefusesANonStringKey(t *testing.T) {
+	_, err := EnvLookups("services:\n  web:\n    image: nginx\n    labels:\n      8080: x\n      team: \"${FOO}\"\n", nil)
+	require.ErrorContains(t, err, "services.web.labels: key '8080' is not a string")
+	_, err = EnvLookups("1: x\nservices:\n  web:\n    image: nginx\n", nil)
+	require.ErrorContains(t, err, "the top level: key '1' is not a string")
+}
+
 // A variable the CLI itself reads can be neither passed through nor withheld,
 // so declaring it empty is refused — in either shape, in any case.
 func TestEnvLookupsRefusesAnEmptyCLIVariable(t *testing.T) {
@@ -154,6 +207,7 @@ func TestEnvLookupsRefusesAnEmptyCLIVariable(t *testing.T) {
 		"lower case":               {`path: ""`, "path"},
 		"DOCKER_HOST null":         {"DOCKER_HOST:", "DOCKER_HOST"},
 		"HTTPS_PROXY list":         {"- HTTPS_PROXY", "HTTPS_PROXY"},
+		"DOCKER_CUSTOM_HEADERS":    {`DOCKER_CUSTOM_HEADERS: ""`, "DOCKER_CUSTOM_HEADERS"},
 		"windows name, other case": {"- systemroot=", "systemroot"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -210,10 +264,17 @@ func TestEnvLookupsReadsEnvFiles(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, got)
 	})
-	t.Run("a file the CLI would reject is refused", func(t *testing.T) {
-		manifest, files := envFileChart("BAD KEY=1\n")
+	t.Run("a file the CLI would reject is refused by line number", func(t *testing.T) {
+		manifest, files := envFileChart("OK=1\nBAD KEY=hunter2\n")
 		_, err := EnvLookups(manifest, files)
-		require.ErrorContains(t, err, "services.web.env_file: 'files/app.env'")
+		require.ErrorContains(t, err, "services.web.env_file: 'files/app.env' line 2 is not a valid env-file line")
+		require.NotContains(t, err.Error(), "hunter2")
+		require.NotContains(t, err.Error(), "BAD KEY")
+
+		// A line too long to read at all is no line's fault in particular.
+		manifest, files = envFileChart("LONG=" + strings.Repeat("x", 70000) + "\n")
+		_, err = EnvLookups(manifest, files)
+		require.ErrorContains(t, err, "services.web.env_file: 'files/app.env' is not a valid env file")
 	})
 }
 
@@ -226,7 +287,12 @@ func TestEnvLookupsReadsOnlyEnvFiles(t *testing.T) {
 }
 
 func TestEnvLookupsRefusesAManifestItCannotParse(t *testing.T) {
-	for _, manifest := range []string{"services: [", "- not\n- a mapping\n"} {
+	for _, manifest := range []string{
+		"services: [",
+		"- not\n- a mapping\n",
+		// The docker CLI cannot decode this either.
+		"x-s: &s text\n" + envManifest("<<: *s\nFOO: \"\""),
+	} {
 		_, err := EnvLookups(manifest, nil)
 		require.ErrorContains(t, err, "parse manifest")
 	}
@@ -236,9 +302,8 @@ func TestEnvLookupsRefusesAManifestItCannotParse(t *testing.T) {
 // refuses it against the real schema.
 func TestEnvLookupsLeavesMalformedShapesToTheDeploy(t *testing.T) {
 	for name, manifest := range map[string]string{
-		"a service that is not a mapping":    "services:\n  web: nginx\n",
-		"a list entry that is not a string":  envManifest("- {FOO: \"\"}"),
-		"a merge of something not a mapping": "x-s: &s text\n" + envManifest("<<: *s\nFOO: \"\""),
+		"a service that is not a mapping":   "services:\n  web: nginx\n",
+		"a list entry that is not a string": envManifest("- {FOO: \"\"}"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := EnvLookups(manifest, nil)

@@ -273,3 +273,11 @@ func entries(node yaml.Node) iter.Seq2[string, yaml.Node] {
 		}
 	}
 }
+
+// unalias returns the node an alias refers to, or n itself.
+func unalias(n *yaml.Node) *yaml.Node {
+	if n.Kind == yaml.AliasNode {
+		return n.Alias
+	}
+	return n
+}
