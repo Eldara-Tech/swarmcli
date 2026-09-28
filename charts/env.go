@@ -156,17 +156,22 @@ func refuseInterpolation(v any, at string) error {
 			}
 		}
 	case map[any]any:
+		where := at
+		if where == "" {
+			where = "the top level"
+		}
 		var keys []string
 		for k := range v {
 			if _, ok := k.(string); !ok {
 				keys = append(keys, fmt.Sprint(k))
 			}
 		}
-		slices.Sort(keys)
-		where := at
-		if where == "" {
-			where = "the top level"
+		// Every key decoded to a string, so what made the mapping decode this
+		// way is a tag on one of them.
+		if len(keys) == 0 {
+			return fmt.Errorf("%s: a key carries a tag, which a chart manifest may not use — remove it", where)
 		}
+		slices.Sort(keys)
 		return fmt.Errorf("%s: key '%s' is not a string, which a chart manifest may not use — quote it", where, keys[0])
 	case []any:
 		for i, e := range v {

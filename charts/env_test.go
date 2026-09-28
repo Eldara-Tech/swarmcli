@@ -199,6 +199,15 @@ func TestEnvLookupsRefusesANonStringKey(t *testing.T) {
 	require.ErrorContains(t, err, "the top level: key '1' is not a string")
 }
 
+// A tag on a key decodes its mapping the same way a key that is not a string
+// does, although the key itself still decodes to one.
+func TestEnvLookupsRefusesATaggedKey(t *testing.T) {
+	_, err := EnvLookups("services:\n  web:\n    image: nginx\n    labels:\n      !x team: a\n", nil)
+	require.ErrorContains(t, err, "services.web.labels: a key carries a tag")
+	_, err = EnvLookups("!x services:\n  web:\n    image: nginx\n", nil)
+	require.ErrorContains(t, err, "the top level: a key carries a tag")
+}
+
 // A variable the CLI itself reads can be neither passed through nor withheld,
 // so declaring it empty is refused — in either shape, in any case.
 func TestEnvLookupsRefusesAnEmptyCLIVariable(t *testing.T) {
