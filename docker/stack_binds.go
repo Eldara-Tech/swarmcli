@@ -62,10 +62,16 @@ func checkBindSources(manifest string) error {
 		var svc struct {
 			Volumes yaml.Node `yaml:"volumes"`
 		}
-		if err := node.Decode(&svc); err != nil || svc.Volumes.Kind != yaml.SequenceNode {
+		if err := node.Decode(&svc); err != nil {
 			continue
 		}
-		for _, item := range svc.Volumes.Content {
+		// A yaml.Node field keeps an alias as it was written, so it is followed
+		// first — for the block here and for each entry in bindSource.
+		volumes := unalias(&svc.Volumes)
+		if volumes.Kind != yaml.SequenceNode {
+			continue
+		}
+		for _, item := range volumes.Content {
 			source, ok := bindSource(item)
 			if !ok || source == "" || isAbsBindSource(source) {
 				continue
@@ -86,6 +92,7 @@ func checkBindSources(manifest string) error {
 // volume and cluster take a volume name, image an image reference, and tmpfs no
 // source at all.
 func bindSource(item *yaml.Node) (string, bool) {
+	item = unalias(item)
 	switch item.Kind {
 	case yaml.ScalarNode:
 		var spec string
@@ -196,4 +203,12 @@ func isAbsBindSource(source string) bool {
 	// names the drive's root, while C:data names the drive's current directory
 	// and is resolved against the temp directory like any other relative path.
 	return isWindowsDrive(source) && len(source) > 2 && (source[2] == '\\' || source[2] == '/')
+}
+
+// unalias returns the node an alias refers to, or n itself.
+func unalias(n *yaml.Node) *yaml.Node {
+	if n.Kind == yaml.AliasNode {
+		return n.Alias
+	}
+	return n
 }
