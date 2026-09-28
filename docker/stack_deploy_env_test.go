@@ -6,16 +6,12 @@
 package docker
 
 import (
-	"bytes"
 	"context"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	swarmlog "github.com/Eldara-Tech/swarmcli/v2/utils/log"
 )
 
 // standInDocker puts a `docker` on PATH that records the environment it was
@@ -62,18 +58,4 @@ func TestDeployStackInContextKeepsTheEnvironmentByDefault(t *testing.T) {
 func TestDeployEnvMatchesNamesExactly(t *testing.T) {
 	got := deployEnv([]string{"FOO=1", "foo=2", "FOOBAR=3", "BAR=4"}, []string{"foo"})
 	require.Equal(t, []string{"FOO=1", "FOOBAR=3", "BAR=4"}, got)
-}
-
-// Withholding a variable a registry credential helper reads is logged, and
-// withholding any other is not.
-func TestDeployStackInContextLogsAWithheldCredentialVariable(t *testing.T) {
-	standInDocker(t)
-	var buf bytes.Buffer
-	swarmlog.InitSlog(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	t.Cleanup(func() { swarmlog.InitSlog(slog.DiscardHandler) })
-
-	require.NoError(t, DeployStackInContext(context.Background(), "stand-in", "web", testManifest,
-		ResolveImageDefault, nil, DeployOptions{UnsetEnv: []string{"aws_profile", "FOO"}}))
-	require.Contains(t, buf.String(), "aws_profile")
-	require.NotContains(t, buf.String(), "FOO")
 }

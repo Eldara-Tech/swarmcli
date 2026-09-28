@@ -116,11 +116,6 @@ type DeployOptions struct {
 	UnsetEnv []string
 }
 
-// credentialEnvPrefixes are the variable families registry credential helpers
-// read. Withholding one can change the identity a deploy resolves images with,
-// so doing so is logged.
-var credentialEnvPrefixes = []string{"AWS_", "GOOGLE_", "CLOUDSDK_", "AZURE_"}
-
 // DeployStackInContext deploys a stack to an explicitly named Docker context.
 //
 // `docker stack deploy` has no SDK equivalent, so this shells out; naming the
@@ -172,11 +167,6 @@ func DeployStackInContext(ctx context.Context, ctxName, stackName, yamlContent s
 		args = append(args, "--resolve-image", string(resolve))
 	}
 	args = append(args, stackName)
-	for _, name := range opts.UnsetEnv {
-		if slices.ContainsFunc(credentialEnvPrefixes, func(p string) bool { return strings.HasPrefix(strings.ToUpper(name), p) }) {
-			l().Warnf("Deploying stack %q without %q in the docker CLI's environment, because the stack declares it empty; registry authentication for this deploy may use another identity", stackName, name)
-		}
-	}
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Env = deployEnv(os.Environ(), opts.UnsetEnv)
 
