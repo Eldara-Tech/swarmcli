@@ -145,7 +145,7 @@ func TestCheckBindSourcesRefusesTheFirstServiceInOrder(t *testing.T) {
 // error about it is an error that ran too late.
 func TestDeployStackInContextRefusesARelativeBindSource(t *testing.T) {
 	err := DeployStackInContext(context.Background(), "no-such-context", "web",
-		bindManifest(`["./data:/data"]`), ResolveImageDefault, nil)
+		bindManifest(`["./data:/data"]`), ResolveImageDefault, nil, DeployOptions{})
 	require.ErrorContains(t, err, "bind source")
 	require.ErrorContains(t, err, "must be absolute")
 }

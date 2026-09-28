@@ -80,7 +80,7 @@ func (b *dockerBackend) DeployStack(ctx context.Context, req DeployRequest) erro
 	if err != nil {
 		return err
 	}
-	return docker.DeployStackInContext(ctx, ctxName, req.Name, req.Manifest, docker.ResolveImage(req.Resolve), req.Files)
+	return docker.DeployStackInContext(ctx, ctxName, req.Name, req.Manifest, docker.ResolveImage(req.Resolve), req.Files, docker.DeployOptions{})
 }
 
 func (b *dockerBackend) RemoveStack(ctx context.Context, name string) error {

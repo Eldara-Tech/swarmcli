@@ -19,7 +19,7 @@ func TestExplicitContextRejectsEmptyName(t *testing.T) {
 	_, err := ClientFor("")
 	require.ErrorContains(t, err, "docker context name is required")
 
-	require.ErrorContains(t, DeployStackInContext(context.Background(), "", "web", "services: {}\n", ResolveImageDefault, nil),
+	require.ErrorContains(t, DeployStackInContext(context.Background(), "", "web", "services: {}\n", ResolveImageDefault, nil, DeployOptions{}),
 		"docker context name is required")
 	require.ErrorContains(t, RemoveStackCLIInContext(context.Background(), "", "web"),
 		"docker context name is required")

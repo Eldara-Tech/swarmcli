@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -96,9 +98,26 @@ func DeployStackResolved(ctx context.Context, stackName string, yamlContent stri
 		return fmt.Errorf("failed to get docker context: %w", err)
 	}
 	// nil files: the TUI's raw-editor path deploys a document the operator typed,
-	// with no chart behind it to resolve a file: against.
-	return DeployStackInContext(ctx, ctxName, stackName, yamlContent, resolve, nil)
+	// with no chart behind it to resolve a file: against. No options either: that
+	// document is the operator's own, so it keeps the operator's environment.
+	return DeployStackInContext(ctx, ctxName, stackName, yamlContent, resolve, nil, DeployOptions{})
 }
+
+// DeployOptions are the parts of a deploy only some callers set. The zero value
+// deploys exactly as `docker stack deploy` would from the invoking shell.
+type DeployOptions struct {
+	// UnsetEnv names variables the docker CLI must not inherit from this
+	// process. The CLI fills a stack's empty environment values from its own
+	// environment, so a name withheld here deploys as the empty value the
+	// manifest declared. Compared without regard to case on Windows, where
+	// variable names are case-insensitive.
+	UnsetEnv []string
+}
+
+// credentialEnvPrefixes are the variable families registry credential helpers
+// read. Withholding one can change the identity a deploy resolves images with,
+// so doing so is logged.
+var credentialEnvPrefixes = []string{"AWS_", "GOOGLE_", "CLOUDSDK_", "AZURE_"}
 
 // DeployStackInContext deploys a stack to an explicitly named Docker context.
 //
@@ -113,7 +132,7 @@ func DeployStackResolved(ctx context.Context, stackName string, yamlContent stri
 // files are the chart files the manifest's file: and env_file: keys name, keyed
 // by their slash-separated chart-relative path; they are written beside the
 // manifest so those keys resolve to them. nil for a manifest that names none.
-func DeployStackInContext(ctx context.Context, ctxName, stackName, yamlContent string, resolve ResolveImage, files map[string][]byte) error {
+func DeployStackInContext(ctx context.Context, ctxName, stackName, yamlContent string, resolve ResolveImage, files map[string][]byte, opts DeployOptions) error {
 	if ctxName == "" {
 		return fmt.Errorf("docker context name is required")
 	}
@@ -151,8 +170,13 @@ func DeployStackInContext(ctx context.Context, ctxName, stackName, yamlContent s
 		args = append(args, "--resolve-image", string(resolve))
 	}
 	args = append(args, stackName)
+	for _, name := range opts.UnsetEnv {
+		if slices.ContainsFunc(credentialEnvPrefixes, func(p string) bool { return strings.HasPrefix(strings.ToUpper(name), p) }) {
+			l().Warnf("Deploying stack %q without %q in the docker CLI's environment, because the stack declares it empty; registry authentication for this deploy may use another identity", stackName, name)
+		}
+	}
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Env = os.Environ()
+	cmd.Env = deployEnv(os.Environ(), opts.UnsetEnv)
 
 	// Capture output for error reporting
 	output, err := cmd.CombinedOutput()
@@ -175,6 +199,28 @@ func DeployStackInContext(ctx context.Context, ctxName, stackName, yamlContent s
 
 	l().Infof("Stack %q deployed successfully", stackName)
 	return nil
+}
+
+// deployEnv returns environ without the variables unset names.
+func deployEnv(environ, unset []string) []string {
+	out := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		name, _, _ := strings.Cut(kv, "=")
+		if slices.ContainsFunc(unset, func(u string) bool { return envNameEqual(name, u) }) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// envNameEqual reports whether two variable names name the same variable on
+// this platform.
+func envNameEqual(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // writeStackTree materialises one deploy into a fresh temporary directory: the

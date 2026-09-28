@@ -21,7 +21,7 @@ func TestStackCommandsReportCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := DeployStackInContext(ctx, "no-such-context", "web", "services:\n  a:\n    image: x\n", ResolveImageDefault, nil)
+	err := DeployStackInContext(ctx, "no-such-context", "web", "services:\n  a:\n    image: x\n", ResolveImageDefault, nil, DeployOptions{})
 	require.ErrorIs(t, err, context.Canceled)
 
 	require.ErrorIs(t, RemoveStackCLIInContext(ctx, "no-such-context", "web"), context.Canceled)
@@ -99,7 +99,7 @@ func TestDeployStackRemovesTheWholeTree(t *testing.T) {
 	// No networks: key, so the failure path does not go looking for orphaned
 	// networks to clean up through a daemon this test has no business reaching.
 	err := DeployStackInContext(context.Background(), "no-such-context", "web", testManifest,
-		ResolveImageDefault, map[string][]byte{"files/nginx.conf": []byte("server {}")})
+		ResolveImageDefault, map[string][]byte{"files/nginx.conf": []byte("server {}")}, DeployOptions{})
 	require.Error(t, err)
 
 	entries, err := os.ReadDir(tmp)
