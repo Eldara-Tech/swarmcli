@@ -212,6 +212,19 @@ func TestResolveManifestFilesReadsAnAliasedEnvFile(t *testing.T) {
 	require.ErrorContains(t, err, "services.web.env_file: '/etc/app.env' is an absolute path")
 }
 
+// An env_file: entry that is not a path is refused rather than passed over: the
+// CLI could read a path from it that no check here has seen.
+func TestResolveManifestFilesRefusesAnEnvFileEntryThatIsNotAPath(t *testing.T) {
+	for want, envFile := range map[string]string{
+		"services.web.env_file[1]: an env_file entry must be a path":        "[files/nginx.conf, {path: files/nginx.conf}]",
+		"services.web.env_file: env_file must be a path or a list of paths": "{path: files/nginx.conf}",
+	} {
+		manifest := "services:\n  web:\n    image: nginx\n    env_file: " + envFile + "\n"
+		_, err := ResolveManifestFiles(manifest, chartFiles(), nil)
+		require.ErrorContains(t, err, want)
+	}
+}
+
 // TestResolveManifestFilesSeesEntriesBesideAMalformedOne is the load-bearing
 // test for walking yaml.Nodes rather than map[string]any: a single non-string
 // key makes yaml.v3 hand back a map[any]any for the WHOLE mapping, so a type

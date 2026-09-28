@@ -101,7 +101,11 @@ func EnvLookups(manifest string, files map[string][]byte) ([]string, error) {
 			}
 		}
 		key := "services." + name + ".env_file"
-		for _, p := range envFiles(svc["env_file"]) {
+		paths, err := envFiles(svc["env_file"], key)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range paths {
 			// Refused rather than skipped: the CLI would read a file this cannot
 			// see, such as an absolute path in a revision recorded before the
 			// chart-file checks existed.
@@ -220,21 +224,27 @@ func emptyEnv(env any) []string {
 }
 
 // envFiles returns the paths a service's env_file: names, in either shape
-// compose accepts: one string, or a list of them.
-func envFiles(v any) []string {
+// compose accepts: one string, or a list of them. Any other shape is refused
+// rather than passed over, since the CLI could read a path from it that no
+// check here has seen. at is the key path of the env_file: itself.
+func envFiles(v any, at string) ([]string, error) {
 	switch v := v.(type) {
+	case nil:
+		return nil, nil
 	case string:
-		return []string{v}
+		return []string{v}, nil
 	case []any:
-		var out []string
-		for _, item := range v {
-			if p, ok := item.(string); ok {
-				out = append(out, p)
+		out := make([]string, 0, len(v))
+		for i, item := range v {
+			p, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("%s[%d]: an env_file entry must be a path", at, i)
 			}
+			out = append(out, p)
 		}
-		return out
+		return out, nil
 	}
-	return nil
+	return nil, fmt.Errorf("%s: env_file must be a path or a list of paths", at)
 }
 
 // badEnvLine returns the number of the first line of an env file the parser

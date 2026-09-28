@@ -208,6 +208,20 @@ func TestEnvLookupsRefusesATaggedKey(t *testing.T) {
 	require.ErrorContains(t, err, "the top level: a key carries a tag")
 }
 
+// An env_file: entry that is not a path is refused rather than passed over: the
+// CLI could read a path from it that no check here has seen.
+func TestEnvLookupsRefusesAnEnvFileEntryThatIsNotAPath(t *testing.T) {
+	files := map[string][]byte{"files/app.env": []byte("A=1\n")}
+	for want, envFile := range map[string]string{
+		"services.web.env_file[1]: an env_file entry must be a path":        "[files/app.env, {path: files/app.env}]",
+		"services.web.env_file: env_file must be a path or a list of paths": "{path: files/app.env}",
+	} {
+		manifest := "services:\n  web:\n    image: nginx\n    env_file: " + envFile + "\n"
+		_, err := EnvLookups(manifest, files)
+		require.ErrorContains(t, err, want)
+	}
+}
+
 // A variable the CLI itself reads can be neither passed through nor withheld,
 // so declaring it empty is refused — in either shape, in any case.
 func TestEnvLookupsRefusesAnEmptyCLIVariable(t *testing.T) {

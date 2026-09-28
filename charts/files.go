@@ -240,20 +240,31 @@ func manifestFileRefs(manifest string) ([]fileRef, error) {
 			continue
 		}
 		// env_file is the one of the three compose gives two shapes: a bare
-		// string, or a list of them. Both are read, and the list is walked item
-		// by item so an item of the wrong type does not lose the rest. A yaml.Node
-		// field keeps an alias as it was written, so it is followed first.
+		// string, or a list of them. Both are read. A yaml.Node field keeps an
+		// alias as it was written, so it is followed first.
+		// An entry that is not a string is refused rather than passed over: the
+		// CLI could read a path from it that no check here has seen.
 		envFile := unalias(&entry.EnvFile)
-		items := []*yaml.Node{envFile}
-		if envFile.Kind == yaml.SequenceNode {
-			items = envFile.Content
-		}
-		for _, item := range items {
-			var p string
-			if err := item.Decode(&p); err != nil || p == "" {
-				continue
+		key := "services." + name + ".env_file"
+		switch envFile.Kind {
+		case yaml.SequenceNode:
+			for i, item := range envFile.Content {
+				var p string
+				if err := item.Decode(&p); err != nil {
+					return nil, fmt.Errorf("%s[%d]: an env_file entry must be a path", key, i)
+				}
+				if p != "" {
+					refs = append(refs, fileRef{key: key, path: p})
+				}
 			}
-			refs = append(refs, fileRef{key: "services." + name + ".env_file", path: p})
+		default:
+			var p string
+			if err := envFile.Decode(&p); err != nil {
+				return nil, fmt.Errorf("%s: env_file must be a path or a list of paths", key)
+			}
+			if p != "" {
+				refs = append(refs, fileRef{key: key, path: p})
+			}
 		}
 	}
 	return refs, nil
