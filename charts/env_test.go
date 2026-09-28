@@ -313,31 +313,64 @@ func TestEnvLookupsLeavesMalformedShapesToTheDeploy(t *testing.T) {
 	}
 }
 
-// A rollback replays a stored manifest that no render re-reads, so the deploy
-// itself is where it is refused. This goes through the real backend, not a fake
-// one: a fake would bypass the very check under test. The context does not
-// exist, so an error about it would mean the check ran too late.
+// The deploy itself refuses, whatever the caller checked before. This goes
+// through the real backend, not a fake one: a fake would bypass the very check
+// under test. The context does not exist, so an error about it would mean the
+// check ran too late.
 func TestDockerBackendRefusesAnInterpolatingManifest(t *testing.T) {
 	err := NewDockerBackend("no-such-context").DeployStack(context.Background(), DeployRequest{
 		Name:     "web",
 		Manifest: envManifest(`GREETING: "${FOO}"`),
 	})
 	require.ErrorContains(t, err, "services.web.environment.GREETING:")
-	require.ErrorContains(t, err, "upgrade to a chart version that passes it")
+	require.NotContains(t, err.Error(), "rolling back")
 	require.NotContains(t, err.Error(), "no-such-context")
 }
 
 // A stored revision can name an env file outside the chart, from before the
-// chart-file checks; replaying it would have the CLI read that path, so the
-// deploy refuses it with the same hint as any other stored revision.
+// chart-file checks; replaying it would have the CLI read that path.
 func TestDockerBackendRefusesAnEnvFileItWasNotHanded(t *testing.T) {
 	err := NewDockerBackend("no-such-context").DeployStack(context.Background(), DeployRequest{
 		Name:     "web",
 		Manifest: envFileManifest("/etc/app.env"),
 	})
 	require.ErrorContains(t, err, "services.web.env_file: env_file '/etc/app.env' is not among the chart's resolved files")
-	require.ErrorContains(t, err, "upgrade to a chart version that passes it")
 	require.NotContains(t, err.Error(), "no-such-context")
+}
+
+// realDeploy keeps releases in memory but deploys through the real backend, so
+// a rollback reaches the check under test rather than a fake that skips it.
+type realDeploy struct{ *fakeBackend }
+
+func (realDeploy) DeployStack(ctx context.Context, req DeployRequest) error {
+	return NewDockerBackend("no-such-context").DeployStack(ctx, req)
+}
+
+// A rollback replays a stored manifest that no render re-reads, so a revision
+// recorded before this check is refused at the deploy — and only a rollback is
+// told to upgrade instead, since only a rollback has a stored revision to blame.
+func TestRollbackToARefusedRevisionSaysToUpgrade(t *testing.T) {
+	ctx := context.Background()
+	chart := ReleaseChart{Name: "c", Version: "1"}
+	for name, manifest := range map[string]string{
+		"interpolation":        envManifest(`GREETING: "${FOO}"`),
+		"an env file not held": envFileManifest("/etc/app.env"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			fb := newFakeBackend()
+			_, err := NewEngineWith(fb).Install(ctx, "web", chart, nil, manifest, InstallOptions{})
+			require.NoError(t, err, "stored as a revision recorded before this check would be")
+
+			_, err = NewEngineWith(realDeploy{fb}).Rollback(ctx, "web", 1, InstallOptions{})
+			require.ErrorContains(t, err, "services.web.")
+			require.ErrorContains(t, err, "upgrade to a chart version that passes this check instead of rolling back to it")
+			require.NotContains(t, err.Error(), "no-such-context")
+
+			_, err = NewEngineWith(realDeploy{newFakeBackend()}).Install(ctx, "web", chart, nil, manifest, InstallOptions{})
+			require.ErrorContains(t, err, "services.web.")
+			require.NotContains(t, err.Error(), "rolling back")
+		})
+	}
 }
 
 // The names EnvLookups returns reach the docker CLI withheld, and nothing else
