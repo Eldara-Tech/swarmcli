@@ -78,6 +78,13 @@ func TestResolveManifestFilesRefusesEveryShapeOnEveryKey(t *testing.T) {
 			wants: []string{`'files/missing.conf'`, "not in the chart", "files/"},
 		},
 		{
+			// Every other check reads the path as written, and the docker CLI
+			// reads it only after substituting variables in it.
+			name:  "contains a variable",
+			path:  "files/${X}/app.conf",
+			wants: []string{`'files/${X}/app.conf'`, "contains '$'", "files/"},
+		},
+		{
 			// The likeliest author mistake, so the message has to say files/ and
 			// show the corrected path.
 			name:  "outside files/",

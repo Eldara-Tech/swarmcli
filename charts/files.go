@@ -58,9 +58,10 @@ const valuesFilesRule = valuesDir + "/ names a value, which the operator supplie
 // to try — and an absolute one has always meant itself, read as the operator
 // into a swarm config that anyone with Docker access can read.
 //
-// This therefore refuses on the way past, in order: a path that is absolute,
-// one that escapes the chart, and one that is neither in the chart's files/ nor
-// in values/. None of it depends on where the chart was loaded from. Trusting a
+// This therefore refuses on the way past, in order: a path containing '$',
+// which the CLI would interpolate before reading it; one that is absolute; one
+// that escapes the chart; and one that is neither in the chart's files/ nor in
+// values/. None of it depends on where the chart was loaded from. Trusting a
 // local-path chart with an absolute path would grant the most privilege to
 // vendoring a repository chart to disk, which is the workflow that most obscures
 // a chart's origin.
@@ -106,6 +107,11 @@ type fileRef struct {
 // offending path and states the rule; the absolute one additionally names its
 // replacements, because it is the only refusal with a working chart behind it.
 func (r fileRef) resolve(files map[string][]byte, values map[string]any) (string, []byte, error) {
+	// First, because every check below reads the path as written, and the docker
+	// CLI reads it only after interpolating it.
+	if strings.Contains(r.path, "$") {
+		return "", nil, fmt.Errorf("%s: '%s' contains '$', and a chart names its files literally — %s", r.key, r.path, chartFilesRule)
+	}
 	if path.IsAbs(r.path) {
 		return "", nil, fmt.Errorf(
 			"%s: '%s' is an absolute path, and %s — copy it into the chart's %s/ and reference it by that path, "+
