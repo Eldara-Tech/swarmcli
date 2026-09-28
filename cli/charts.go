@@ -752,9 +752,8 @@ func chartsUninstall(c chartsCmd, args []string) int {
 		}
 	}
 	if res != nil && res.VolumesMayRemain {
-		errf("warning: volumes were purged only on the node this Docker context points at, and this swarm\n"+
-			"has more than one node (or its size could not be read); volumes on other nodes are left in place.\n"+
-			"On each node, list them with:\n"+
+		errf("warning: the purge could not reach every node of this swarm; volumes on the others are left\n"+
+			"in place. On each node, list them with:\n"+
 			"  docker volume ls --filter label=com.docker.stack.namespace=%s\n", pos[0])
 	}
 	return 0

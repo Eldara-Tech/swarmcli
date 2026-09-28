@@ -155,11 +155,13 @@ type Engine struct {
 	Backend Backend
 	// now returns the current time; overridable in tests.
 	now func() time.Time
+	// reach is the registered VolumeReach, set only by NewEngine.
+	reach VolumeReach
 }
 
 // NewEngine returns an Engine bound to the live Docker backend.
 func NewEngine() *Engine {
-	return &Engine{Backend: &dockerBackend{}, now: time.Now}
+	return &Engine{Backend: &dockerBackend{}, now: time.Now, reach: volumeReach}
 }
 
 // NewEngineWith returns an Engine bound to a custom backend (used in tests).
@@ -627,8 +629,8 @@ func requirementDescription(rr *ResourceRequirement) string {
 // after the stack is removed — `docker stack rm` does not remove external
 // networks, and swarmcli deliberately leaves them (they may be shared with other
 // stacks) and reports them instead. VolumesMayRemain is set when a purge could
-// only reach the connected node's volumes: the swarm has more than one node, or
-// its size could not be read.
+// not reach every node's volumes: without a VolumeReach, whenever the swarm has
+// more than one node or its size could not be read.
 type UninstallResult struct {
 	OrphanedNetworks []string
 	VolumesMayRemain bool
@@ -658,17 +660,11 @@ func (e *Engine) Uninstall(ctx context.Context, release string, purgeVolumes boo
 		_ = e.Backend.RefreshSnapshot(ctx)
 	}
 
+	var volumesMayRemain bool
 	if purgeVolumes {
-		if vols, err := e.Backend.StackVolumes(ctx, release); err != nil {
-			errs = append(errs, fmt.Errorf("listing volumes: %w", err))
-		} else {
-			for _, v := range vols {
-				if err := RemoveWhenReleased(ctx, volumeReleaseTimeout, volumeReleaseInterval,
-					func(ctx context.Context) error { return e.Backend.RemoveVolume(ctx, v) }); err != nil {
-					errs = append(errs, err)
-				}
-			}
-		}
+		var purgeErrs []error
+		volumesMayRemain, purgeErrs = e.purgeVolumes(ctx, release)
+		errs = append(errs, purgeErrs...)
 	}
 
 	// Collect the networks swarmcli auto-created across all revisions (a network
@@ -676,7 +672,7 @@ func (e *Engine) Uninstall(ctx context.Context, release string, purgeVolumes boo
 	// that revision's record — union them), keeping only those that still exist.
 	result := &UninstallResult{
 		OrphanedNetworks: e.orphanedManagedNetworks(ctx, revs),
-		VolumesMayRemain: purgeVolumes && !e.singleNode(ctx),
+		VolumesMayRemain: volumesMayRemain,
 	}
 
 	for _, r := range revs {
@@ -718,6 +714,42 @@ func RemoveWhenReleased(ctx context.Context, timeout, interval time.Duration, re
 		case <-time.After(interval):
 		}
 	}
+}
+
+// purgeVolumes removes the release's volumes and reports whether any may remain
+// on nodes it could not reach. It uses the registered VolumeReach when there is
+// one for this engine, and otherwise the backend, which sees only the connected
+// node.
+func (e *Engine) purgeVolumes(ctx context.Context, release string) (mayRemain bool, errs []error) {
+	if r := e.reach; r != nil {
+		vols, all, err := r.StackVolumes(ctx, release)
+		switch {
+		case errors.Is(err, ErrVolumeReachUnavailable):
+			// Fall back to the connected node below.
+		case err != nil:
+			return true, []error{fmt.Errorf("listing volumes: %w", err)}
+		default:
+			for _, v := range vols {
+				if err := RemoveWhenReleased(ctx, volumeReleaseTimeout, volumeReleaseInterval,
+					func(ctx context.Context) error { return r.RemoveVolume(ctx, v) }); err != nil {
+					errs = append(errs, err)
+				}
+			}
+			return !all, errs
+		}
+	}
+
+	if vols, err := e.Backend.StackVolumes(ctx, release); err != nil {
+		errs = append(errs, fmt.Errorf("listing volumes: %w", err))
+	} else {
+		for _, v := range vols {
+			if err := RemoveWhenReleased(ctx, volumeReleaseTimeout, volumeReleaseInterval,
+				func(ctx context.Context) error { return e.Backend.RemoveVolume(ctx, v) }); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return !e.singleNode(ctx), errs
 }
 
 // singleNode reports whether the swarm is known to have exactly one node, the

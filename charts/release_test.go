@@ -57,6 +57,7 @@ type fakeBackend struct {
 	rmVolCalls        map[string]int          // volume name -> RemoveVolume calls
 	nodes             int                     // SwarmNodes answer
 	nodesErr          error                   // error to return from SwarmNodes
+	volumesErr        error                   // error to return from StackVolumes
 	// listData makes ListConfigs carry each payload, as the Docker backend
 	// does. Off by default so the rest of the suite keeps exercising the
 	// inspect fallback a Backend that omits it relies on.
@@ -147,7 +148,7 @@ func (f *fakeBackend) StackServices(_ context.Context, name string) []ServiceSta
 	return f.services[name]
 }
 func (f *fakeBackend) StackVolumes(_ context.Context, name string) ([]string, error) {
-	return f.volumes[name], nil
+	return f.volumes[name], f.volumesErr
 }
 func (f *fakeBackend) RemoveVolume(_ context.Context, name string) error {
 	if f.rmVolCalls == nil {
