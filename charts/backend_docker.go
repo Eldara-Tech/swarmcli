@@ -75,12 +75,20 @@ func (b *dockerBackend) snapshot(ctx context.Context) (*docker.SwarmSnapshot, er
 	return docker.SnapshotWith(ctx, cli)
 }
 
+// DeployStack runs the manifest through EnvLookups first, whatever the caller
+// did before: this is the one point every chart deploy passes, including a
+// rollback, which replays a stored manifest nothing else re-reads.
 func (b *dockerBackend) DeployStack(ctx context.Context, req DeployRequest) error {
+	unset, err := EnvLookups(req.Manifest, req.Files)
+	if err != nil {
+		return fmt.Errorf("%w (a revision recorded before this check is refused the same way; upgrade to a chart version that passes it instead of rolling back to it)", err)
+	}
 	ctxName, err := b.contextName()
 	if err != nil {
 		return err
 	}
-	return docker.DeployStackInContext(ctx, ctxName, req.Name, req.Manifest, docker.ResolveImage(req.Resolve), req.Files, docker.DeployOptions{})
+	return docker.DeployStackInContext(ctx, ctxName, req.Name, req.Manifest, docker.ResolveImage(req.Resolve), req.Files,
+		docker.DeployOptions{UnsetEnv: unset})
 }
 
 func (b *dockerBackend) RemoveStack(ctx context.Context, name string) error {
