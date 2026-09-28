@@ -55,6 +55,8 @@ type fakeBackend struct {
 	deleteCfgErr      map[string]error        // config name -> error to return on delete
 	rmVolErrs         map[string][]error      // volume name -> errors RemoveVolume returns, one per call, before it succeeds
 	rmVolCalls        map[string]int          // volume name -> RemoveVolume calls
+	nodes             int                     // SwarmNodes answer
+	nodesErr          error                   // error to return from SwarmNodes
 	// listData makes ListConfigs carry each payload, as the Docker backend
 	// does. Off by default so the rest of the suite keeps exercising the
 	// inspect fallback a Backend that omits it relies on.
@@ -167,6 +169,8 @@ func (f *fakeBackend) RemoveVolume(_ context.Context, name string) error {
 	}
 	return nil
 }
+
+func (f *fakeBackend) SwarmNodes(context.Context) (int, error) { return f.nodes, f.nodesErr }
 
 func (f *fakeBackend) NetworkScopes(context.Context) (map[string]string, error) {
 	out := map[string]string{}
@@ -721,6 +725,45 @@ func TestUninstallPurgeVolumesGivesUpWhenNeverReleased(t *testing.T) {
 	require.Equal(t, "still in use after 0s: removing volume 'demo_data': conflict", err.Error())
 	require.Equal(t, []string{"demo_data"}, fb.volumes["demo"])
 	require.Empty(t, fb.configs, "release records are still deleted")
+}
+
+// A backend that cannot count the swarm's nodes: embedding the interface
+// promotes Backend's methods only, so it is not a SwarmSizer.
+type unsizedBackend struct{ Backend }
+
+// StackVolumes sees only the connected node, so a purge is complete only on a
+// swarm known to have one node (#673).
+func TestUninstallPurgeVolumesFlagsOtherNodes(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		nodes  int
+		err    error
+		sized  bool
+		purge  bool
+		remain bool
+	}{
+		{name: "single node", nodes: 1, sized: true, purge: true, remain: false},
+		{name: "three nodes", nodes: 3, sized: true, purge: true, remain: true},
+		{name: "count fails", nodes: 1, err: errors.New("not a manager"), sized: true, purge: true, remain: true},
+		{name: "backend cannot count", sized: false, purge: true, remain: true},
+		{name: "no purge", nodes: 3, sized: true, purge: false, remain: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fb := newFakeBackend()
+			fb.nodes, fb.nodesErr = tc.nodes, tc.err
+			var b Backend = fb
+			if !tc.sized {
+				b = unsizedBackend{fb}
+			}
+			e := testEngine(b)
+			ctx := context.Background()
+			_, err := e.Install(ctx, "demo", ReleaseChart{Name: "demo", Version: "1"}, nil, "services:\n  s:\n    image: x\n", InstallOptions{})
+			require.NoError(t, err)
+			res, err := e.Uninstall(ctx, "demo", tc.purge)
+			require.NoError(t, err)
+			require.Equal(t, tc.remain, res.VolumesMayRemain)
+		})
+	}
 }
 
 func TestRemoveWhenReleasedReturnsOtherErrorsAtOnce(t *testing.T) {

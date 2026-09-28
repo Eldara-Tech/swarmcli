@@ -142,6 +142,14 @@ type Backend interface {
 	SecretNames(ctx context.Context) (map[string]struct{}, error)
 }
 
+// SwarmSizer is the optional interface a Backend implements to count the
+// swarm's nodes. StackVolumes lists only the connected node's volumes, so the
+// count is what says whether a purge could have reached all of them. It is
+// optional so that adding it breaks no Backend implemented outside this module.
+type SwarmSizer interface {
+	SwarmNodes(ctx context.Context) (int, error)
+}
+
 // Engine drives release lifecycle operations against a Backend.
 type Engine struct {
 	Backend Backend
@@ -618,9 +626,12 @@ func requirementDescription(rr *ResourceRequirement) string {
 // the external networks swarmcli auto-created for the release that still exist
 // after the stack is removed — `docker stack rm` does not remove external
 // networks, and swarmcli deliberately leaves them (they may be shared with other
-// stacks) and reports them instead.
+// stacks) and reports them instead. VolumesMayRemain is set when a purge could
+// only reach the connected node's volumes: the swarm has more than one node, or
+// its size could not be read.
 type UninstallResult struct {
 	OrphanedNetworks []string
+	VolumesMayRemain bool
 }
 
 // Uninstall removes the release's stack and its recorded revisions, retaining
@@ -663,7 +674,10 @@ func (e *Engine) Uninstall(ctx context.Context, release string, purgeVolumes boo
 	// Collect the networks swarmcli auto-created across all revisions (a network
 	// created in an early revision is not re-created later, so it only appears on
 	// that revision's record — union them), keeping only those that still exist.
-	result := &UninstallResult{OrphanedNetworks: e.orphanedManagedNetworks(ctx, revs)}
+	result := &UninstallResult{
+		OrphanedNetworks: e.orphanedManagedNetworks(ctx, revs),
+		VolumesMayRemain: purgeVolumes && !e.singleNode(ctx),
+	}
 
 	for _, r := range revs {
 		if err := e.Backend.DeleteConfig(ctx, releaseConfigName(release, r.Revision)); err != nil {
@@ -704,6 +718,17 @@ func RemoveWhenReleased(ctx context.Context, timeout, interval time.Duration, re
 		case <-time.After(interval):
 		}
 	}
+}
+
+// singleNode reports whether the swarm is known to have exactly one node, the
+// only case in which the connected node's volumes are all of the swarm's.
+func (e *Engine) singleNode(ctx context.Context) bool {
+	s, ok := e.Backend.(SwarmSizer)
+	if !ok {
+		return false
+	}
+	n, err := s.SwarmNodes(ctx)
+	return err == nil && n == 1
 }
 
 // orphanedManagedNetworks returns the sorted, de-duplicated set of networks

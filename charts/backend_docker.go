@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
@@ -29,6 +30,7 @@ type dockerBackend struct {
 // interface implemented outside this repository is one whose in-repo
 // implementation can drift out of it without any call site noticing.
 var _ Backend = (*dockerBackend)(nil)
+var _ SwarmSizer = (*dockerBackend)(nil)
 
 // NewDockerBackend returns a Backend bound to an explicitly named Docker
 // context, for callers that must address a specific swarm rather than the one
@@ -247,6 +249,18 @@ func (b *dockerBackend) RemoveVolume(ctx context.Context, name string) error {
 		return err
 	}
 	return docker.RemoveVolumeWith(ctx, cli, name, false)
+}
+
+func (b *dockerBackend) SwarmNodes(ctx context.Context) (int, error) {
+	cli, err := b.client()
+	if err != nil {
+		return 0, err
+	}
+	nodes, err := cli.NodeList(ctx, swarm.NodeListOptions{})
+	if err != nil {
+		return 0, err
+	}
+	return len(nodes), nil
 }
 
 func (b *dockerBackend) NetworkScopes(ctx context.Context) (map[string]string, error) {
