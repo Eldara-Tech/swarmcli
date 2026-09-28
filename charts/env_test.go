@@ -197,6 +197,19 @@ func TestEnvLookupsReadsEnvFiles(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []string{"FOO"}, got)
 	})
+	t.Run("a file not among the resolved files is refused", func(t *testing.T) {
+		for _, p := range []string{"files/app.env", "/etc/app.env"} {
+			got, err := EnvLookups(envFileManifest(p), map[string][]byte{"files/other.env": []byte("A=1\n")})
+			require.Nil(t, got)
+			require.ErrorContains(t, err, "services.web.env_file: env_file '"+p+"' is not among the chart's resolved files")
+		}
+	})
+	t.Run("an empty file is still a resolved one", func(t *testing.T) {
+		manifest, files := envFileChart("")
+		got, err := EnvLookups(manifest, files)
+		require.NoError(t, err)
+		require.Empty(t, got)
+	})
 	t.Run("a file the CLI would reject is refused", func(t *testing.T) {
 		manifest, files := envFileChart("BAD KEY=1\n")
 		_, err := EnvLookups(manifest, files)
@@ -245,6 +258,19 @@ func TestDockerBackendRefusesAnInterpolatingManifest(t *testing.T) {
 		Manifest: envManifest(`GREETING: "${FOO}"`),
 	})
 	require.ErrorContains(t, err, "services.web.environment.GREETING:")
+	require.ErrorContains(t, err, "upgrade to a chart version that passes it")
+	require.NotContains(t, err.Error(), "no-such-context")
+}
+
+// A stored revision can name an env file outside the chart, from before the
+// chart-file checks; replaying it would have the CLI read that path, so the
+// deploy refuses it with the same hint as any other stored revision.
+func TestDockerBackendRefusesAnEnvFileItWasNotHanded(t *testing.T) {
+	err := NewDockerBackend("no-such-context").DeployStack(context.Background(), DeployRequest{
+		Name:     "web",
+		Manifest: envFileManifest("/etc/app.env"),
+	})
+	require.ErrorContains(t, err, "services.web.env_file: env_file '/etc/app.env' is not among the chart's resolved files")
 	require.ErrorContains(t, err, "upgrade to a chart version that passes it")
 	require.NotContains(t, err.Error(), "no-such-context")
 }

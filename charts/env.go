@@ -61,7 +61,8 @@ var cliEnv = []string{
 //     withholds that name.
 //
 // files are the chart files the manifest names, as ResolveManifestFiles returns
-// them. A refusal names the compose key that holds the offending value, and the
+// them; an env file the manifest names that is not among them is refused. A
+// refusal names the compose key that holds the offending value, and the
 // names come back sorted and without duplicates.
 func EnvLookups(manifest string, files map[string][]byte) ([]string, error) {
 	var doc yaml.Node
@@ -105,8 +106,15 @@ func EnvLookups(manifest string, files map[string][]byte) ([]string, error) {
 		if !strings.HasPrefix(ref.key, "services.") {
 			continue // a config's or a secret's file: is content, not environment
 		}
+		// Refused rather than skipped: the CLI would read a file this cannot see,
+		// such as an absolute path in a revision recorded before the chart-file
+		// checks existed.
+		data, ok := files[path.Clean(ref.path)]
+		if !ok {
+			return nil, fmt.Errorf("%s: env_file '%s' is not among the chart's resolved files", ref.key, ref.path)
+		}
 		var bare []string
-		lines, err := kvfile.ParseFromReader(bytes.NewReader(files[path.Clean(ref.path)]), func(name string) (string, bool) {
+		lines, err := kvfile.ParseFromReader(bytes.NewReader(data), func(name string) (string, bool) {
 			bare = append(bare, name)
 			return "", false
 		})
