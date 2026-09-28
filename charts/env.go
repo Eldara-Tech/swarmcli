@@ -120,14 +120,14 @@ func EnvLookups(manifest string, files map[string][]byte) ([]string, error) {
 			})
 			if err != nil {
 				// The parser's message quotes the line, which can hold a value.
-				if n := badEnvLine(data); n > 0 {
+				if n := envFileLine(data, false); n > 0 {
 					return nil, fmt.Errorf("%s: '%s' line %d is not a valid env-file line", key, p, n)
 				}
 				return nil, fmt.Errorf("%s: '%s' is not a valid env file", key, p)
 			}
 			if len(bare) > 0 {
-				return nil, fmt.Errorf("%s: '%s' has a line '%s' with no '=', which a chart may not — write '%s=' for an empty value",
-					key, p, bare[0], bare[0])
+				return nil, fmt.Errorf("%s: '%s' line %d names a variable with no '=', which a chart may not — end it with '=' for an empty value",
+					key, p, envFileLine(data, true))
 			}
 			for _, line := range lines {
 				if name, value, _ := strings.Cut(line, "="); value == "" {
@@ -247,12 +247,19 @@ func envFiles(v any, at string) ([]string, error) {
 	return nil, fmt.Errorf("%s: env_file must be a path or a list of paths", at)
 }
 
-// badEnvLine returns the number of the first line of an env file the parser
-// rejects on its own, or 0 when no single line is at fault.
-func badEnvLine(data []byte) int {
+// envFileLine returns the number of the first line of an env file that, parsed
+// on its own, the parser rejects — or, with bare, that names a variable with no
+// '='. It is 0 when no single line is at fault. Refusals name the line rather
+// than quote it, because a line can hold a value.
+func envFileLine(data []byte, bare bool) int {
 	sc := bufio.NewScanner(bytes.NewReader(data))
 	for n := 1; sc.Scan(); n++ {
-		if _, err := kvfile.ParseFromReader(bytes.NewReader(sc.Bytes()), nil); err != nil {
+		named := false
+		_, err := kvfile.ParseFromReader(bytes.NewReader(sc.Bytes()), func(string) (string, bool) {
+			named = true
+			return "", false
+		})
+		if err != nil || (bare && named) {
 			return n
 		}
 	}

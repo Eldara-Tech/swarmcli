@@ -252,8 +252,8 @@ func TestEnvLookupsReadsEnvFiles(t *testing.T) {
 		manifest, files := envFileChart("KEEP=1\nFOO\n")
 		got, err := EnvLookups(manifest, files)
 		require.Nil(t, got)
-		require.ErrorContains(t, err, "services.web.env_file: 'files/app.env' has a line 'FOO' with no '='")
-		require.ErrorContains(t, err, "write 'FOO=' for an empty value")
+		require.ErrorContains(t, err, "services.web.env_file: 'files/app.env' line 2 names a variable with no '='")
+		require.NotContains(t, err.Error(), "FOO")
 	})
 	t.Run("an empty CLI variable is refused", func(t *testing.T) {
 		manifest, files := envFileChart("Path=\n")
