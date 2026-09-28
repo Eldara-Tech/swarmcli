@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/Eldara-Tech/swarmcli/v2/charts"
@@ -56,13 +57,8 @@ func chartsApply(c chartsCmd, args []string) int {
 	if f.dryRun || f.diff {
 		pol = compatWarn
 	}
-	for _, r := range plan.Releases {
-		if r.Action == charts.ActionUnchanged {
-			continue
-		}
-		if code := applyCompat(r.Compat, pol, f.skipCompatCheck); code >= 0 {
-			return code
-		}
+	if code := gateApply(plan, pol, f.skipCompatCheck); code >= 0 {
+		return code
 	}
 
 	// --diff is a preview verb; it must never deploy.
@@ -106,6 +102,25 @@ func chartsApply(c chartsCmd, args []string) int {
 	}
 	reportUnclaimed(plan)
 	return 0
+}
+
+// gateApply returns an exit code for the first release in plan that must stop
+// the apply, or -1 when every release may proceed.
+func gateApply(plan *charts.Plan, pol compatPolicy, skipCompat bool) int {
+	for _, r := range plan.Releases {
+		if r.Action == charts.ActionUnchanged {
+			continue
+		}
+		if code := applyCompat(r.Compat, pol, skipCompat); code >= 0 {
+			return code
+		}
+		// The deploy refuses these too, but by then an earlier release may be
+		// converged; a preview must say so rather than look clean.
+		if _, err := charts.EnvLookups(r.Manifest, r.Files); err != nil {
+			return fail(fmt.Errorf("release '%s': %w", r.Name, err))
+		}
+	}
+	return -1
 }
 
 func printPlan(plan *charts.Plan, withDiff bool) {
