@@ -198,6 +198,20 @@ func TestResolveManifestFilesReadsBothEnvFileShapes(t *testing.T) {
 	})
 }
 
+// An env_file: reached through an alias is read like any other, so it is
+// resolved against the chart and refused when it cannot mean a file in it.
+func TestResolveManifestFilesReadsAnAliasedEnvFile(t *testing.T) {
+	manifest := func(p string) string {
+		return "x-ef: &ef\n  - " + quoted(p) + "\nservices:\n  web:\n    image: nginx\n    env_file: *ef\n"
+	}
+	got, err := ResolveManifestFiles(manifest("files/nginx.conf"), chartFiles(), nil)
+	require.NoError(t, err)
+	require.Equal(t, map[string][]byte{"files/nginx.conf": []byte("server { listen 80; }")}, got)
+
+	_, err = ResolveManifestFiles(manifest("/etc/app.env"), chartFiles(), nil)
+	require.ErrorContains(t, err, "services.web.env_file: '/etc/app.env' is an absolute path")
+}
+
 // TestResolveManifestFilesSeesEntriesBesideAMalformedOne is the load-bearing
 // test for walking yaml.Nodes rather than map[string]any: a single non-string
 // key makes yaml.v3 hand back a map[any]any for the WHOLE mapping, so a type

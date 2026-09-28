@@ -241,10 +241,12 @@ func manifestFileRefs(manifest string) ([]fileRef, error) {
 		}
 		// env_file is the one of the three compose gives two shapes: a bare
 		// string, or a list of them. Both are read, and the list is walked item
-		// by item so an item of the wrong type does not lose the rest.
-		items := []*yaml.Node{&entry.EnvFile}
-		if entry.EnvFile.Kind == yaml.SequenceNode {
-			items = entry.EnvFile.Content
+		// by item so an item of the wrong type does not lose the rest. A yaml.Node
+		// field keeps an alias as it was written, so it is followed first.
+		envFile := unalias(&entry.EnvFile)
+		items := []*yaml.Node{envFile}
+		if envFile.Kind == yaml.SequenceNode {
+			items = envFile.Content
 		}
 		for _, item := range items {
 			var p string
