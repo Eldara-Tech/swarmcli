@@ -5,7 +5,9 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -267,7 +269,10 @@ func writeStackTree(files map[string][]byte, manifest string) (dir string, manif
 			err = fmt.Errorf("failed to create directory for chart file '%s': %w", name, err)
 			return
 		}
-		if err = os.WriteFile(path, data, 0o600); err != nil {
+		if err = writeNewFile(path, data); errors.Is(err, fs.ErrExist) {
+			err = fmt.Errorf("refusing chart file '%s': it names the same file as another chart file on this filesystem", name)
+			return
+		} else if err != nil {
 			err = fmt.Errorf("failed to write chart file '%s': %w", name, err)
 			return
 		}
@@ -280,6 +285,22 @@ func writeStackTree(files map[string][]byte, manifest string) (dir string, manif
 		return
 	}
 	return dir, manifestPath, nil
+}
+
+// writeNewFile writes data to path, which must not exist yet. Two chart files
+// can name one file — two spellings of one path, or on a case-insensitive
+// filesystem two cases of one name — and the deploy must read the bytes that
+// were checked, not whichever key happened to be written last.
+func writeNewFile(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // RemoveStackCLI tears down a stack via `docker stack rm`, the symmetric

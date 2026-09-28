@@ -89,6 +89,35 @@ func TestWriteStackTreeRefusesAKeyThatEscapes(t *testing.T) {
 	}
 }
 
+// Two keys that name one file must not leave the second's bytes where the
+// first's were checked. Here they differ by a "." segment, which every
+// filesystem resolves to one path.
+func TestWriteStackTreeRefusesTwoKeysForOneFile(t *testing.T) {
+	dir, manifestPath, err := writeStackTree(map[string][]byte{
+		"files/a.env":   []byte("A=1\n"),
+		"files/./a.env": []byte("B=2\n"),
+	}, testManifest)
+	require.ErrorContains(t, err, "names the same file as another chart file")
+	require.Empty(t, dir)
+	require.Empty(t, manifestPath)
+}
+
+// Here they differ only in case, which names one file on a case-insensitive
+// filesystem such as the macOS and Windows defaults.
+func TestWriteStackTreeRefusesKeysThatDifferOnlyInCase(t *testing.T) {
+	probe := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(probe, "X"), nil, 0o600))
+	if _, err := os.Stat(filepath.Join(probe, "x")); err != nil {
+		t.Skip("the temporary directory is case-sensitive")
+	}
+	t.Setenv("TMPDIR", probe)
+	_, _, err := writeStackTree(map[string][]byte{
+		"files/A.env": []byte("A=1\n"),
+		"files/a.env": []byte("B=2\n"),
+	}, testManifest)
+	require.ErrorContains(t, err, "names the same file as another chart file")
+}
+
 // A failed deploy must take the whole tree with it, not just the manifest the
 // old temp-file version knew about — otherwise every failure leaks a chart's
 // files, readable to nobody but still there.
