@@ -271,11 +271,19 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 				return nil
 			}
 
+			// OriginalContent is the stack reconstructed from its running
+			// services, which the edit started from.
+			unset, err := liveEmptyEnv(msg.OriginalContent)
+			if err != nil {
+				l().Errorf("Refusing to redeploy stack %s: %v", stackName, err)
+				return func() tea.Msg { return stackUpdateErrorMsg{StackName: stackName, Err: err} }
+			}
+
 			stackOps := m.deps.Stacks
 			snapOps := m.deps.Snapshot
 			return tea.Batch(m.beginDeploy(stackName), func() tea.Msg {
 				l().Infof("Redeploying edited stack: %s", stackName)
-				err := stackOps.DeployStack(stackName, msg.Content, docker.DeployOptions{})
+				err := stackOps.DeployStack(stackName, msg.Content, docker.DeployOptions{UnsetEnv: unset})
 				if err != nil {
 					l().Errorf("Failed to redeploy stack %s: %v", stackName, err)
 					return stackUpdateErrorMsg{StackName: stackName, Err: err}

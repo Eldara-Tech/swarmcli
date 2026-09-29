@@ -192,6 +192,28 @@ func TestUpdate_EditorContentMsg_EditMode_NoChange(t *testing.T) {
 	require.False(t, deployed)
 }
 
+// The docker CLI reads PATH for itself, so an empty PATH in the running service
+// can be neither withheld nor kept empty: the redeploy is refused instead.
+func TestUpdate_EditorContentMsg_EditMode_RefusesALiveEmptyCLIVariable(t *testing.T) {
+	deployed := false
+	stackMock := noopStackOps()
+	stackMock.deployStackFn = func(_ string, _ string, _ docker.DeployOptions) error {
+		deployed = true
+		return nil
+	}
+	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
+	m.editStackName = "mystack"
+	reconstructed := "services:\n  web:\n    image: nginx\n    environment:\n      PATH: \"\"\n"
+	fastSpinner(t)
+	cmd := m.Update(editorContentMsg{Content: reconstructed + "# edited\n", OriginalContent: reconstructed})
+	require.NotNil(t, cmd)
+	m.Update(runCmd(cmd))
+
+	require.False(t, deployed)
+	require.True(t, m.confirmDialog.ErrorMode)
+	require.Contains(t, m.confirmDialog.Message, "services.web.environment: 'PATH' is empty in the running service")
+}
+
 func TestUpdate_FilesLoadedMsg_Success(t *testing.T) {
 	m := testModel()
 	m.Update(filesLoadedMsg{Path: "/tmp", Files: []string{"..", "foo.yml"}})
