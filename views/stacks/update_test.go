@@ -210,6 +210,21 @@ func TestUpdate_EditorContentMsg_EditMode_RefusesALiveEmptyCLIVariable(t *testin
 	require.Equal(t, "other", m.deployingStack)
 }
 
+// The redeploy of an edit says which variables it kept empty, by name.
+func TestRedeployToastNamesWhatItKeptEmpty(t *testing.T) {
+	fastSpinner(t)
+	live := "services:\n  web:\n    image: nginx\n    environment:\n      FOO: \"\"\n      BAR: \"\"\n"
+	m := testModel()
+	deployed, ok := firstOfType[stackDeployedMsg](runBatch(m.Update(editorContentMsg{StackName: "web", Content: live + "# edited\n", OriginalContent: live})))
+	require.True(t, ok)
+	require.Equal(t, []string{"BAR", "FOO"}, deployed.KeptEmpty)
+	m.Update(deployed)
+	require.Contains(t, m.toastMessage, "Kept empty: BAR, FOO")
+
+	m.Update(stackDeployedMsg{StackName: "web"})
+	require.NotContains(t, m.toastMessage, "Kept empty")
+}
+
 // Each deploy path says which environment the docker CLI gets: an edit withholds
 // what the running services hold empty and it leaves so, and a document the
 // operator loaded or wrote keeps everything.

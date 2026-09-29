@@ -104,7 +104,11 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 
 	case stackDeployedMsg:
 		m.endDeploy()
-		m.showToast(fmt.Sprintf("✓ Stack %q deployed — services updating", msg.StackName))
+		toast := fmt.Sprintf("✓ Stack %q deployed — services updating", msg.StackName)
+		if len(msg.KeptEmpty) > 0 {
+			toast += "\nKept empty: " + strings.Join(msg.KeptEmpty, ", ")
+		}
+		m.showToast(toast)
 		// Keep ticking through the toast window so it clears on time rather than
 		// lingering until the next 5s poll.
 		return tea.Batch(m.LoadStacksCmd(m.nodeID), m.spinnerTickCmd())
@@ -286,6 +290,9 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			snapOps := m.deps.Snapshot
 			return tea.Batch(m.beginDeploy(stackName), func() tea.Msg {
 				l().Infof("Redeploying edited stack: %s", stackName)
+				if len(unset) > 0 {
+					l().Infof("Withholding %s from the docker CLI so they stay empty in stack %s", strings.Join(unset, ", "), stackName)
+				}
 				err := stackOps.DeployStack(stackName, msg.Content, docker.DeployOptions{UnsetEnv: unset})
 				if err != nil {
 					l().Errorf("Failed to redeploy stack %s: %v", stackName, err)
@@ -296,7 +303,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 				if _, err := snapOps.RefreshSnapshot(); err != nil {
 					l().Warnf("Failed to refresh snapshot: %v", err)
 				}
-				return stackDeployedMsg{StackName: stackName}
+				return stackDeployedMsg{StackName: stackName, KeptEmpty: unset}
 			})
 		}
 
