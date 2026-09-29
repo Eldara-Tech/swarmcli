@@ -939,7 +939,9 @@ func (e *Engine) record(ctx context.Context, rel *Release) error {
 		if rerr != nil {
 			return err // surface the original collision error
 		}
-		rel.Revision = nextRevision(revs)
+		// Past the colliding number even when history does not account for it:
+		// a config that is not a release record can hold a record's name.
+		rel.Revision = max(nextRevision(revs), rel.Revision+1)
 	}
 	return fmt.Errorf("could not allocate a free revision for release '%s' after %d attempts", rel.Name, maxRecordRetries)
 }

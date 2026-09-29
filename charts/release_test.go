@@ -1083,6 +1083,57 @@ func TestRecordRetriesOnRevisionCollision(t *testing.T) {
 	require.Equal(t, 3, rel.Revision)
 }
 
+// When several revisions were recorded concurrently, the retry goes straight to
+// the next free one rather than walking up through the taken numbers, which
+// would run out of attempts first.
+func TestRecordRetryJumpsToTheNextFreeRevision(t *testing.T) {
+	fb := newFakeBackend()
+	e := testEngine(fb)
+	ctx := context.Background()
+
+	_, err := e.Install(ctx, "demo", ReleaseChart{Name: "demo", Version: "1"}, nil, "services:\n  a:\n    image: x\n", InstallOptions{})
+	require.NoError(t, err)
+	fb.onCreate = func(name string) error {
+		if name != releaseConfigName("demo", 2) {
+			return nil
+		}
+		fb.onCreate = nil
+		for rev := 2; rev <= 2+maxRecordRetries; rev++ {
+			fb.configs[releaseConfigName("demo", rev)] = fakeConfig{
+				data:   mustGzipRelease(t, &Release{Name: "demo", Revision: rev, Status: StatusDeployed, Chart: ReleaseChart{Name: "demo", Version: "1"}}),
+				labels: map[string]string{LabelType: TypeRelease, LabelRelease: "demo"},
+			}
+		}
+		return fmt.Errorf("config %q already exists", name)
+	}
+	rel, err := e.Upgrade(ctx, "demo", ReleaseChart{Name: "demo", Version: "2"}, nil, "services:\n  a:\n    image: y\n", InstallOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 3+maxRecordRetries, rel.Revision)
+}
+
+// A config that is not a release record can still hold the name the next one
+// needs. History does not count it, so the retry must move past the number that
+// collided rather than recompute the same one.
+func TestRecordRetriesPastANameHistoryDoesNotCount(t *testing.T) {
+	fb := newFakeBackend()
+	e := testEngine(fb)
+	ctx := context.Background()
+
+	_, err := e.Install(ctx, "demo", ReleaseChart{Name: "demo", Version: "1"}, nil, "services:\n  a:\n    image: x\n", InstallOptions{})
+	require.NoError(t, err)
+	fb.configs[releaseConfigName("demo", 2)] = fakeConfig{
+		labels: map[string]string{LabelType: TypeRelease, stackNamespaceLabel: "other"},
+	}
+
+	rel, err := e.Upgrade(ctx, "demo", ReleaseChart{Name: "demo", Version: "2"}, nil, "services:\n  a:\n    image: y\n", InstallOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 3, rel.Revision)
+	revs, err := e.History(ctx, "demo")
+	require.NoError(t, err)
+	require.Len(t, revs, 2)
+	require.Equal(t, 3, revs[1].Revision)
+}
+
 // A stack-removal failure during uninstall must not strand the release history:
 // cleanup continues and the aggregated error is still reported.
 func TestUninstallContinuesOnPartialFailure(t *testing.T) {
