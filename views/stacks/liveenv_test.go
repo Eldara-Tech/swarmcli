@@ -103,7 +103,8 @@ func TestLiveEmptyEnvRefusesAVariableTheCLIWouldFill(t *testing.T) {
 	live := "services:\n  web:\n    environment:\n      PATH: \"\"\n  api:\n    environment:\n      HTTP_PROXY: \"\"\n"
 	_, err := liveEmptyEnv(live, live)
 	require.EqualError(t, err, "services.api.environment: 'HTTP_PROXY' has no value in the running service, "+
-		"and the docker CLI that redeploys the stack would fill it from its own 'HTTP_PROXY', which it reads itself — give it a value or remove it")
+		"and the docker CLI that redeploys the stack would fill it from its own 'HTTP_PROXY', which it reads itself — give it a value or remove it, "+
+		"or unset it in the shell running swarmcli")
 }
 
 // Such a variable is neither withheld nor refused when nothing would fill it:
@@ -119,6 +120,21 @@ func TestLiveEmptyEnvLeavesACLIVariableNothingFills(t *testing.T) {
 	names, err := liveEmptyEnv(live, edited)
 	require.NoError(t, err)
 	require.Equal(t, []string{"FOO"}, names)
+}
+
+// The CLI can set GODEBUG from the docker context whatever this environment
+// holds, so a GODEBUG the edit keeps empty is always refused; one it gives a
+// value is not.
+func TestLiveEmptyEnvRefusesAKeptEmptyGODEBUG(t *testing.T) {
+	t.Setenv("GODEBUG", "")
+	require.NoError(t, os.Unsetenv("GODEBUG"))
+	live := "services:\n  web:\n    environment:\n      GODEBUG: \"\"\n"
+	_, err := liveEmptyEnv(live, live)
+	require.ErrorContains(t, err, "services.web.environment: 'GODEBUG' has no value in the running service")
+
+	names, err := liveEmptyEnv(live, "services:\n  web:\n    environment:\n      GODEBUG: http2client=0\n")
+	require.NoError(t, err)
+	require.Empty(t, names)
 }
 
 func TestLiveEmptyEnvRefusesAnUnreadableStack(t *testing.T) {

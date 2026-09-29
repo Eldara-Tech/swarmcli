@@ -28,7 +28,8 @@ import (
 // A variable the docker CLI reads for itself cannot be withheld from it. When
 // this environment gives one a value, the CLI would fill it, so the redeploy is
 // refused, as a chart that declares it empty is; otherwise nothing fills it.
-// The names come back sorted and without duplicates.
+// GODEBUG, which the CLI can set for itself, is always refused. The names come
+// back sorted and without duplicates.
 func liveEmptyEnv(reconstructed, edited string) ([]string, error) {
 	live, err := emptyEnvByService(reconstructed)
 	if err != nil {
@@ -45,9 +46,15 @@ func liveEmptyEnv(reconstructed, edited string) ([]string, error) {
 			if !slices.Contains(keptNames, name) {
 				continue
 			}
+			// The CLI sets GODEBUG for itself from the docker context when it
+			// finds none (docker/cli v28.5.1 cli/command/cli.go), so neither
+			// withholding it nor leaving it unset keeps it empty.
+			if name == "GODEBUG" {
+				return nil, fmt.Errorf("services.%s.environment: 'GODEBUG' has no value in the running service, and the docker CLI that redeploys the stack can set GODEBUG for itself from the docker context, so it cannot stay empty — give it a value or remove it", svc)
+			}
 			if charts.CLIReadsEnv(name) {
 				if cliFills(name) {
-					return nil, fmt.Errorf("services.%s.environment: '%s' has no value in the running service, and the docker CLI that redeploys the stack would fill it from its own '%s', which it reads itself — give it a value or remove it", svc, name, name)
+					return nil, fmt.Errorf("services.%s.environment: '%s' has no value in the running service, and the docker CLI that redeploys the stack would fill it from its own '%s', which it reads itself — give it a value or remove it, or unset it in the shell running swarmcli", svc, name, name)
 				}
 				continue
 			}
