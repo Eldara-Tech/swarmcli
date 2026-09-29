@@ -248,6 +248,38 @@ func TestDeployPathsPassTheirOptions(t *testing.T) {
 	require.Equal(t, []docker.DeployOptions{{UnsetEnv: []string{"FOO"}}, {}, {}}, got)
 }
 
+// An editor that fails leaves the edit pending; content the create dialog then
+// sends to the editor is a new stack's, not an edit of that stack.
+func TestCreateEditorClearsAPendingEdit(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "stack.yml")
+	require.NoError(t, os.WriteFile(file, []byte("services: {}\n"), 0o600))
+	for _, tc := range []struct {
+		name string
+		open func(m *Model) tea.Cmd
+	}{
+		{"the create dialog's editor", func(m *Model) tea.Cmd {
+			m.createDialogActive = true
+			m.createDialogStep = "details-inline"
+			m.createInputFocus = 1
+			return m.Update(key("e"))
+		}},
+		{"a file loaded from the browser", func(m *Model) tea.Cmd {
+			m.fileBrowserActive = true
+			m.fileBrowserContext = "create"
+			m.fileBrowserFiles = []string{file}
+			return m.Update(key("enter"))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TMPDIR", t.TempDir()) // where the editor's temp file goes
+			m := testModel()
+			m.editStackName = "prod"
+			require.NotNil(t, tc.open(m))
+			require.Empty(t, m.editStackName)
+		})
+	}
+}
+
 func TestUpdate_FilesLoadedMsg_Success(t *testing.T) {
 	m := testModel()
 	m.Update(filesLoadedMsg{Path: "/tmp", Files: []string{"..", "foo.yml"}})

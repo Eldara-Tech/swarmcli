@@ -970,6 +970,9 @@ func (m *Model) handleCreateDialogKey(msg tea.KeyMsg) tea.Cmd {
 				l().Infof("Opening editor with content (%d bytes), preview: %q", len(m.createDialogContent), preview)
 				m.createDialogActive = false
 				m.createNameInput.Blur()
+				// This content is a new stack's: an edit an editor failure left
+				// pending must not redeploy it as that stack.
+				m.editStackName = ""
 				return openEditorForStackCmd(m.createDialogContent)
 			}
 			// Otherwise it is just a letter — route it like any other key.
@@ -1262,6 +1265,7 @@ func (m *Model) handleFileBrowserKey(msg tea.KeyMsg) tea.Cmd {
 
 		// Automatically open editor for review/editing before deployment
 		l().Infof("Opening editor for review of loaded file (%d bytes)", len(fileContent))
+		m.editStackName = "" // a new stack's content, as in the create dialog's editor
 		return openEditorForStackCmd(m.createDialogContent)
 	}
 	return nil
