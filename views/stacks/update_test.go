@@ -219,7 +219,7 @@ func TestRedeployToastNamesWhatItKeptEmpty(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, []string{"BAR", "FOO"}, deployed.KeptEmpty)
 	m.Update(deployed)
-	require.Contains(t, m.toastMessage, "Kept empty: BAR, FOO")
+	require.Contains(t, m.toastMessage, `Kept empty: "BAR", "FOO"`)
 
 	m.Update(stackDeployedMsg{StackName: "web"})
 	require.NotContains(t, m.toastMessage, "Kept empty")
@@ -982,7 +982,7 @@ func TestStackSavedMsg_ShowsSuccess(t *testing.T) {
 // saveReconstruction saves what the stack reconstructs to as a file, the way
 // the save dialog does, and returns the dialog the operator then sees and the
 // bytes written.
-func saveReconstruction(t *testing.T, reconstructed string) (string, string) {
+func saveReconstruction(t *testing.T, reconstructed string) (dialog, written string) {
 	t.Helper()
 	stackMock := noopStackOps()
 	stackMock.reconstructStackComposeFn = func(string) (string, error) { return reconstructed, nil }
@@ -990,42 +990,46 @@ func saveReconstruction(t *testing.T, reconstructed string) (string, string) {
 	path := filepath.Join(t.TempDir(), "web.yml")
 	m.Update(runCmd(m.saveStackToFileCmd("web", path)))
 	require.True(t, m.confirmDialog.InfoMode)
-	written, err := os.ReadFile(path)
+	data, err := os.ReadFile(path)
 	require.NoError(t, err)
-	return m.confirmDialog.Message, string(written)
+	return m.confirmDialog.Message, string(data)
 }
 
-// A saved stack lists, by name, the values its running services hold empty: a
-// deploy of the file fills them from the environment it runs in. The file is
-// written exactly as reconstructed, and no value is shown.
-func TestSaveNamesTheValuesTheRunningServicesHoldEmpty(t *testing.T) {
+// A saved stack lists, by name, sorted and once each, the values the file holds
+// empty: a deploy of it fills any its environment sets. The file is written
+// exactly as reconstructed, and no value is shown.
+func TestSaveNamesTheValuesTheFileHoldsEmpty(t *testing.T) {
 	reconstructed := `services:
   api:
     image: nginx
     environment:
       FOO: ""
+      QUX: ""
       TOKEN: s3cret
   web:
     image: nginx
     environment:
       BAR: ""
       FOO: ""
+      QUX: ""
 `
-	msg, written := saveReconstruction(t, reconstructed)
+	dialog, written := saveReconstruction(t, reconstructed)
 	require.Equal(t, reconstructed, written)
-	require.Contains(t, msg, "Empty in the running services: BAR, FOO")
-	require.NotContains(t, msg, "s3cret")
+	require.Contains(t, dialog, `fills any its environment sets: "BAR", "FOO", "QUX"`+"\n")
+	require.NotContains(t, dialog, "s3cret")
 }
 
 // With no empty value, or a reconstruction it cannot read, the save says only
 // where the file went.
 func TestSaveWithNothingEmptyWarnsOfNothing(t *testing.T) {
-	for _, reconstructed := range []string{
-		"services:\n  web:\n    image: nginx\n    environment:\n      KEEP: x\n",
-		"services: [",
+	for name, reconstructed := range map[string]string{
+		"no empty value": "services:\n  web:\n    image: nginx\n    environment:\n      KEEP: x\n",
+		"unreadable":     "services: [",
 	} {
-		msg, _ := saveReconstruction(t, reconstructed)
-		require.NotContains(t, msg, "Empty in the running services")
+		t.Run(name, func(t *testing.T) {
+			dialog, _ := saveReconstruction(t, reconstructed)
+			require.NotContains(t, dialog, "Held empty")
+		})
 	}
 }
 
