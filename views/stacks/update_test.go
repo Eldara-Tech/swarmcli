@@ -274,7 +274,12 @@ func TestCreateEditorClearsAPendingEdit(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("TMPDIR", t.TempDir()) // where the editor's temp file goes
+			// Where the editor's temp file goes, which only the editor's exit
+			// would remove.
+			tmp := t.TempDir()
+			t.Setenv("TMPDIR", tmp)
+			t.Setenv("TMP", tmp)
+			t.Setenv("TEMP", tmp)
 			m := testModel()
 			m.editStackName = "prod"
 			require.NotNil(t, tc.open(m))

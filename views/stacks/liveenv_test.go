@@ -27,8 +27,8 @@ services:
       KEEP: x
 `
 
-// A name is withheld while some service holds it empty both running and in
-// the edit, in either shape the edit writes it.
+// A name is withheld while a running service holds it empty and the edit still
+// declares it empty in any service, in either shape the edit writes it.
 func TestLiveEmptyEnvFollowsTheEdit(t *testing.T) {
 	for _, tc := range []struct {
 		name, edited string
@@ -56,7 +56,7 @@ func TestLiveEmptyEnvFollowsTheEdit(t *testing.T) {
       - BAR
       - FOO=
 `, []string{"BAR", "FOO"}},
-		{"moved to a service the edit adds", `services:
+		{"carried into a service the edit renames", `services:
   web:
     environment:
       BAR: x
@@ -64,7 +64,7 @@ func TestLiveEmptyEnvFollowsTheEdit(t *testing.T) {
   new:
     environment:
       FOO: ""
-`, nil},
+`, []string{"FOO"}},
 		{"a name the edit adds", `services:
   web:
     environment:
@@ -97,12 +97,15 @@ func TestLiveEmptyEnvRefusesAVariableTheCLIWouldFill(t *testing.T) {
 }
 
 // Such a variable is neither withheld nor refused when nothing would fill it:
-// the edit gives it a value, or this environment does not set it.
+// the edit gives it a value, this environment does not set it, or sets it
+// empty. The CLI's lookup matches names exactly, so a lower-case path is not
+// filled from PATH.
 func TestLiveEmptyEnvLeavesACLIVariableNothingFills(t *testing.T) {
 	t.Setenv("HTTP_PROXY", "")
 	require.NoError(t, os.Unsetenv("HTTP_PROXY"))
-	live := "services:\n  web:\n    environment:\n      PATH: \"\"\n      HTTP_PROXY: \"\"\n      FOO: \"\"\n"
-	edited := "services:\n  web:\n    environment:\n      PATH: /usr/bin\n      HTTP_PROXY: \"\"\n      FOO: \"\"\n"
+	t.Setenv("NO_PROXY", "")
+	live := "services:\n  web:\n    environment:\n      PATH: \"\"\n      path: \"\"\n      HTTP_PROXY: \"\"\n      NO_PROXY: \"\"\n      FOO: \"\"\n"
+	edited := "services:\n  web:\n    environment:\n      PATH: /usr/bin\n      path: \"\"\n      HTTP_PROXY: \"\"\n      NO_PROXY: \"\"\n      FOO: \"\"\n"
 	names, err := liveEmptyEnv(live, edited)
 	require.NoError(t, err)
 	require.Equal(t, []string{"FOO"}, names)
