@@ -193,7 +193,8 @@ func TestUpdate_EditorContentMsg_EditMode_NoChange(t *testing.T) {
 }
 
 // The docker CLI reads PATH for itself, so an empty PATH in the running service
-// can be neither withheld nor kept empty: the redeploy is refused instead.
+// that the edit keeps can be neither withheld nor kept empty: the redeploy is
+// refused instead, without ending a deploy that is still running.
 func TestUpdate_EditorContentMsg_EditMode_RefusesALiveEmptyCLIVariable(t *testing.T) {
 	deployed := false
 	stackMock := noopStackOps()
@@ -202,16 +203,49 @@ func TestUpdate_EditorContentMsg_EditMode_RefusesALiveEmptyCLIVariable(t *testin
 		return nil
 	}
 	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
+	m.beginDeploy("other")
 	m.editStackName = "mystack"
 	reconstructed := "services:\n  web:\n    image: nginx\n    environment:\n      PATH: \"\"\n"
-	fastSpinner(t)
 	cmd := m.Update(editorContentMsg{Content: reconstructed + "# edited\n", OriginalContent: reconstructed})
-	require.NotNil(t, cmd)
-	m.Update(runCmd(cmd))
 
+	require.Nil(t, cmd)
 	require.False(t, deployed)
 	require.True(t, m.confirmDialog.ErrorMode)
-	require.Contains(t, m.confirmDialog.Message, "services.web.environment: 'PATH' is empty in the running service")
+	require.Contains(t, m.confirmDialog.Message, "services.web.environment: 'PATH' has no value in the running service")
+	require.Equal(t, "other", m.deployingStack)
+}
+
+// Each deploy path says which environment the docker CLI gets: an edit withholds
+// what the running services hold empty, and a document the operator loaded or
+// wrote keeps everything.
+func TestDeployPathsPassTheirOptions(t *testing.T) {
+	var got []docker.DeployOptions
+	stackMock := noopStackOps()
+	stackMock.deployStackFn = func(_ string, _ string, opts docker.DeployOptions) error {
+		got = append(got, opts)
+		return nil
+	}
+	fastSpinner(t)
+	live := "services:\n  web:\n    image: nginx\n    environment:\n      FOO: \"\"\n"
+
+	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
+	m.editStackName = "web"
+	runBatch(m.Update(editorContentMsg{Content: live + "# edited\n", OriginalContent: live}))
+
+	m.createDialogActive = true
+	m.createDialogStep = "details-inline"
+	m.createNameInput.SetValue("web")
+	m.createDialogContent = live
+	runBatch(m.Update(key("enter")))
+
+	file := filepath.Join(t.TempDir(), "stack.yml")
+	require.NoError(t, os.WriteFile(file, []byte(live), 0o600))
+	m.createDialogActive = true
+	m.createDialogStep = "details-file"
+	m.createFileInput.SetValue(file)
+	runBatch(m.Update(key("enter")))
+
+	require.Equal(t, []docker.DeployOptions{{UnsetEnv: []string{"FOO"}}, {}, {}}, got)
 }
 
 func TestUpdate_FilesLoadedMsg_Success(t *testing.T) {

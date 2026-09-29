@@ -4,15 +4,15 @@
 package stacksview
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-// Every empty value in every service is named once, sorted; a value with any
-// content, an escaped '$' included, is not.
-func TestLiveEmptyEnvNamesEveryEmptyValue(t *testing.T) {
-	names, err := liveEmptyEnv(`version: "3.9"
+// liveStack is a reconstruction: every value is a string, and an escaped '$'
+// is not empty.
+const liveStack = `version: "3.9"
 services:
   api:
     image: nginx
@@ -25,45 +25,83 @@ services:
       BAR: ""
       FOO: ""
       KEEP: x
-`)
-	require.NoError(t, err)
-	require.Equal(t, []string{"BAR", "FOO"}, names)
+`
+
+// A name is withheld while some service holds it empty both running and in
+// the edit, in either shape the edit writes it.
+func TestLiveEmptyEnvFollowsTheEdit(t *testing.T) {
+	for _, tc := range []struct {
+		name, edited string
+		want         []string
+	}{
+		{"unchanged", liveStack, []string{"BAR", "FOO"}},
+		{"a value given in one service of two", `services:
+  api:
+    environment:
+      FOO: ""
+  web:
+    environment:
+      BAR: x
+      FOO: x
+`, []string{"FOO"}},
+		{"the only empty service removed", `services:
+  web:
+    environment:
+      BAR: x
+      FOO: x
+`, nil},
+		{"list form, bare and with '='", `services:
+  web:
+    environment:
+      - BAR
+      - FOO=
+`, []string{"BAR", "FOO"}},
+		{"a name the edit adds", `services:
+  web:
+    environment:
+      NEW: ""
+`, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			names, err := liveEmptyEnv(liveStack, tc.edited)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, names)
+		})
+	}
 }
 
 func TestLiveEmptyEnvWithNoEnvironment(t *testing.T) {
-	names, err := liveEmptyEnv("services:\n  web:\n    image: nginx\n")
+	names, err := liveEmptyEnv("services:\n  web:\n    image: nginx\n", "services:\n  web:\n    image: nginx\n")
 	require.NoError(t, err)
 	require.Empty(t, names)
 }
 
-// A variable the docker CLI reads for itself is refused in any case, and the
-// refusal names the first service that holds one.
-func TestLiveEmptyEnvRefusesAVariableTheCLIReads(t *testing.T) {
-	_, err := liveEmptyEnv(`services:
-  web:
-    environment:
-      path: ""
-  api:
-    environment:
-      HTTP_PROXY: ""
-      KEEP: ""
-`)
-	require.EqualError(t, err, "services.api.environment: 'HTTP_PROXY' is empty in the running service, "+
-		"and the docker CLI that redeploys the stack reads that variable itself, so it cannot stay empty — give the service a value for it first")
-
-	_, err = liveEmptyEnv("services:\n  web:\n    environment:\n      path: \"\"\n")
-	require.ErrorContains(t, err, "services.web.environment: 'path' is empty")
+// A variable the docker CLI reads for itself, which this environment sets and
+// the edit leaves empty, refuses the redeploy, naming the first service that
+// holds one.
+func TestLiveEmptyEnvRefusesAVariableTheCLIWouldFill(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "http://proxy")
+	live := "services:\n  web:\n    environment:\n      PATH: \"\"\n  api:\n    environment:\n      HTTP_PROXY: \"\"\n"
+	_, err := liveEmptyEnv(live, live)
+	require.EqualError(t, err, "services.api.environment: 'HTTP_PROXY' has no value in the running service, "+
+		"and the docker CLI that redeploys the stack would fill it from its own 'HTTP_PROXY', which it reads itself — give it a value or remove it")
 }
 
-// A variable the CLI reads is only refused empty; with a value it is left to
-// the service.
-func TestLiveEmptyEnvLeavesAVariableTheCLIReadsWithAValue(t *testing.T) {
-	names, err := liveEmptyEnv("services:\n  web:\n    environment:\n      PATH: /usr/bin\n      FOO: \"\"\n")
+// Such a variable is neither withheld nor refused when nothing would fill it:
+// the edit gives it a value, or this environment does not set it.
+func TestLiveEmptyEnvLeavesACLIVariableNothingFills(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "")
+	require.NoError(t, os.Unsetenv("HTTP_PROXY"))
+	live := "services:\n  web:\n    environment:\n      PATH: \"\"\n      HTTP_PROXY: \"\"\n      FOO: \"\"\n"
+	edited := "services:\n  web:\n    environment:\n      PATH: /usr/bin\n      HTTP_PROXY: \"\"\n      FOO: \"\"\n"
+	names, err := liveEmptyEnv(live, edited)
 	require.NoError(t, err)
 	require.Equal(t, []string{"FOO"}, names)
 }
 
 func TestLiveEmptyEnvRefusesAnUnreadableStack(t *testing.T) {
-	_, err := liveEmptyEnv("services: [")
+	_, err := liveEmptyEnv("services: [", liveStack)
 	require.ErrorContains(t, err, "parse the reconstructed stack")
+	_, err = liveEmptyEnv(liveStack, "services: [")
+	require.ErrorContains(t, err, "parse the edited stack")
 }

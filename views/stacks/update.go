@@ -272,11 +272,15 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			}
 
 			// OriginalContent is the stack reconstructed from its running
-			// services, which the edit started from.
-			unset, err := liveEmptyEnv(msg.OriginalContent)
+			// services, which the edit started from. A refusal is known here,
+			// before any deploy starts, so it is shown without ending one.
+			unset, err := liveEmptyEnv(msg.OriginalContent, msg.Content)
 			if err != nil {
 				l().Errorf("Refusing to redeploy stack %s: %v", stackName, err)
-				return func() tea.Msg { return stackUpdateErrorMsg{StackName: stackName, Err: err} }
+				m.confirmDialog.Visible = true
+				m.confirmDialog.ErrorMode = true
+				m.confirmDialog.Message = fmt.Sprintf("Failed to update stack %q:\n%v", stackName, err)
+				return nil
 			}
 
 			stackOps := m.deps.Stacks
