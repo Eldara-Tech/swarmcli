@@ -6,6 +6,7 @@ package stacksview
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/docker/docker/api/types/swarm"
 
+	"github.com/Eldara-Tech/swarmcli/v2/charts"
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	"github.com/Eldara-Tech/swarmcli/v2/views/confirmdialog"
 	"github.com/Eldara-Tech/swarmcli/v2/views/view"
@@ -259,6 +261,40 @@ func TestKey_G_JumpsToTheOwningChartRelease(t *testing.T) {
 	require.True(t, ok, "expected navigation, got %T", msg)
 	require.Equal(t, view.NameCharts, nav.ViewName)
 	require.Equal(t, map[string]any{"release": "whoami"}, nav.Payload)
+}
+
+// listOnlyConfigs serves a fixed config listing; nothing else is called.
+type listOnlyConfigs struct {
+	docker.ConfigOps
+	configs []swarm.Config
+}
+
+func (l listOnlyConfigs) ListConfigs(context.Context) ([]swarm.Config, error) { return l.configs, nil }
+
+// A config a stack deploy created is never a release record, so a stack whose
+// only record-labelled config is one of its own is not chart-managed.
+func TestChartReleaseOfStack_IgnoresAStackOwnedConfig(t *testing.T) {
+	record := map[string]string{charts.LabelType: charts.TypeRelease, charts.LabelRelease: "web", charts.LabelStatus: charts.StatusDeployed}
+	stacked := maps.Clone(record)
+	stacked["com.docker.stack.namespace"] = "web"
+	for _, tc := range []struct {
+		name   string
+		labels map[string]string
+		want   string
+	}{
+		{"a record", record, "web"},
+		{"a stack's own config", stacked, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := testModel(func(m *Model) {
+				m.deps.Configs = listOnlyConfigs{configs: []swarm.Config{{Spec: swarm.ConfigSpec{
+					Annotations: swarm.Annotations{Name: "cfg", Labels: tc.labels},
+				}}}}
+			})
+			msg := runCmd(m.chartReleaseOfStackCmd("web", func(release string) tea.Msg { return release }))
+			require.Equal(t, tc.want, msg)
+		})
+	}
 }
 
 // A stack nothing owns must say so rather than opening an empty browser.

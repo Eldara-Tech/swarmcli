@@ -1108,3 +1108,48 @@ func (b *scriptedBackend) StackServices(context.Context, string) []ServiceState 
 	}
 	return b.script[i]
 }
+
+func TestIsReleaseRecord(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		labels map[string]string
+		want   bool
+	}{
+		{"a record", map[string]string{LabelType: TypeRelease}, true},
+		{"a stack's config", map[string]string{LabelType: TypeRelease, stackNamespaceLabel: "site"}, false},
+		{"an empty namespace still counts", map[string]string{LabelType: TypeRelease, stackNamespaceLabel: ""}, false},
+		{"another type", map[string]string{LabelType: "other"}, false},
+		{"no labels", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, IsReleaseRecord(tc.labels))
+		})
+	}
+}
+
+// A config a stack deploy created is not a release record whatever its labels
+// and payload say, so release history never includes one.
+func TestReleaseHistoryIgnoresAStackOwnedConfig(t *testing.T) {
+	fb := newFakeBackend()
+	e := testEngine(fb)
+	ctx := context.Background()
+
+	_, err := e.Install(ctx, "web", ReleaseChart{Name: "web", Version: "1"}, nil, "services:\n  s:\n    image: x\n", InstallOptions{})
+	require.NoError(t, err)
+
+	for name, rel := range map[string]*Release{
+		"site_web":   {Name: "web", Revision: 2, Status: StatusDeployed, Chart: ReleaseChart{Name: "other", Version: "9"}},
+		"site_other": {Name: "other", Revision: 1, Status: StatusDeployed, Chart: ReleaseChart{Name: "other", Version: "9"}},
+	} {
+		fb.configs[name] = fakeConfig{
+			data:   mustGzipRelease(t, rel),
+			labels: map[string]string{LabelType: TypeRelease, LabelRelease: rel.Name, stackNamespaceLabel: "site"},
+		}
+	}
+
+	all, err := e.AllRevisions(ctx)
+	require.NoError(t, err)
+	require.Len(t, all, 1)
+	require.Len(t, all["web"], 1)
+	require.Equal(t, "1", all["web"][0].Chart.Version)
+}

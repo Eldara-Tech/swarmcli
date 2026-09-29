@@ -772,7 +772,7 @@ func (e *Engine) allRevisions(ctx context.Context) (map[string][]Release, error)
 	}
 	out := map[string][]Release{}
 	for _, m := range metas {
-		if m.Labels[LabelType] != TypeRelease {
+		if !IsReleaseRecord(m.Labels) {
 			continue
 		}
 		data := m.Data
