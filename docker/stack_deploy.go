@@ -83,26 +83,32 @@ func (r ResolveImage) Valid() bool {
 }
 
 // DeployStack deploys a stack with the provided name and YAML content, leaving
-// image resolution at Docker's default. See DeployStackResolved.
+// image resolution at Docker's default and the environment whole. See
+// DeployStackResolved.
+func DeployStack(stackName string, yamlContent string) error {
+	return deployStack(stackName, yamlContent, DeployOptions{})
+}
+
+// deployStack is DeployStack with options, which the stacks view deploys
+// through (see StackOps).
 //
 // It is the TUI's entry point, and a Bubble Tea command has no context to
 // inherit, so the background one is spelled out here instead of being pushed
 // onto every caller. Everything below this takes a context.
-func DeployStack(stackName string, yamlContent string) error {
-	return DeployStackResolved(context.Background(), stackName, yamlContent, ResolveImageDefault)
+func deployStack(stackName, yamlContent string, opts DeployOptions) error {
+	return DeployStackResolved(context.Background(), stackName, yamlContent, ResolveImageDefault, opts)
 }
 
 // DeployStackResolved deploys a stack with an explicit image-resolution mode,
 // on whichever context the process is pointed at.
-func DeployStackResolved(ctx context.Context, stackName string, yamlContent string, resolve ResolveImage) error {
+func DeployStackResolved(ctx context.Context, stackName string, yamlContent string, resolve ResolveImage, opts DeployOptions) error {
 	ctxName, err := GetDockerContext()
 	if err != nil {
 		return fmt.Errorf("failed to get docker context: %w", err)
 	}
 	// nil files: the TUI's raw-editor path deploys a document the operator typed,
-	// with no chart behind it to resolve a file: against. No options either: that
-	// document is the operator's own, so it keeps the operator's environment.
-	return DeployStackInContext(ctx, ctxName, stackName, yamlContent, resolve, nil, DeployOptions{})
+	// with no chart behind it to resolve a file: against.
+	return DeployStackInContext(ctx, ctxName, stackName, yamlContent, resolve, nil, opts)
 }
 
 // DeployOptions are the parts of a deploy only some callers set. The zero value

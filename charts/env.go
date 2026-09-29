@@ -45,6 +45,14 @@ var cliEnv = []string{
 	"SystemRoot", "windir", "ComSpec", "PATHEXT",
 }
 
+// CLIReadsEnv reports whether name is one of the variables the docker CLI
+// deploying a stack reads for itself (cliEnv), matched without regard to case.
+// Withholding such a variable would withhold it from the CLI too, so an empty
+// value under that name cannot be kept empty by withholding it.
+func CLIReadsEnv(name string) bool {
+	return slices.ContainsFunc(cliEnv, func(n string) bool { return strings.EqualFold(n, name) })
+}
+
 // EnvLookups returns the variables a rendered manifest would take from the
 // environment of the process deploying it, for that process to withhold from the
 // docker CLI, and refuses every lookup that withholding cannot serve. It is what
@@ -78,7 +86,7 @@ func EnvLookups(manifest string, files map[string][]byte) ([]string, error) {
 
 	var remove []string
 	withhold := func(at, name string) error {
-		if slices.ContainsFunc(cliEnv, func(n string) bool { return strings.EqualFold(n, name) }) {
+		if CLIReadsEnv(name) {
 			return fmt.Errorf("%s: '%s' may not be empty, because the docker CLI deploying the chart reads that variable itself — give it a value", at, name)
 		}
 		remove = append(remove, name)
@@ -88,7 +96,7 @@ func EnvLookups(manifest string, files map[string][]byte) ([]string, error) {
 	services, _ := top["services"].(map[string]any)
 	for _, name := range slices.Sorted(maps.Keys(services)) {
 		svc, _ := services[name].(map[string]any)
-		for _, env := range emptyEnv(svc["environment"]) {
+		for _, env := range EmptyEnv(svc["environment"]) {
 			if err := withhold("services."+name+".environment", env); err != nil {
 				return nil, err
 			}
@@ -260,9 +268,10 @@ func refuseInterpolation(v any, at string) error {
 	return nil
 }
 
-// emptyEnv returns the names a service's environment: block declares with no
-// value — null or "" — in either shape compose accepts.
-func emptyEnv(env any) []string {
+// EmptyEnv returns the names a service's environment: block declares with no
+// value — null or "" — in either shape compose accepts. env is the block as
+// yaml.v3 decodes it into any; a block of any other shape declares none.
+func EmptyEnv(env any) []string {
 	var names []string
 	switch env := env.(type) {
 	case map[string]any:

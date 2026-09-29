@@ -42,8 +42,8 @@ func TestDeployStackInContextWithholdsUnsetEnv(t *testing.T) {
 	require.Contains(t, env(), "\nKEEP=x\n")
 }
 
-// The zero value is what the stacks view deploys with: the operator's own
-// document, with the operator's whole environment.
+// The zero value is what the stacks view deploys a document the operator loaded
+// or wrote with, which keeps the operator's whole environment.
 func TestDeployStackInContextKeepsTheEnvironmentByDefault(t *testing.T) {
 	env := standInDocker(t)
 	t.Setenv("FOO", "x")

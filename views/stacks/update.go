@@ -271,11 +271,23 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 				return nil
 			}
 
+			// OriginalContent is the stack reconstructed from its running
+			// services, which the edit started from. A refusal is known here,
+			// before any deploy starts, so it is shown without ending one.
+			unset, err := liveEmptyEnv(msg.OriginalContent, msg.Content)
+			if err != nil {
+				l().Errorf("Refusing to redeploy stack %s: %v", stackName, err)
+				m.confirmDialog.Visible = true
+				m.confirmDialog.ErrorMode = true
+				m.confirmDialog.Message = fmt.Sprintf("Failed to update stack %q:\n%v", stackName, err)
+				return nil
+			}
+
 			stackOps := m.deps.Stacks
 			snapOps := m.deps.Snapshot
 			return tea.Batch(m.beginDeploy(stackName), func() tea.Msg {
 				l().Infof("Redeploying edited stack: %s", stackName)
-				err := stackOps.DeployStack(stackName, msg.Content)
+				err := stackOps.DeployStack(stackName, msg.Content, docker.DeployOptions{UnsetEnv: unset})
 				if err != nil {
 					l().Errorf("Failed to redeploy stack %s: %v", stackName, err)
 					return stackUpdateErrorMsg{StackName: stackName, Err: err}
@@ -840,7 +852,7 @@ func (m *Model) handleCreateDialogKey(msg tea.KeyMsg) tea.Cmd {
 			snapOps := m.deps.Snapshot
 			return tea.Batch(m.beginDeploy(stackName), func() tea.Msg {
 				l().Infof("Deploying stack %s from file %s", stackName, filePath)
-				err := stackOps.DeployStack(stackName, string(fileContent))
+				err := stackOps.DeployStack(stackName, string(fileContent), docker.DeployOptions{})
 				if err != nil {
 					l().Errorf("Stack deployment failed: %v", err)
 					return stackCreateErrorMsg{err}
@@ -936,7 +948,7 @@ func (m *Model) handleCreateDialogKey(msg tea.KeyMsg) tea.Cmd {
 			snapOps := m.deps.Snapshot
 			return tea.Batch(m.beginDeploy(stackName), func() tea.Msg {
 				l().Infof("Deploying stack %s from inline editor (%d bytes)", stackName, len(contentToDeploy))
-				err := stackOps.DeployStack(stackName, contentToDeploy)
+				err := stackOps.DeployStack(stackName, contentToDeploy, docker.DeployOptions{})
 				if err != nil {
 					l().Errorf("Stack deployment failed: %v", err)
 					return stackCreateErrorMsg{err}
@@ -958,6 +970,9 @@ func (m *Model) handleCreateDialogKey(msg tea.KeyMsg) tea.Cmd {
 				l().Infof("Opening editor with content (%d bytes), preview: %q", len(m.createDialogContent), preview)
 				m.createDialogActive = false
 				m.createNameInput.Blur()
+				// This content is a new stack's: an edit an editor failure left
+				// pending must not redeploy it as that stack.
+				m.editStackName = ""
 				return openEditorForStackCmd(m.createDialogContent)
 			}
 			// Otherwise it is just a letter — route it like any other key.
@@ -1250,6 +1265,7 @@ func (m *Model) handleFileBrowserKey(msg tea.KeyMsg) tea.Cmd {
 
 		// Automatically open editor for review/editing before deployment
 		l().Infof("Opening editor for review of loaded file (%d bytes)", len(fileContent))
+		m.editStackName = "" // a new stack's content, as in the create dialog's editor
 		return openEditorForStackCmd(m.createDialogContent)
 	}
 	return nil

@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,7 +163,7 @@ func TestUpdate_EditorContentMsg_CreateMode(t *testing.T) {
 func TestUpdate_EditorContentMsg_EditMode(t *testing.T) {
 	deployed := ""
 	stackMock := noopStackOps()
-	stackMock.deployStackFn = func(name string, content string) error {
+	stackMock.deployStackFn = func(name string, content string, _ docker.DeployOptions) error {
 		deployed = name
 		return nil
 	}
@@ -179,7 +180,7 @@ func TestUpdate_EditorContentMsg_EditMode(t *testing.T) {
 func TestUpdate_EditorContentMsg_EditMode_NoChange(t *testing.T) {
 	deployed := false
 	stackMock := noopStackOps()
-	stackMock.deployStackFn = func(name string, content string) error {
+	stackMock.deployStackFn = func(name string, content string, _ docker.DeployOptions) error {
 		deployed = true
 		return nil
 	}
@@ -190,6 +191,101 @@ func TestUpdate_EditorContentMsg_EditMode_NoChange(t *testing.T) {
 	require.Equal(t, "", m.editStackName) // cleared
 	require.Nil(t, cmd)                   // no redeploy
 	require.False(t, deployed)
+}
+
+// The docker CLI reads PATH for itself, so an empty PATH in the running service
+// that the edit keeps can be neither withheld nor kept empty: the redeploy is
+// refused instead, without ending a deploy that is still running.
+func TestUpdate_EditorContentMsg_EditMode_RefusesALiveEmptyCLIVariable(t *testing.T) {
+	deployed := false
+	stackMock := noopStackOps()
+	stackMock.deployStackFn = func(_ string, _ string, _ docker.DeployOptions) error {
+		deployed = true
+		return nil
+	}
+	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
+	m.beginDeploy("other")
+	m.editStackName = "mystack"
+	reconstructed := "services:\n  web:\n    image: nginx\n    environment:\n      PATH: \"\"\n"
+	cmd := m.Update(editorContentMsg{Content: reconstructed + "# edited\n", OriginalContent: reconstructed})
+
+	require.Nil(t, cmd)
+	require.False(t, deployed)
+	require.True(t, m.confirmDialog.ErrorMode)
+	require.Contains(t, m.confirmDialog.Message, "services.web.environment: 'PATH' has no value in the running service")
+	require.Equal(t, "other", m.deployingStack)
+}
+
+// Each deploy path says which environment the docker CLI gets: an edit withholds
+// what the running services hold empty and it leaves so, and a document the
+// operator loaded or wrote keeps everything.
+func TestDeployPathsPassTheirOptions(t *testing.T) {
+	var got []docker.DeployOptions
+	stackMock := noopStackOps()
+	stackMock.deployStackFn = func(_ string, _ string, opts docker.DeployOptions) error {
+		got = append(got, opts)
+		return nil
+	}
+	fastSpinner(t)
+	live := "services:\n  web:\n    image: nginx\n    environment:\n      FOO: \"\"\n"
+
+	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
+	m.editStackName = "web"
+	runBatch(m.Update(editorContentMsg{Content: live + "# edited\n", OriginalContent: live}))
+	m.editStackName = "web"
+	runBatch(m.Update(editorContentMsg{Content: strings.Replace(live, `FOO: ""`, "FOO: x", 1), OriginalContent: live}))
+
+	m.createDialogActive = true
+	m.createDialogStep = "details-inline"
+	m.createNameInput.SetValue("web")
+	m.createDialogContent = live
+	runBatch(m.Update(key("enter")))
+
+	file := filepath.Join(t.TempDir(), "stack.yml")
+	require.NoError(t, os.WriteFile(file, []byte(live), 0o600))
+	m.createDialogActive = true
+	m.createDialogStep = "details-file"
+	m.createFileInput.SetValue(file)
+	runBatch(m.Update(key("enter")))
+
+	require.Equal(t, []docker.DeployOptions{{UnsetEnv: []string{"FOO"}}, {}, {}, {}}, got)
+}
+
+// An editor that fails leaves the edit pending; content the create dialog then
+// sends to the editor is a new stack's, not an edit of that stack.
+func TestCreateEditorClearsAPendingEdit(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "stack.yml")
+	require.NoError(t, os.WriteFile(file, []byte("services: {}\n"), 0o600))
+	for _, tc := range []struct {
+		name string
+		open func(m *Model) tea.Cmd
+	}{
+		{"the create dialog's editor", func(m *Model) tea.Cmd {
+			m.createDialogActive = true
+			m.createDialogStep = "details-inline"
+			m.createInputFocus = 1
+			return m.Update(key("e"))
+		}},
+		{"a file loaded from the browser", func(m *Model) tea.Cmd {
+			m.fileBrowserActive = true
+			m.fileBrowserContext = "create"
+			m.fileBrowserFiles = []string{file}
+			return m.Update(key("enter"))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Where the editor's temp file goes, which only the editor's exit
+			// would remove.
+			tmp := t.TempDir()
+			t.Setenv("TMPDIR", tmp)
+			t.Setenv("TMP", tmp)
+			t.Setenv("TEMP", tmp)
+			m := testModel()
+			m.editStackName = "prod"
+			require.NotNil(t, tc.open(m))
+			require.Empty(t, m.editStackName)
+		})
+	}
 }
 
 func TestUpdate_FilesLoadedMsg_Success(t *testing.T) {
@@ -683,7 +779,7 @@ func TestCreateDialog_DetailsInline_EnterDeploys(t *testing.T) {
 	deployed := ""
 	stackMock := noopStackOps()
 	stackMock.validateStackYAMLFn = func(_ string) error { return nil }
-	stackMock.deployStackFn = func(name string, _ string) error {
+	stackMock.deployStackFn = func(name string, _ string, _ docker.DeployOptions) error {
 		deployed = name
 		return nil
 	}
