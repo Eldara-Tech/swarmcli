@@ -1070,7 +1070,7 @@ func (m *Model) chartReleaseOfStackCmd(name string, mk func(release string) tea.
 		} else {
 			for _, c := range cfgs {
 				lbl := c.Spec.Labels
-				if lbl[charts.LabelType] == charts.TypeRelease &&
+				if charts.IsReleaseRecord(lbl) &&
 					lbl[charts.LabelRelease] == name &&
 					lbl[charts.LabelStatus] != charts.StatusUninstalled {
 					release = name

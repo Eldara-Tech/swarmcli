@@ -168,7 +168,7 @@ func GetStackInspection(stackName string) (string, error) {
 			if hc := svc.Spec.TaskTemplate.ContainerSpec.Healthcheck; hc != nil {
 				healthcheck = composeHealthcheck(hc.Test, int64(hc.Interval),
 					int64(hc.Timeout), int64(hc.StartPeriod), int64(hc.StartInterval),
-					hc.Retries, false /*no escape*/)
+					hc.Retries)
 			}
 		}
 		sort.Strings(svcSecrets)

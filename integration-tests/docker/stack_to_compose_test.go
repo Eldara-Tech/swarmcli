@@ -279,6 +279,21 @@ func TestReconstructStackCompose_RoundTrip(t *testing.T) {
 		}
 	}
 
+	// 8. Compare: a literal '$' survives the redeploy. whoami_single holds
+	// ${NOT_EXPANDED} in its environment and a deploy label; a reconstruction
+	// that left it unescaped would have the redeploy interpolate it away.
+	const literal = "$${NOT_EXPANDED}"
+	srcSingle, rtSingle := srcCF.Services["whoami_single"], rtCF.Services["whoami_single"]
+	if got := srcSingle.Environment["LITERAL"]; got != literal {
+		t.Errorf("source reconstruction: whoami_single LITERAL = %q, want %q", got, literal)
+	}
+	if got := rtSingle.Environment["LITERAL"]; got != literal {
+		t.Errorf("round-trip: whoami_single LITERAL = %q, want %q", got, literal)
+	}
+	if got, _ := rtSingle.Deploy["labels"].(map[string]any); got["literal"] != literal {
+		t.Errorf("round-trip: whoami_single deploy label literal = %v, want %q", got["literal"], literal)
+	}
+
 	t.Logf("Round-trip deploy test passed: volumes=%v, networks=%v",
 		mapKeys(rtCF.Volumes), mapKeys(rtCF.Networks))
 }

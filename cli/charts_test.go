@@ -235,6 +235,40 @@ func TestApplyGateRefusesAReleaseTheDeployWould(t *testing.T) {
 	require.Equal(t, -1, code)
 }
 
+// A declaration the deploy would refuse for its reserved label or name is
+// refused by template too, the same way.
+func TestChartsTemplateRefusesAReservedDeclaration(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "templates"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Chart.yaml"), []byte("name: demo\nversion: 1.0.0\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "templates", "stack.yaml"),
+		[]byte("services:\n  web:\n    image: nginx\nconfigs:\n  app:\n    external: true\n    labels:\n      com.swarmcli.type: release\n"), 0o644))
+	var code int
+	o, errOut := capture(t, func() {
+		code = Dispatch([]string{"charts", "template", "site", dir}, "dev")
+	})
+	require.Equal(t, 1, code)
+	require.Empty(t, o)
+	require.Contains(t, errOut, "configs.app.labels: label 'com.swarmcli.type'")
+}
+
+// And apply's gate refuses it before converging anything, preview or not.
+func TestApplyGateRefusesAReservedDeclaration(t *testing.T) {
+	refused := "services:\n  web:\n    image: nginx\nsecrets:\n  key:\n    external: true\n    name: swarmcli.release.x.v1\n"
+	ok := charts.CompatFinding{Status: charts.CompatOK}
+	plan := &charts.Plan{Releases: []charts.ReleasePlan{
+		{Name: "a", Action: charts.ActionUnchanged, Manifest: refused, Compat: ok},
+		{Name: "b", Action: charts.ActionInstall, Manifest: "services:\n  web:\n    image: nginx\n", Compat: ok},
+		{Name: "c", Action: charts.ActionUpgrade, Manifest: refused, Compat: ok},
+	}}
+	for _, pol := range []compatPolicy{compatEnforceNoPrompt, compatWarn} {
+		var code int
+		_, errOut := capture(t, func() { code = gateApply(plan, pol, false) })
+		require.Equal(t, 1, code)
+		require.Contains(t, errOut, "release 'c': secrets.key: name 'swarmcli.release.x.v1'")
+	}
+}
+
 // And the shape the refusals exist to permit still renders.
 func TestChartsTemplateAcceptsAFileTheChartShips(t *testing.T) {
 	var code int

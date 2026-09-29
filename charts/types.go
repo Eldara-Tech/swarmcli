@@ -28,6 +28,20 @@ const (
 	TypeRelease = "release"
 )
 
+// stackNamespaceLabel is the label a stack deploy puts on every service,
+// network, config and secret it creates. A release record is written directly,
+// never by a stack deploy, so it never carries one.
+const stackNamespaceLabel = "com.docker.stack.namespace"
+
+// IsReleaseRecord reports whether a config's labels mark it as a release
+// record: typed as one, and not created by a stack deploy. Every reader of
+// release records in this module applies it, so a config a stack declares is
+// never one to them, whatever else it is labelled.
+func IsReleaseRecord(labels map[string]string) bool {
+	_, stacked := labels[stackNamespaceLabel]
+	return labels[LabelType] == TypeRelease && !stacked
+}
+
 // Release status values, following Helm's deploy/superseded/failed lifecycle.
 const (
 	StatusPendingInstall = "pending-install"

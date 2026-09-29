@@ -29,7 +29,7 @@ import (
 // the config is not a chart-managed release record (labeled by the charts
 // engine). Used to guard destructive TUI actions on chart-owned configs.
 func chartReleaseOf(cfg *docker.ConfigWithDecodedData) string {
-	if cfg != nil && cfg.Config.Spec.Labels[charts.LabelType] == charts.TypeRelease {
+	if cfg != nil && charts.IsReleaseRecord(cfg.Config.Spec.Labels) {
 		return cfg.Config.Spec.Labels[charts.LabelRelease]
 	}
 	return ""

@@ -344,6 +344,20 @@ func TestDeleteConfirmPrompt(t *testing.T) {
 	require.Contains(t, got, "charts uninstall")
 }
 
+// A config a stack deploy created is not a release record, whatever its labels
+// say, so the TUI neither warns about deleting it nor refuses to edit it.
+func TestChartReleaseOf_IgnoresAStackOwnedConfig(t *testing.T) {
+	cfg := &docker.ConfigWithDecodedData{Config: swarm.Config{Spec: swarm.ConfigSpec{
+		Annotations: swarm.Annotations{Name: "site_app", Labels: map[string]string{
+			charts.LabelType:             charts.TypeRelease,
+			charts.LabelRelease:          "whoami",
+			"com.docker.stack.namespace": "site",
+		}},
+	}}}
+	require.Empty(t, chartReleaseOf(cfg))
+	require.Equal(t, "Delete config site_app?", deleteConfirmPrompt("site_app", cfg))
+}
+
 func TestConfirmResult_Cancelled(t *testing.T) {
 	m := testModel()
 	m.pendingAction = "delete"

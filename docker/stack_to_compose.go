@@ -329,13 +329,43 @@ func ReconstructStackCompose(stackName string) (string, error) {
 	// network — see issue #363)
 	pruneEmptySections(&cf)
 
-	// Marshal to YAML
-	y, err := yaml.Marshal(&cf)
+	return marshalCompose(&cf)
+}
+
+// marshalCompose renders cf as a compose file whose every string value reads
+// back as the literal it holds. The docker CLI interpolates $VAR and ${VAR} in
+// every value of a compose file, keys excepted, and cf carries what the live
+// services hold, so each '$' is written as '$$' — here, on the rendered
+// document, so no field can be missed.
+func marshalCompose(cf *ComposeFile) (string, error) {
+	var doc yaml.Node
+	if err := doc.Encode(cf); err != nil {
+		return "", fmt.Errorf("yaml marshal error: %w", err)
+	}
+	escapeValues(&doc)
+	y, err := yaml.Marshal(&doc)
 	if err != nil {
 		return "", fmt.Errorf("yaml marshal error: %w", err)
 	}
-
 	return string(y), nil
+}
+
+// escapeValues applies escapeComposeInterpolation to every scalar under n that
+// is not a mapping key. Only a string can hold a '$', so the others pass through
+// unchanged.
+func escapeValues(n *yaml.Node) {
+	switch n.Kind {
+	case yaml.MappingNode:
+		for i := 1; i < len(n.Content); i += 2 {
+			escapeValues(n.Content[i])
+		}
+	case yaml.SequenceNode:
+		for _, c := range n.Content {
+			escapeValues(c)
+		}
+	case yaml.ScalarNode:
+		n.Value = escapeComposeInterpolation(n.Value)
+	}
 }
 
 // assembleCompose builds the Compose model from already-inspected service
@@ -450,11 +480,11 @@ func (cf *ComposeFile) buildService(si *ServiceInspect, stackName string, netID2
 			cs.Labels = cl
 		}
 
-		// Command / Args — escape $ → $$ for Compose variable interpolation
+		// Command / Args
 		if len(cspec.Args) > 0 {
-			cs.Command = escapeComposeArgs(cspec.Args)
+			cs.Command = cspec.Args
 		} else if len(cspec.Command) > 0 {
-			cs.Command = escapeComposeArgs(cspec.Command)
+			cs.Command = cspec.Command
 		}
 
 		// Mounts -> volumes
@@ -526,7 +556,7 @@ func (cf *ComposeFile) buildService(si *ServiceInspect, stackName string, netID2
 		// Healthcheck
 		if h := cspec.Healthcheck; h != nil {
 			cs.Healthcheck = composeHealthcheck(h.Test, h.Interval, h.Timeout,
-				h.StartPeriod, h.StartInterval, h.Retries, true /*escape*/)
+				h.StartPeriod, h.StartInterval, h.Retries)
 		}
 
 		// Runtime / security settings that round-trip through stack deploy (#430).
@@ -847,7 +877,7 @@ func filterLabels(labels map[string]string) map[string]string {
 }
 
 // escapeComposeInterpolation escapes $ as $$ so that Compose does not
-// attempt variable interpolation on reconstructed command strings.
+// attempt variable interpolation on a reconstructed value.
 func escapeComposeInterpolation(s string) string {
 	return strings.ReplaceAll(s, "$", "$$")
 }
@@ -856,10 +886,9 @@ func escapeComposeInterpolation(s string) string {
 // healthcheck spec. Durations are raw nanoseconds (as Docker reports them) and
 // are rendered as compose duration strings (e.g. "30s"). Returns nil when the
 // spec carries nothing meaningful, i.e. the service inherits the image's
-// healthcheck. When escape is true, Test elements are escaped for Compose
-// variable interpolation (used in the reconstructed Compose YAML).
+// healthcheck.
 func composeHealthcheck(test []string, intervalNs, timeoutNs, startPeriodNs,
-	startIntervalNs int64, retries int, escape bool) *Healthcheck {
+	startIntervalNs int64, retries int) *Healthcheck {
 
 	disabled := len(test) == 1 && test[0] == "NONE"
 	if !disabled && len(test) == 0 && intervalNs == 0 && timeoutNs == 0 &&
@@ -872,11 +901,7 @@ func composeHealthcheck(test []string, intervalNs, timeoutNs, startPeriodNs,
 		hc.Disable = true
 		return hc
 	}
-	if escape {
-		hc.Test = escapeComposeArgs(test)
-	} else {
-		hc.Test = test
-	}
+	hc.Test = test
 	if intervalNs > 0 {
 		hc.Interval = time.Duration(intervalNs).String()
 	}
@@ -1005,15 +1030,6 @@ func applyFilePerms(ref map[string]any, uid, gid string, mode uint32) {
 	if mode != 0 && mode != 0o444 {
 		ref["mode"] = fileMode(mode)
 	}
-}
-
-// escapeComposeArgs applies escapeComposeInterpolation to each element.
-func escapeComposeArgs(args []string) []string {
-	out := make([]string, len(args))
-	for i, a := range args {
-		out[i] = escapeComposeInterpolation(a)
-	}
-	return out
 }
 
 // stripImageDigest removes a trailing "@sha256:<digest>" pin so the

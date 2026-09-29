@@ -77,19 +77,23 @@ func (b *dockerBackend) snapshot(ctx context.Context) (*docker.SwarmSnapshot, er
 	return docker.SnapshotWith(ctx, cli)
 }
 
-// envRefusal marks an EnvLookups refusal on its way out of a deploy, so a
-// rollback can say what to do instead.
-type envRefusal struct{ error }
+// manifestRefusal marks an EnvLookups or CheckReserved refusal on its way out of
+// a deploy, so a rollback can say what to do instead.
+type manifestRefusal struct{ error }
 
-func (e envRefusal) Unwrap() error { return e.error }
+func (e manifestRefusal) Unwrap() error { return e.error }
 
-// DeployStack runs the manifest through EnvLookups first, whatever the caller
-// did before: this is the one point every chart deploy passes, including a
-// rollback, which replays a stored manifest nothing else re-reads.
+// DeployStack runs the manifest through EnvLookups and CheckReserved first,
+// whatever the caller did before: this is the one point every chart deploy
+// passes, including a rollback, which replays a stored manifest nothing else
+// re-reads.
 func (b *dockerBackend) DeployStack(ctx context.Context, req DeployRequest) error {
 	unset, err := EnvLookups(req.Manifest, req.Files)
 	if err != nil {
-		return envRefusal{err}
+		return manifestRefusal{err}
+	}
+	if err := CheckReserved(req.Manifest, req.Name); err != nil {
+		return manifestRefusal{err}
 	}
 	ctxName, err := b.contextName()
 	if err != nil {

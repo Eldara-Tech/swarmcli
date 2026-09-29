@@ -71,16 +71,9 @@ var cliEnv = []string{
 // refusal names the compose key that holds the offending value, and the names
 // come back sorted and without duplicates.
 func EnvLookups(manifest string, files map[string][]byte) ([]string, error) {
-	var doc any
-	if err := yaml.Unmarshal([]byte(manifest), &doc); err != nil {
-		return nil, fmt.Errorf("parse manifest: %w", err)
-	}
-	if err := refuseInterpolation(doc, ""); err != nil {
+	top, err := decodeManifest(manifest)
+	if err != nil {
 		return nil, err
-	}
-	top, ok := doc.(map[string]any)
-	if !ok && doc != nil {
-		return nil, fmt.Errorf("parse manifest: the top level must be a mapping")
 	}
 
 	var remove []string
@@ -141,6 +134,73 @@ func EnvLookups(manifest string, files map[string][]byte) ([]string, error) {
 
 	slices.Sort(remove)
 	return slices.Compact(remove), nil
+}
+
+// decodeManifest decodes a rendered manifest as the docker CLI reads it and
+// refuses one that interpolates or has a key that is not a string, which
+// EnvLookups describes. What it returns holds only string-keyed mappings, so a
+// type assertion on a section cannot miss a sibling.
+//
+// It also refuses a merge key and a key given twice in one mapping (see
+// refuseAmbiguousKeys), so the document it decodes is the one the CLI decodes,
+// whichever YAML library that CLI was built with.
+func decodeManifest(manifest string) (map[string]any, error) {
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(manifest), &root); err != nil {
+		return nil, fmt.Errorf("parse manifest: %w", err)
+	}
+	if err := refuseAmbiguousKeys(&root); err != nil {
+		return nil, err
+	}
+	var doc any
+	if err := root.Decode(&doc); err != nil {
+		return nil, fmt.Errorf("parse manifest: %w", err)
+	}
+	if err := refuseInterpolation(doc, ""); err != nil {
+		return nil, err
+	}
+	top, ok := doc.(map[string]any)
+	if !ok && doc != nil {
+		return nil, fmt.Errorf("parse manifest: the top level must be a mapping")
+	}
+	return top, nil
+}
+
+// refuseAmbiguousKeys refuses the first merge key ('<<') under n, and the first
+// key a mapping gives twice, naming its line. YAML libraries resolve both
+// differently: yaml.v3, which this package and docker/cli v28 use, lets a key
+// written out win over a merged one, where gopkg.in/yaml.v2, which earlier
+// docker/cli versions use, lets whichever comes last win. A key reached through
+// an alias is compared by the text it stands for.
+func refuseAmbiguousKeys(n *yaml.Node) error {
+	switch n.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, c := range n.Content {
+			if err := refuseAmbiguousKeys(c); err != nil {
+				return err
+			}
+		}
+	case yaml.MappingNode:
+		seen := make(map[string]bool, len(n.Content)/2)
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			k := n.Content[i]
+			text := k.Value
+			if k.Kind == yaml.AliasNode && k.Alias != nil {
+				text = k.Alias.Value
+			}
+			if text == "<<" || k.ShortTag() == "!!merge" {
+				return fmt.Errorf("line %d: a chart manifest may not use a merge key ('<<') — write the merged keys out", k.Line)
+			}
+			if seen[text] {
+				return fmt.Errorf("line %d: key '%s' is given twice in one mapping, which a chart manifest may not do — keep one", k.Line, text)
+			}
+			seen[text] = true
+			if err := refuseAmbiguousKeys(n.Content[i+1]); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // refuseInterpolation refuses the first value under v that the docker CLI would

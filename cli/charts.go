@@ -728,6 +728,9 @@ func prepare(release, ref string, f flags, base map[string]any, pol compatPolicy
 	if _, err := charts.EnvLookups(manifest, chartFiles); err != nil {
 		return "", nil, rc, nil, nil, fail(err)
 	}
+	if err := charts.CheckReserved(manifest, release); err != nil {
+		return "", nil, rc, nil, nil, fail(err)
+	}
 	rc = charts.ReleaseChart{Name: ch.Metadata.Name, Version: ch.Metadata.Version, AppVersion: ch.Metadata.AppVersion}
 	return manifest, values, rc, req, chartFiles, -1
 }
