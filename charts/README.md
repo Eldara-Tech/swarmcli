@@ -688,8 +688,9 @@ window are the protections.
 
 - **`install --dry-run`** renders, validates, and computes the next revision
   but does not deploy. For fully offline rendering use `charts template`.
-- **`--purge-volumes`** removes volumes on the connected node only (the CE
-  single-node volume scope); cross-node purge is a future extension.
+- **`--purge-volumes`** removes volumes on the connected node only, and warns
+  when the swarm has more nodes; purging volumes on every node is a Business
+  Edition feature.
 - **Secrets:** the rendered manifest is stored **unredacted** in a Docker Config,
   which is readable by anyone with Docker access — as are `charts get manifest`
   and the TUI config viewer, which read it back. Do **not** inline secret

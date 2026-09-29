@@ -13,7 +13,9 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Eldara-Tech/swarmcli/v2/charts"
+	"github.com/Eldara-Tech/swarmcli/v2/features"
 	"github.com/Eldara-Tech/swarmcli/v2/utils/textdiff"
+	"github.com/Eldara-Tech/swarmcli/v2/views/view"
 )
 
 // chartsUsageProse is everything in `charts --help` that is not the command
@@ -756,7 +758,27 @@ func chartsUninstall(c chartsCmd, args []string) int {
 			outf("  docker network rm %s\n", n)
 		}
 	}
+	if res != nil && res.VolumesMayRemain {
+		errf("%s", volumesMayRemainWarning(pos[0]))
+	}
 	return 0
+}
+
+// volumesAllNodesFeature is the feature an extension build enables when it can
+// reach volumes on every swarm node; the volumes view gates its hint on it too.
+const volumesAllNodesFeature = "volumes-all-nodes"
+
+// volumesMayRemainWarning is what uninstall prints when a purge could not reach
+// every node. Without the feature (the base build, or an unlicensed extension
+// build) it also says where purging every node is available.
+func volumesMayRemainWarning(release string) string {
+	w := "warning: the purge could not reach every node of this swarm; volumes on the others are left\n" +
+		"in place. On each node, list them with:\n" +
+		"  docker volume ls --filter label=com.docker.stack.namespace=" + release + "\n"
+	if !features.IsEnabled(volumesAllNodesFeature) {
+		w += "Purging volumes on every node is a Business Edition feature: " + view.BELandingURL + "\n"
+	}
+	return w
 }
 
 func chartsList(c chartsCmd, args []string) int {

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Eldara-Tech/swarmcli/v2/charts"
+	"github.com/Eldara-Tech/swarmcli/v2/features"
 )
 
 // capture redirects stdout/stderr to separate buffers for the duration of fn
@@ -589,4 +590,22 @@ func TestNoRepoUpdateFlagParses(t *testing.T) {
 	_, f, err = parseArgs([]string{})
 	require.NoError(t, err)
 	require.False(t, f.noRepoUpdate)
+}
+
+// Without the all-nodes volume feature the warning says where purging every
+// node is available; with it (an extension that could not reach some nodes
+// this time) it gives only the remedy.
+func TestVolumesMayRemainWarning(t *testing.T) {
+	remedy := "  docker volume ls --filter label=com.docker.stack.namespace=mongodb\n"
+	upsell := "Purging volumes on every node is a Business Edition feature: https://swarmcli.io/be\n"
+
+	w := volumesMayRemainWarning("mongodb")
+	require.Contains(t, w, remedy)
+	require.True(t, strings.HasSuffix(w, upsell))
+
+	features.Enable(volumesAllNodesFeature)
+	t.Cleanup(func() { features.Disable(volumesAllNodesFeature) })
+	w = volumesMayRemainWarning("mongodb")
+	require.True(t, strings.HasSuffix(w, remedy))
+	require.NotContains(t, w, "Business Edition")
 }
