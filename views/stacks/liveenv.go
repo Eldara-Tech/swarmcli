@@ -35,11 +35,10 @@ func liveEmptyEnv(reconstructed, edited string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse the reconstructed stack: %w", err)
 	}
-	kept, err := emptyEnvByService(edited)
+	keptNames, err := emptyEnvNames(edited)
 	if err != nil {
 		return nil, fmt.Errorf("parse the edited stack: %w", err)
 	}
-	keptNames := slices.Concat(slices.Collect(maps.Values(kept))...)
 	var names []string
 	for _, svc := range slices.Sorted(maps.Keys(live)) {
 		for _, name := range live[svc] {
@@ -61,6 +60,18 @@ func liveEmptyEnv(reconstructed, edited string) ([]string, error) {
 			names = append(names, name)
 		}
 	}
+	slices.Sort(names)
+	return slices.Compact(names), nil
+}
+
+// emptyEnvNames returns every name the services of a compose document give the
+// value "" (emptyEnvByService), sorted and without duplicates.
+func emptyEnvNames(doc string) ([]string, error) {
+	byService, err := emptyEnvByService(doc)
+	if err != nil {
+		return nil, err
+	}
+	names := slices.Concat(slices.Collect(maps.Values(byService))...)
 	slices.Sort(names)
 	return slices.Compact(names), nil
 }

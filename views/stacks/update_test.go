@@ -979,6 +979,56 @@ func TestStackSavedMsg_ShowsSuccess(t *testing.T) {
 	require.Contains(t, m.confirmDialog.Message, "/tmp/mystack.yml")
 }
 
+// saveReconstruction saves what the stack reconstructs to as a file, the way
+// the save dialog does, and returns the dialog the operator then sees and the
+// bytes written.
+func saveReconstruction(t *testing.T, reconstructed string) (string, string) {
+	t.Helper()
+	stackMock := noopStackOps()
+	stackMock.reconstructStackComposeFn = func(string) (string, error) { return reconstructed, nil }
+	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
+	path := filepath.Join(t.TempDir(), "web.yml")
+	m.Update(runCmd(m.saveStackToFileCmd("web", path)))
+	require.True(t, m.confirmDialog.InfoMode)
+	written, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return m.confirmDialog.Message, string(written)
+}
+
+// A saved stack lists, by name, the values its running services hold empty: a
+// deploy of the file fills them from the environment it runs in. The file is
+// written exactly as reconstructed, and no value is shown.
+func TestSaveNamesTheValuesTheRunningServicesHoldEmpty(t *testing.T) {
+	reconstructed := `services:
+  api:
+    image: nginx
+    environment:
+      FOO: ""
+      TOKEN: s3cret
+  web:
+    image: nginx
+    environment:
+      BAR: ""
+      FOO: ""
+`
+	msg, written := saveReconstruction(t, reconstructed)
+	require.Equal(t, reconstructed, written)
+	require.Contains(t, msg, "Empty in the running services: BAR, FOO")
+	require.NotContains(t, msg, "s3cret")
+}
+
+// With no empty value, or a reconstruction it cannot read, the save says only
+// where the file went.
+func TestSaveWithNothingEmptyWarnsOfNothing(t *testing.T) {
+	for _, reconstructed := range []string{
+		"services:\n  web:\n    image: nginx\n    environment:\n      KEEP: x\n",
+		"services: [",
+	} {
+		msg, _ := saveReconstruction(t, reconstructed)
+		require.NotContains(t, msg, "Empty in the running services")
+	}
+}
+
 func TestStackSaveErrorMsg_ReturnsToDialog(t *testing.T) {
 	m := testModel()
 	m.Update(stackSaveErrorMsg{Err: fmt.Errorf("permission denied")})

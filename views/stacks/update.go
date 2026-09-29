@@ -352,6 +352,10 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		m.confirmDialog.Visible = true
 		m.confirmDialog.InfoMode = true
 		m.confirmDialog.Message = fmt.Sprintf("Stack YAML saved to:\n%s", msg.Path)
+		if len(msg.EmptyEnv) > 0 {
+			m.confirmDialog.Message += "\n\nEmpty in the running services: " + strings.Join(msg.EmptyEnv, ", ") +
+				"\n\nA deploy of this file, with docker stack deploy or as a new stack here, fills them from the environment it runs in. Editing the stack here (e) keeps them empty."
+		}
 		return nil
 
 	case stackSaveErrorMsg:
@@ -1125,7 +1129,16 @@ func (m *Model) saveStackToFileCmd(stackName, filePath string) tea.Cmd {
 			return stackSaveErrorMsg{Err: fmt.Errorf("failed to write file: %w", err)}
 		}
 		l().Infof("Stack %s YAML saved to %s", stackName, filePath)
-		return stackSavedMsg{Path: filePath}
+		// The file holds these as "", which a deploy of it fills from the
+		// environment it runs in; no compose syntax keeps them empty.
+		empty, err := emptyEnvNames(yamlContent)
+		if err != nil {
+			l().Warnf("Could not read the environment of stack %s: %v", stackName, err)
+		}
+		if len(empty) > 0 {
+			l().Warnf("Stack %s holds %s empty; a deploy of %s fills them from the environment it runs in", stackName, strings.Join(empty, ", "), filePath)
+		}
+		return stackSavedMsg{Path: filePath, EmptyEnv: empty}
 	}
 }
 
