@@ -275,7 +275,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			snapOps := m.deps.Snapshot
 			return tea.Batch(m.beginDeploy(stackName), func() tea.Msg {
 				l().Infof("Redeploying edited stack: %s", stackName)
-				err := stackOps.DeployStack(stackName, msg.Content)
+				err := stackOps.DeployStack(stackName, msg.Content, docker.DeployOptions{})
 				if err != nil {
 					l().Errorf("Failed to redeploy stack %s: %v", stackName, err)
 					return stackUpdateErrorMsg{StackName: stackName, Err: err}
@@ -840,7 +840,7 @@ func (m *Model) handleCreateDialogKey(msg tea.KeyMsg) tea.Cmd {
 			snapOps := m.deps.Snapshot
 			return tea.Batch(m.beginDeploy(stackName), func() tea.Msg {
 				l().Infof("Deploying stack %s from file %s", stackName, filePath)
-				err := stackOps.DeployStack(stackName, string(fileContent))
+				err := stackOps.DeployStack(stackName, string(fileContent), docker.DeployOptions{})
 				if err != nil {
 					l().Errorf("Stack deployment failed: %v", err)
 					return stackCreateErrorMsg{err}
@@ -936,7 +936,7 @@ func (m *Model) handleCreateDialogKey(msg tea.KeyMsg) tea.Cmd {
 			snapOps := m.deps.Snapshot
 			return tea.Batch(m.beginDeploy(stackName), func() tea.Msg {
 				l().Infof("Deploying stack %s from inline editor (%d bytes)", stackName, len(contentToDeploy))
-				err := stackOps.DeployStack(stackName, contentToDeploy)
+				err := stackOps.DeployStack(stackName, contentToDeploy, docker.DeployOptions{})
 				if err != nil {
 					l().Errorf("Stack deployment failed: %v", err)
 					return stackCreateErrorMsg{err}

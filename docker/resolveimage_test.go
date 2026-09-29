@@ -24,7 +24,7 @@ func TestResolveImageValid(t *testing.T) {
 
 // An invalid mode must be refused before anything is written or deployed.
 func TestDeployStackResolvedRejectsInvalidMode(t *testing.T) {
-	err := DeployStackResolved(context.Background(), "stack", "services:\n  a:\n    image: nginx\n", "bogus")
+	err := DeployStackResolved(context.Background(), "stack", "services:\n  a:\n    image: nginx\n", "bogus", DeployOptions{})
 	if err == nil {
 		t.Fatal("DeployStackResolved with an invalid mode returned nil, want an error")
 	}

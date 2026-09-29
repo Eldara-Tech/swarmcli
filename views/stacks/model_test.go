@@ -22,7 +22,7 @@ import (
 type mockStackOps struct {
 	removeStackFn             func(ctx context.Context, stackName string) error
 	removeStackNetworksFn     func(ctx context.Context, stackName string) error
-	deployStackFn             func(stackName string, yamlContent string) error
+	deployStackFn             func(stackName string, yamlContent string, opts docker.DeployOptions) error
 	validateStackYAMLFn       func(content string) error
 	inspectStackFn            func(stackName string) (string, error)
 	reconstructStackComposeFn func(stackName string) (string, error)
@@ -34,8 +34,8 @@ func (m *mockStackOps) RemoveStack(ctx context.Context, stackName string) error 
 func (m *mockStackOps) RemoveStackNetworks(ctx context.Context, stackName string) error {
 	return m.removeStackNetworksFn(ctx, stackName)
 }
-func (m *mockStackOps) DeployStack(stackName string, yamlContent string) error {
-	return m.deployStackFn(stackName, yamlContent)
+func (m *mockStackOps) DeployStack(stackName string, yamlContent string, opts docker.DeployOptions) error {
+	return m.deployStackFn(stackName, yamlContent, opts)
 }
 func (m *mockStackOps) ValidateStackYAML(content string) error {
 	return m.validateStackYAMLFn(content)
@@ -178,7 +178,7 @@ func noopStackOps() *mockStackOps {
 	return &mockStackOps{
 		removeStackFn:             func(_ context.Context, _ string) error { return nil },
 		removeStackNetworksFn:     func(_ context.Context, _ string) error { return nil },
-		deployStackFn:             func(_ string, _ string) error { return nil },
+		deployStackFn:             func(_ string, _ string, _ docker.DeployOptions) error { return nil },
 		validateStackYAMLFn:       func(_ string) error { return nil },
 		inspectStackFn:            func(_ string) (string, error) { return "", nil },
 		reconstructStackComposeFn: func(_ string) (string, error) { return "", nil },

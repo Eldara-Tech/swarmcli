@@ -162,7 +162,7 @@ func TestUpdate_EditorContentMsg_CreateMode(t *testing.T) {
 func TestUpdate_EditorContentMsg_EditMode(t *testing.T) {
 	deployed := ""
 	stackMock := noopStackOps()
-	stackMock.deployStackFn = func(name string, content string) error {
+	stackMock.deployStackFn = func(name string, content string, _ docker.DeployOptions) error {
 		deployed = name
 		return nil
 	}
@@ -179,7 +179,7 @@ func TestUpdate_EditorContentMsg_EditMode(t *testing.T) {
 func TestUpdate_EditorContentMsg_EditMode_NoChange(t *testing.T) {
 	deployed := false
 	stackMock := noopStackOps()
-	stackMock.deployStackFn = func(name string, content string) error {
+	stackMock.deployStackFn = func(name string, content string, _ docker.DeployOptions) error {
 		deployed = true
 		return nil
 	}
@@ -683,7 +683,7 @@ func TestCreateDialog_DetailsInline_EnterDeploys(t *testing.T) {
 	deployed := ""
 	stackMock := noopStackOps()
 	stackMock.validateStackYAMLFn = func(_ string) error { return nil }
-	stackMock.deployStackFn = func(name string, _ string) error {
+	stackMock.deployStackFn = func(name string, _ string, _ docker.DeployOptions) error {
 		deployed = name
 		return nil
 	}

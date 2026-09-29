@@ -23,10 +23,10 @@ var allowedBareBackground = map[string]string{
 	// makes is bounded: SnapshotWith applies the 30s deadline itself, so the
 	// timeout lives in one place instead of at every call site.
 	"docker/snapshot.go": "RefreshSnapshot",
-	// DeployStack is the TUI's entry point, called from Bubble Tea commands that
+	// deployStack is the TUI's entry point, called from Bubble Tea commands that
 	// hold no context. Everything under it takes one, so the caller that does
 	// have a context to give — the release engine — reaches the child process.
-	"docker/stack_deploy.go": "DeployStack",
+	"docker/stack_deploy.go": "deployStack",
 }
 
 func TestNoBareContextBackground(t *testing.T) {
