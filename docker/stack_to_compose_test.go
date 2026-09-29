@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/cli/cli/compose/interpolation"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -312,19 +313,11 @@ func TestEscapeComposeInterpolation(t *testing.T) {
 	}
 }
 
-func TestEscapeComposeArgs(t *testing.T) {
-	in := []string{"sh", "-c", "echo $HOME; date=$(date)"}
-	got := escapeComposeArgs(in)
-	require.Equal(t, []string{"sh", "-c", "echo $$HOME; date=$$(date)"}, got)
-	// original slice must not be modified
-	require.Equal(t, "echo $HOME; date=$(date)", in[2])
-}
-
 func TestComposeHealthcheck_FullSpec(t *testing.T) {
 	hc := composeHealthcheck(
 		[]string{"CMD", "curl", "-f", "http://localhost"},
 		90*int64(time.Second), 10*int64(time.Second),
-		40*int64(time.Second), 5*int64(time.Second), 3, false)
+		40*int64(time.Second), 5*int64(time.Second), 3)
 	require.NotNil(t, hc)
 	require.Equal(t, []string{"CMD", "curl", "-f", "http://localhost"}, hc.Test)
 	require.Equal(t, "1m30s", hc.Interval)
@@ -336,7 +329,7 @@ func TestComposeHealthcheck_FullSpec(t *testing.T) {
 }
 
 func TestComposeHealthcheck_Disabled(t *testing.T) {
-	hc := composeHealthcheck([]string{"NONE"}, 0, 0, 0, 0, 0, false)
+	hc := composeHealthcheck([]string{"NONE"}, 0, 0, 0, 0, 0)
 	require.NotNil(t, hc)
 	require.True(t, hc.Disable)
 	require.Empty(t, hc.Test)
@@ -344,15 +337,8 @@ func TestComposeHealthcheck_Disabled(t *testing.T) {
 }
 
 func TestComposeHealthcheck_InheritReturnsNil(t *testing.T) {
-	require.Nil(t, composeHealthcheck(nil, 0, 0, 0, 0, 0, false))
-	require.Nil(t, composeHealthcheck([]string{}, 0, 0, 0, 0, 0, false))
-}
-
-func TestComposeHealthcheck_Escapes(t *testing.T) {
-	hc := composeHealthcheck(
-		[]string{"CMD-SHELL", "test $VAR = 1"}, int64(time.Second), 0, 0, 0, 0, true)
-	require.NotNil(t, hc)
-	require.Equal(t, []string{"CMD-SHELL", "test $$VAR = 1"}, hc.Test)
+	require.Nil(t, composeHealthcheck(nil, 0, 0, 0, 0, 0))
+	require.Nil(t, composeHealthcheck([]string{}, 0, 0, 0, 0, 0))
 }
 
 func TestComposeService_HealthcheckYAML(t *testing.T) {
@@ -702,4 +688,65 @@ func TestServiceInspect_CapturesUpdateConfigAndEndpointMode(t *testing.T) {
 	require.Equal(t, "start-first", si.Spec.UpdateConfig.Order)
 	require.NotNil(t, si.Spec.EndpointSpec)
 	require.Equal(t, "dnsrr", si.Spec.EndpointSpec.Mode)
+}
+
+// A running service holds its values literally — a chart's escaped $${FOO}
+// arrives as ${FOO} — and the docker CLI interpolates every value of the file it
+// deploys. The reconstructed file must therefore read back, through the CLI's
+// own interpolation, as exactly what the services hold, with nothing looked up.
+func TestReconstruct_KeepsLiteralDollars(t *testing.T) {
+	const raw = `{
+	  "Spec": {
+	    "Name": "demo_web",
+	    "Labels": {"com.docker.stack.namespace": "demo", "route": "Host(${HOST})", "key$": "$1"},
+	    "TaskTemplate": {
+	      "ContainerSpec": {
+	        "Image": "nginx:1.27",
+	        "Args": ["sh", "-c", "echo ${FOO} $BAR $$ $"],
+	        "Env": ["FOO=${FOO}", "BAR=$BAR", "PAIR=a$$b"],
+	        "Labels": {"com.docker.stack.namespace": "demo", "note": "cost: $5 ${X:-y}"},
+	        "Dir": "/srv/$APP",
+	        "Hostname": "web-${NODE}",
+	        "Healthcheck": {"Test": ["CMD-SHELL", "test -n \"$FOO\""], "Interval": 1000000000},
+	        "Mounts": [{"Type": "bind", "Source": "/data/$HOST", "Target": "/data"}],
+	        "Sysctls": {"net.core.somaxconn": "${N}"},
+	        "Secrets": [{"SecretName": "demo_key", "File": {"Name": "key-$ID"}}]
+	      },
+	      "Placement": {"Constraints": ["node.labels.zone==${ZONE}"]},
+	      "LogDriver": {"Name": "json-file", "Options": {"tag": "{{.Name}}/$ID"}}
+	    },
+	    "Mode": {"Replicated": {"Replicas": 1}}
+	  }
+	}`
+	var si ServiceInspect
+	require.NoError(t, json.Unmarshal([]byte(raw), &si))
+	cf := assembleCompose([]ServiceInspect{si}, "demo", nil)
+
+	// What the services hold, rendered with no escaping at all.
+	plain, err := yaml.Marshal(&cf)
+	require.NoError(t, err)
+	var want map[string]any
+	require.NoError(t, yaml.Unmarshal(plain, &want))
+
+	out, err := marshalCompose(&cf)
+	require.NoError(t, err)
+	var doc map[string]any
+	require.NoError(t, yaml.Unmarshal([]byte(out), &doc))
+	var lookups []string
+	got, err := interpolation.Interpolate(doc, interpolation.Options{
+		LookupValue: func(name string) (string, bool) {
+			lookups = append(lookups, name)
+			return "", false
+		},
+	})
+	require.NoError(t, err)
+	require.Empty(t, lookups, "the reconstructed file reads variables from the deploying environment")
+	require.Equal(t, want, got)
+
+	web := got["services"].(map[string]any)["web"].(map[string]any)
+	require.Equal(t, "${FOO}", web["environment"].(map[string]any)["FOO"])
+	require.Equal(t, "a$$b", web["environment"].(map[string]any)["PAIR"])
+	require.Equal(t, "cost: $5 ${X:-y}", web["labels"].(map[string]any)["note"])
+	require.Equal(t, "Host(${HOST})", web["deploy"].(map[string]any)["labels"].(map[string]any)["route"])
+	require.Equal(t, []any{"sh", "-c", "echo ${FOO} $BAR $$ $"}, web["command"])
 }

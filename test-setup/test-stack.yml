@@ -56,8 +56,14 @@ services:
     configs:
       - source: whoami_single_config
         target: /etc/whoami/config
+    # A literal '$' in a value: the service holds ${NOT_EXPANDED}, and compose
+    # reconstruction must keep it literal through a redeploy.
+    environment:
+      LITERAL: "$${NOT_EXPANDED}"
     deploy:
       replicas: 1
+      labels:
+        literal: "$${NOT_EXPANDED}"
     # Issue #379 fixture: a service with a healthcheck. Both inspect and
     # compose reconstruction must surface it.
     healthcheck:
