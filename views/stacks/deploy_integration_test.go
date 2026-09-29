@@ -8,6 +8,7 @@ package stacksview
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	swarmlog "github.com/Eldara-Tech/swarmcli/v2/utils/log"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/stretchr/testify/require"
 )
 
@@ -90,4 +92,46 @@ func TestDeployProgressAgainstRealSwarm(t *testing.T) {
 		names = append(names, s.Name)
 	}
 	require.Contains(t, names, stackName)
+}
+
+// TestRedeployOfAnEditKeepsAnEmptyValueAgainstRealSwarm round-trips a service
+// holding FOO empty through the reconstruction the editor opens and the
+// redeploy of the edit, with FOO set in this environment: the service keeps FOO
+// empty and takes the edit.
+func TestRedeployOfAnEditKeepsAnEmptyValueAgainstRealSwarm(t *testing.T) {
+	swarmlog.InitTestIfTestLogEnv()
+	fastSpinner(t)
+
+	stackName := fmt.Sprintf("itest-edit-env-%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		if err := docker.RemoveStackCLI(context.Background(), stackName); err != nil {
+			t.Logf("cleanup: removing stack %s: %v", stackName, err)
+		}
+	})
+	// Set but empty, so the first deploy fills FOO with "" whatever the
+	// environment running the tests holds.
+	t.Setenv("FOO", "")
+	require.NoError(t, docker.DeployStack(stackName,
+		"version: \"3.9\"\nservices:\n  app:\n    image: traefik/whoami:v1.10\n    environment:\n      FOO: \"\"\n"))
+
+	t.Setenv("FOO", "from-the-shell")
+	m := New(80, 24)
+	m.deps = docker.DefaultDeps()
+	reconstructed, err := m.deps.Stacks.ReconstructStackCompose(stackName)
+	require.NoError(t, err)
+	edited := regexp.MustCompile(`(?m)^(\s*)FOO: ""$`).ReplaceAllString(reconstructed, "${1}FOO: \"\"\n${1}EDITED: \"yes\"")
+	require.NotEqual(t, reconstructed, edited, "the reconstruction must hold FOO empty")
+
+	m.editStackName = stackName
+	_, ok := firstOfType[stackDeployedMsg](runBatch(m.Update(editorContentMsg{Content: edited, OriginalContent: reconstructed})))
+	require.True(t, ok, "the redeploy must succeed")
+
+	cli, err := docker.GetClient()
+	require.NoError(t, err)
+	svc, _, err := cli.ServiceInspectWithRaw(context.Background(), stackName+"_app", swarm.ServiceInspectOptions{})
+	require.NoError(t, err)
+	env := svc.Spec.TaskTemplate.ContainerSpec.Env
+	require.Contains(t, env, "EDITED=yes", "the edit must have been deployed")
+	require.Contains(t, env, "FOO=")
+	require.NotContains(t, env, "FOO=from-the-shell")
 }
