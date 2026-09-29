@@ -129,25 +129,58 @@ func TestEnvLookupsReturnsEmptyValuesToWithhold(t *testing.T) {
 	}
 }
 
-// An environment block, an entry or a value reached through an anchor is still
-// read, as is one merged in: the CLI resolves them all before it looks anything
-// up. Each arrives by one route only, so no route can stand in for another.
-func TestEnvLookupsFollowsAnchorsAndMerges(t *testing.T) {
+// An environment block or a value reached through an anchor is still read: the
+// CLI resolves them before it looks anything up. Each arrives by one route only,
+// so no route can stand in for another.
+func TestEnvLookupsFollowsAnchors(t *testing.T) {
 	manifest := "x-env: &env\n  BLOCK_ALIAS: \"\"\n" +
-		"x-entries: &entries\n  ENTRY_MERGE: \"\"\n" +
-		"x-base: &base\n  environment:\n    SERVICE_MERGE: \"\"\n" +
 		"x-empty: &empty \"\"\n" +
 		"services:\n" +
 		"  a:\n    image: nginx\n    environment: *env\n" +
-		"  b:\n    <<: *base\n    image: nginx\n" +
-		"  c:\n    image: nginx\n    environment:\n      <<: *entries\n      VALUE_ALIAS: *empty\n"
+		"  b:\n    image: nginx\n    environment:\n      VALUE_ALIAS: *empty\n"
 	got, err := EnvLookups(manifest, nil)
 	require.NoError(t, err)
-	require.Equal(t, []string{"BLOCK_ALIAS", "ENTRY_MERGE", "SERVICE_MERGE", "VALUE_ALIAS"}, got)
+	require.Equal(t, []string{"BLOCK_ALIAS", "VALUE_ALIAS"}, got)
 }
 
-// The docker CLI reads the decoded document, so this does too: a tag, a key
-// anchor or a merge key means here exactly what it means there.
+// YAML libraries disagree on which value a key has when it is merged in and
+// also written out, or given twice, and the docker CLI deploying a chart may
+// use either one. So every check that decodes a manifest refuses both, however
+// the key is spelled, before reading any value.
+func TestDecodeManifestRefusesAmbiguousKeys(t *testing.T) {
+	const merge = "a chart manifest may not use a merge key ('<<')"
+	for _, tc := range []struct{ name, manifest, want string }{
+		{"a merge beside the key it sets", "services:\n  web:\n    image: nginx\n    environment:\n      A: safe\n      <<: {A: '${HOME}'}\n",
+			"line 6: " + merge},
+		{"a merged name", "configs:\n  app:\n    file: ./a\n    name: app-config\n    <<: {name: swarmcli.release.web.v7}\n",
+			"line 5: " + merge},
+		{"a merge through an anchor", "x-base: &base\n  image: nginx\nservices:\n  web:\n    <<: *base\n",
+			"line 5: " + merge},
+		{"a merge in a list", "services:\n  web:\n    image: nginx\n    command:\n      - <<: {a: b}\n",
+			"line 5: " + merge},
+		{"a quoted merge key", "services:\n  web:\n    image: nginx\n    labels:\n      \"<<\": x\n",
+			"line 5: " + merge},
+		{"a merge-tagged key", "services:\n  web:\n    image: nginx\n    labels:\n      !!merge team: x\n",
+			"line 5: " + merge},
+		{"a merge key reached through an alias", "x-m: &m \"<<\"\nservices:\n  web:\n    image: nginx\n    labels:\n      *m : x\n",
+			"line 6: " + merge},
+		{"a key given twice", "services:\n  web:\n    image: nginx\n    environment:\n      A: safe\n      A: '${HOME}'\n",
+			"line 6: key 'A' is given twice in one mapping"},
+		{"a key given twice, once through an alias", "x-k: &k A\nservices:\n  web:\n    image: nginx\n    environment:\n      A: safe\n      *k : other\n",
+			"line 7: key 'A' is given twice in one mapping"},
+		{"a label given twice", "configs:\n  app:\n    file: ./a\n    labels:\n      tier: a\n      tier: b\n",
+			"line 6: key 'tier' is given twice in one mapping"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := EnvLookups(tc.manifest, nil)
+			require.ErrorContains(t, err, tc.want)
+			require.ErrorContains(t, CheckReserved(tc.manifest, "site"), tc.want)
+		})
+	}
+}
+
+// The docker CLI reads the decoded document, so this does too: a tag or a key
+// anchor means here exactly what it means there.
 func TestEnvLookupsReadsTheDecodedDocument(t *testing.T) {
 	t.Run("a binary value that decodes to a reference is refused", func(t *testing.T) {
 		// JEZPTw== is "$FOO".
@@ -159,16 +192,10 @@ func TestEnvLookupsReadsTheDecodedDocument(t *testing.T) {
 		_, err := EnvLookups(manifest, nil)
 		require.ErrorContains(t, err, "services.web.environment.GREETING:")
 	})
-	t.Run("a merged reference is refused where it is used", func(t *testing.T) {
-		manifest := "x-base: &base\n  GREETING: \"${FOO}\"\n" + envManifest("<<: *base")
-		_, err := EnvLookups(manifest, nil)
-		require.ErrorContains(t, err, "services.web.environment.GREETING:")
-	})
 	for name, env := range map[string]string{
 		"a tagged empty value":        `FOO: !x ""`,
 		"a binary empty value":        `FOO: !!binary ""`,
 		"a tagged empty list entry":   `- !x "FOO="`,
-		"a merged empty value":        "<<: {FOO: \"\"}",
 		"an aliased empty list entry": "- *e",
 	} {
 		t.Run(name+" is withheld", func(t *testing.T) {
@@ -313,8 +340,8 @@ func TestEnvLookupsRefusesAManifestItCannotParse(t *testing.T) {
 	for _, manifest := range []string{
 		"services: [",
 		"- not\n- a mapping\n",
-		// The docker CLI cannot decode this either.
-		"x-s: &s text\n" + envManifest("<<: *s\nFOO: \"\""),
+		// A key that is itself a mapping decodes to nothing a map can hold.
+		"? {a: b}\n: x\n",
 	} {
 		_, err := EnvLookups(manifest, nil)
 		require.ErrorContains(t, err, "parse manifest")

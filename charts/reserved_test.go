@@ -28,8 +28,6 @@ func TestCheckReservedRefusesAReservedLabel(t *testing.T) {
 			"configs.app.labels: label 'com.swarmcli.type'"},
 		{"through an alias", "x-l: &l\n  com.swarmcli.type: release\nconfigs:\n  app:\n    file: ./a\n    labels: *l\n",
 			"configs.app.labels: label 'com.swarmcli.type'"},
-		{"through a merge key", "x-l: &l\n  com.swarmcli.type: release\nconfigs:\n  app:\n    file: ./a\n    labels:\n      <<: *l\n      tier: web\n",
-			"configs.app.labels: label 'com.swarmcli.type'"},
 		{"the first of two, in order", "configs:\n  b:\n    labels: {com.swarmcli.type: x}\n  a:\n    labels: {com.swarmcli.revision: x, com.swarmcli.created: x}\n",
 			"configs.a.labels: label 'com.swarmcli.created'"},
 	} {
