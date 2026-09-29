@@ -96,7 +96,7 @@ func EnvLookups(manifest string, files map[string][]byte) ([]string, error) {
 	services, _ := top["services"].(map[string]any)
 	for _, name := range slices.Sorted(maps.Keys(services)) {
 		svc, _ := services[name].(map[string]any)
-		for _, env := range EmptyEnv(svc["environment"]) {
+		for _, env := range emptyEnv(svc["environment"]) {
 			if err := withhold("services."+name+".environment", env); err != nil {
 				return nil, err
 			}
@@ -268,10 +268,9 @@ func refuseInterpolation(v any, at string) error {
 	return nil
 }
 
-// EmptyEnv returns the names a service's environment: block declares with no
-// value — null or "" — in either shape compose accepts. env is the block as
-// yaml.v3 decodes it into any; a block of any other shape declares none.
-func EmptyEnv(env any) []string {
+// emptyEnv returns the names a service's environment: block declares with no
+// value — null or "" — in either shape compose accepts.
+func emptyEnv(env any) []string {
 	var names []string
 	switch env := env.(type) {
 	case map[string]any:

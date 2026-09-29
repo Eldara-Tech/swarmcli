@@ -104,7 +104,11 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 
 	case stackDeployedMsg:
 		m.endDeploy()
-		m.showToast(fmt.Sprintf("✓ Stack %q deployed — services updating", msg.StackName))
+		toast := fmt.Sprintf("✓ Stack %q deployed — services updating", msg.StackName)
+		if len(msg.KeptEmpty) > 0 {
+			toast += "\nKept empty: " + strings.Join(msg.KeptEmpty, ", ")
+		}
+		m.showToast(toast)
 		// Keep ticking through the toast window so it clears on time rather than
 		// lingering until the next 5s poll.
 		return tea.Batch(m.LoadStacksCmd(m.nodeID), m.spinnerTickCmd())
@@ -261,10 +265,9 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		l().Infof("Editor content received: %d bytes, preview: %q", len(msg.Content), preview)
 
 		// Check if we're editing an existing stack or creating new
-		if m.editStackName != "" {
+		if msg.StackName != "" {
 			// Edit mode: redeploy the stack with updated YAML
-			stackName := m.editStackName
-			m.editStackName = "" // Clear edit mode
+			stackName := msg.StackName
 
 			if msg.Content == msg.OriginalContent {
 				l().Infof("No changes to stack %s, skipping redeploy", stackName)
@@ -287,6 +290,9 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			snapOps := m.deps.Snapshot
 			return tea.Batch(m.beginDeploy(stackName), func() tea.Msg {
 				l().Infof("Redeploying edited stack: %s", stackName)
+				if len(unset) > 0 {
+					l().Infof("Withholding %s from the docker CLI so they stay empty in stack %s", strings.Join(unset, ", "), stackName)
+				}
 				err := stackOps.DeployStack(stackName, msg.Content, docker.DeployOptions{UnsetEnv: unset})
 				if err != nil {
 					l().Errorf("Failed to redeploy stack %s: %v", stackName, err)
@@ -297,7 +303,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 				if _, err := snapOps.RefreshSnapshot(); err != nil {
 					l().Warnf("Failed to refresh snapshot: %v", err)
 				}
-				return stackDeployedMsg{StackName: stackName}
+				return stackDeployedMsg{StackName: stackName, KeptEmpty: unset}
 			})
 		}
 
@@ -512,21 +518,19 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			if m.List.Cursor < len(m.List.Filtered) {
 				selected := m.List.Filtered[m.List.Cursor]
 				stackName := selected.Name
-				m.editStackName = stackName // Mark that we're editing
 				l().Infof("Opening editor for stack: %s", stackName)
 
 				// Reconstruct YAML in background and then open editor
 				yamlContent, err := m.deps.Stacks.ReconstructStackCompose(stackName)
 				if err != nil {
 					l().Errorf("Failed to reconstruct YAML for stack %s: %v", stackName, err)
-					m.editStackName = "" // Clear edit mode on error
 					m.confirmDialog.Visible = true
 					m.confirmDialog.ErrorMode = true
 					m.confirmDialog.Message = fmt.Sprintf("Failed to load stack %q for editing:\n%v", stackName, err)
 					return nil
 				}
 				l().Infof("Reconstructed YAML for editing: %s (%d bytes)", stackName, len(yamlContent))
-				return openEditorForStackCmd(yamlContent)
+				return openEditorForStackCmd(stackName, yamlContent)
 			}
 		}
 
@@ -970,10 +974,7 @@ func (m *Model) handleCreateDialogKey(msg tea.KeyMsg) tea.Cmd {
 				l().Infof("Opening editor with content (%d bytes), preview: %q", len(m.createDialogContent), preview)
 				m.createDialogActive = false
 				m.createNameInput.Blur()
-				// This content is a new stack's: an edit an editor failure left
-				// pending must not redeploy it as that stack.
-				m.editStackName = ""
-				return openEditorForStackCmd(m.createDialogContent)
+				return openEditorForStackCmd("", m.createDialogContent)
 			}
 			// Otherwise it is just a letter — route it like any other key.
 			fallthrough
@@ -1265,8 +1266,7 @@ func (m *Model) handleFileBrowserKey(msg tea.KeyMsg) tea.Cmd {
 
 		// Automatically open editor for review/editing before deployment
 		l().Infof("Opening editor for review of loaded file (%d bytes)", len(fileContent))
-		m.editStackName = "" // a new stack's content, as in the create dialog's editor
-		return openEditorForStackCmd(m.createDialogContent)
+		return openEditorForStackCmd("", m.createDialogContent)
 	}
 	return nil
 }

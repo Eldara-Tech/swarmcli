@@ -122,8 +122,7 @@ func TestRedeployOfAnEditKeepsAnEmptyValueAgainstRealSwarm(t *testing.T) {
 	edited := regexp.MustCompile(`(?m)^(\s*)FOO: ""$`).ReplaceAllString(reconstructed, "${1}FOO: \"\"\n${1}EDITED: \"yes\"")
 	require.NotEqual(t, reconstructed, edited, "the reconstruction must hold FOO empty")
 
-	m.editStackName = stackName
-	_, ok := firstOfType[stackDeployedMsg](runBatch(m.Update(editorContentMsg{Content: edited, OriginalContent: reconstructed})))
+	_, ok := firstOfType[stackDeployedMsg](runBatch(m.Update(editorContentMsg{StackName: stackName, Content: edited, OriginalContent: reconstructed})))
 	require.True(t, ok, "the redeploy must succeed")
 
 	cli, err := docker.GetClient()

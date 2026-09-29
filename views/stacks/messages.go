@@ -68,6 +68,9 @@ type ChartJumpMsg struct {
 
 // editorContentMsg is sent when editor returns content
 type editorContentMsg struct {
+	// StackName is the stack an edit was opened on, bound when its editor
+	// opened; empty for a new stack's content.
+	StackName       string
 	Content         string
 	OriginalContent string // populated in edit mode to detect no-change
 }
@@ -78,6 +81,9 @@ type editorContentMsg struct {
 // on that would drop the indicator at the first service creation.
 type stackDeployedMsg struct {
 	StackName string
+	// KeptEmpty names the variables the redeploy of an edit withheld from the
+	// docker CLI so that they stayed empty.
+	KeptEmpty []string
 }
 
 // stackCreateErrorMsg is sent when stack creation has an error

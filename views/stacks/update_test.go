@@ -153,7 +153,6 @@ func TestUpdate_StackCreateErrorMsg_InlineMode(t *testing.T) {
 
 func TestUpdate_EditorContentMsg_CreateMode(t *testing.T) {
 	m := testModel()
-	m.editStackName = "" // create mode
 	m.Update(editorContentMsg{Content: "version: '3'\nservices:\n  web:\n    image: nginx"})
 	require.True(t, m.createDialogActive)
 	require.Equal(t, "details-inline", m.createDialogStep)
@@ -168,10 +167,8 @@ func TestUpdate_EditorContentMsg_EditMode(t *testing.T) {
 		return nil
 	}
 	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
-	m.editStackName = "mystack"
 	fastSpinner(t)
-	cmd := m.Update(editorContentMsg{Content: "version: '3'", OriginalContent: "version: '2'"})
-	require.Equal(t, "", m.editStackName) // cleared
+	cmd := m.Update(editorContentMsg{StackName: "mystack", Content: "version: '3'", OriginalContent: "version: '2'"})
 	require.NotNil(t, cmd)
 	runBatch(cmd)
 	require.Equal(t, "mystack", deployed)
@@ -185,11 +182,9 @@ func TestUpdate_EditorContentMsg_EditMode_NoChange(t *testing.T) {
 		return nil
 	}
 	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
-	m.editStackName = "mystack"
 	yaml := "version: '3'\nservices:\n  web:\n    image: nginx"
-	cmd := m.Update(editorContentMsg{Content: yaml, OriginalContent: yaml})
-	require.Equal(t, "", m.editStackName) // cleared
-	require.Nil(t, cmd)                   // no redeploy
+	cmd := m.Update(editorContentMsg{StackName: "mystack", Content: yaml, OriginalContent: yaml})
+	require.Nil(t, cmd) // no redeploy
 	require.False(t, deployed)
 }
 
@@ -205,15 +200,29 @@ func TestUpdate_EditorContentMsg_EditMode_RefusesALiveEmptyCLIVariable(t *testin
 	}
 	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
 	m.beginDeploy("other")
-	m.editStackName = "mystack"
 	reconstructed := "services:\n  web:\n    image: nginx\n    environment:\n      PATH: \"\"\n"
-	cmd := m.Update(editorContentMsg{Content: reconstructed + "# edited\n", OriginalContent: reconstructed})
+	cmd := m.Update(editorContentMsg{StackName: "mystack", Content: reconstructed + "# edited\n", OriginalContent: reconstructed})
 
 	require.Nil(t, cmd)
 	require.False(t, deployed)
 	require.True(t, m.confirmDialog.ErrorMode)
 	require.Contains(t, m.confirmDialog.Message, "services.web.environment: 'PATH' has no value in the running service")
 	require.Equal(t, "other", m.deployingStack)
+}
+
+// The redeploy of an edit says which variables it kept empty, by name.
+func TestRedeployToastNamesWhatItKeptEmpty(t *testing.T) {
+	fastSpinner(t)
+	live := "services:\n  web:\n    image: nginx\n    environment:\n      FOO: \"\"\n      BAR: \"\"\n"
+	m := testModel()
+	deployed, ok := firstOfType[stackDeployedMsg](runBatch(m.Update(editorContentMsg{StackName: "web", Content: live + "# edited\n", OriginalContent: live})))
+	require.True(t, ok)
+	require.Equal(t, []string{"BAR", "FOO"}, deployed.KeptEmpty)
+	m.Update(deployed)
+	require.Contains(t, m.toastMessage, "Kept empty: BAR, FOO")
+
+	m.Update(stackDeployedMsg{StackName: "web"})
+	require.NotContains(t, m.toastMessage, "Kept empty")
 }
 
 // Each deploy path says which environment the docker CLI gets: an edit withholds
@@ -230,10 +239,8 @@ func TestDeployPathsPassTheirOptions(t *testing.T) {
 	live := "services:\n  web:\n    image: nginx\n    environment:\n      FOO: \"\"\n"
 
 	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
-	m.editStackName = "web"
-	runBatch(m.Update(editorContentMsg{Content: live + "# edited\n", OriginalContent: live}))
-	m.editStackName = "web"
-	runBatch(m.Update(editorContentMsg{Content: strings.Replace(live, `FOO: ""`, "FOO: x", 1), OriginalContent: live}))
+	runBatch(m.Update(editorContentMsg{StackName: "web", Content: live + "# edited\n", OriginalContent: live}))
+	runBatch(m.Update(editorContentMsg{StackName: "web", Content: strings.Replace(live, `FOO: ""`, "FOO: x", 1), OriginalContent: live}))
 
 	m.createDialogActive = true
 	m.createDialogStep = "details-inline"
@@ -249,43 +256,6 @@ func TestDeployPathsPassTheirOptions(t *testing.T) {
 	runBatch(m.Update(key("enter")))
 
 	require.Equal(t, []docker.DeployOptions{{UnsetEnv: []string{"FOO"}}, {}, {}, {}}, got)
-}
-
-// An editor that fails leaves the edit pending; content the create dialog then
-// sends to the editor is a new stack's, not an edit of that stack.
-func TestCreateEditorClearsAPendingEdit(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "stack.yml")
-	require.NoError(t, os.WriteFile(file, []byte("services: {}\n"), 0o600))
-	for _, tc := range []struct {
-		name string
-		open func(m *Model) tea.Cmd
-	}{
-		{"the create dialog's editor", func(m *Model) tea.Cmd {
-			m.createDialogActive = true
-			m.createDialogStep = "details-inline"
-			m.createInputFocus = 1
-			return m.Update(key("e"))
-		}},
-		{"a file loaded from the browser", func(m *Model) tea.Cmd {
-			m.fileBrowserActive = true
-			m.fileBrowserContext = "create"
-			m.fileBrowserFiles = []string{file}
-			return m.Update(key("enter"))
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			// Where the editor's temp file goes, which only the editor's exit
-			// would remove.
-			tmp := t.TempDir()
-			t.Setenv("TMPDIR", tmp)
-			t.Setenv("TMP", tmp)
-			t.Setenv("TEMP", tmp)
-			m := testModel()
-			m.editStackName = "prod"
-			require.NotNil(t, tc.open(m))
-			require.Empty(t, m.editStackName)
-		})
-	}
 }
 
 func TestUpdate_FilesLoadedMsg_Success(t *testing.T) {
@@ -1177,8 +1147,7 @@ func TestFileBrowser_Enter_File_SaveContext(t *testing.T) {
 func TestDeploy_EditMode_SetsDeployingState(t *testing.T) {
 	fastSpinner(t)
 	m := testModel()
-	m.editStackName = "mystack"
-	cmd := m.Update(editorContentMsg{Content: "version: '3'", OriginalContent: "version: '2'"})
+	cmd := m.Update(editorContentMsg{StackName: "mystack", Content: "version: '3'", OriginalContent: "version: '2'"})
 	require.NotNil(t, cmd)
 	require.True(t, m.deploying)
 	require.Equal(t, "mystack", m.deployingStack)

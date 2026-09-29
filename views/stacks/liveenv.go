@@ -20,7 +20,7 @@ import (
 // or "" from its own environment. reconstructed is the stack as rebuilt from
 // its running services, which the edit started from, and edited is the edit.
 // A name is withheld when a running service holds it with no value and the edit
-// still declares it so: the running services are the source of truth. The edit
+// still gives it "": the running services are the source of truth. The edit
 // is read as a whole, since withholding covers the whole deploy — a service
 // renamed in the editor keeps its empty values empty, and a ${NAME}, or an empty
 // NAME, that the edit adds elsewhere is empty too.
@@ -28,7 +28,8 @@ import (
 // A variable the docker CLI reads for itself cannot be withheld from it. When
 // this environment gives one a value, the CLI would fill it, so the redeploy is
 // refused, as a chart that declares it empty is; otherwise nothing fills it.
-// The names come back sorted and without duplicates.
+// GODEBUG, which the CLI can set for itself, is always refused. The names come
+// back sorted and without duplicates.
 func liveEmptyEnv(reconstructed, edited string) ([]string, error) {
 	live, err := emptyEnvByService(reconstructed)
 	if err != nil {
@@ -45,9 +46,15 @@ func liveEmptyEnv(reconstructed, edited string) ([]string, error) {
 			if !slices.Contains(keptNames, name) {
 				continue
 			}
+			// The CLI sets GODEBUG for itself from the docker context when it
+			// finds none (docker/cli v28.5.1 cli/command/cli.go), so neither
+			// withholding it nor leaving it unset keeps it empty.
+			if name == "GODEBUG" {
+				return nil, fmt.Errorf("services.%s.environment: 'GODEBUG' has no value in the running service, and the docker CLI that redeploys the stack can set GODEBUG for itself from the docker context, so it cannot stay empty — give it a value or remove it", svc)
+			}
 			if charts.CLIReadsEnv(name) {
 				if cliFills(name) {
-					return nil, fmt.Errorf("services.%s.environment: '%s' has no value in the running service, and the docker CLI that redeploys the stack would fill it from its own '%s', which it reads itself — give it a value or remove it", svc, name, name)
+					return nil, fmt.Errorf("services.%s.environment: '%s' has no value in the running service, and the docker CLI that redeploys the stack would fill it from its own '%s', which it reads itself — give it a value or remove it, or unset it in the shell running swarmcli", svc, name, name)
 				}
 				continue
 			}
@@ -59,7 +66,10 @@ func liveEmptyEnv(reconstructed, edited string) ([]string, error) {
 }
 
 // emptyEnvByService returns, for each service of a compose document, the names
-// its environment: declares with no value (charts.EmptyEnv).
+// its environment: gives the value "" — NAME: "", or NAME= in the list shape.
+// The reconstruction writes every empty value that way, so a null or a bare
+// NAME in an edit is one the operator wrote: compose's pass-through, which the
+// CLI fills as it always does.
 func emptyEnvByService(doc string) (map[string][]string, error) {
 	var d struct {
 		Services map[string]struct {
@@ -71,7 +81,21 @@ func emptyEnvByService(doc string) (map[string][]string, error) {
 	}
 	out := make(map[string][]string, len(d.Services))
 	for svc, s := range d.Services {
-		out[svc] = charts.EmptyEnv(s.Environment)
+		switch env := s.Environment.(type) {
+		case map[string]any:
+			for _, name := range slices.Sorted(maps.Keys(env)) {
+				if env[name] == "" {
+					out[svc] = append(out[svc], name)
+				}
+			}
+		case []any:
+			for _, item := range env {
+				entry, _ := item.(string)
+				if name, value, ok := strings.Cut(entry, "="); ok && name != "" && value == "" {
+					out[svc] = append(out[svc], name)
+				}
+			}
+		}
 	}
 	return out, nil
 }
