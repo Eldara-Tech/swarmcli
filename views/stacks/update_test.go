@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,8 +217,8 @@ func TestUpdate_EditorContentMsg_EditMode_RefusesALiveEmptyCLIVariable(t *testin
 }
 
 // Each deploy path says which environment the docker CLI gets: an edit withholds
-// what the running services hold empty, and a document the operator loaded or
-// wrote keeps everything.
+// what the running services hold empty and it leaves so, and a document the
+// operator loaded or wrote keeps everything.
 func TestDeployPathsPassTheirOptions(t *testing.T) {
 	var got []docker.DeployOptions
 	stackMock := noopStackOps()
@@ -231,6 +232,8 @@ func TestDeployPathsPassTheirOptions(t *testing.T) {
 	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
 	m.editStackName = "web"
 	runBatch(m.Update(editorContentMsg{Content: live + "# edited\n", OriginalContent: live}))
+	m.editStackName = "web"
+	runBatch(m.Update(editorContentMsg{Content: strings.Replace(live, `FOO: ""`, "FOO: x", 1), OriginalContent: live}))
 
 	m.createDialogActive = true
 	m.createDialogStep = "details-inline"
@@ -245,7 +248,7 @@ func TestDeployPathsPassTheirOptions(t *testing.T) {
 	m.createFileInput.SetValue(file)
 	runBatch(m.Update(key("enter")))
 
-	require.Equal(t, []docker.DeployOptions{{UnsetEnv: []string{"FOO"}}, {}, {}}, got)
+	require.Equal(t, []docker.DeployOptions{{UnsetEnv: []string{"FOO"}}, {}, {}, {}}, got)
 }
 
 // An editor that fails leaves the edit pending; content the create dialog then

@@ -56,6 +56,15 @@ func TestLiveEmptyEnvFollowsTheEdit(t *testing.T) {
       - BAR
       - FOO=
 `, []string{"BAR", "FOO"}},
+		{"moved to a service the edit adds", `services:
+  web:
+    environment:
+      BAR: x
+      FOO: x
+  new:
+    environment:
+      FOO: ""
+`, nil},
 		{"a name the edit adds", `services:
   web:
     environment:
