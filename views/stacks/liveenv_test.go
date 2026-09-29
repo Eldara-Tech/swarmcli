@@ -137,6 +137,21 @@ func TestLiveEmptyEnvRefusesAKeptEmptyGODEBUG(t *testing.T) {
 	require.Empty(t, names)
 }
 
+// Names are listed quoted, so a control character in one is shown rather than
+// sent to the terminal, and past the first few they are counted.
+func TestQuoteNames(t *testing.T) {
+	require.Equal(t, `"A", "B\x1b]0;x\a"`, quoteNames([]string{"A", "B\x1b]0;x\x07"}))
+	require.Equal(t, `"A", "B", "C" and 2 more`, quoteNames([]string{"A", "B", "C", "D", "E"}))
+	require.Equal(t, `"A", "B", "C"`, quoteNames([]string{"A", "B", "C"}))
+}
+
+// A name that is itself empty is no variable, and is never listed.
+func TestEmptyEnvNamesSkipsAnEmptyName(t *testing.T) {
+	names, err := emptyEnvNames("services:\n  web:\n    environment:\n      \"\": \"\"\n      A: \"\"\n")
+	require.NoError(t, err)
+	require.Equal(t, []string{"A"}, names)
+}
+
 func TestLiveEmptyEnvRefusesAnUnreadableStack(t *testing.T) {
 	_, err := liveEmptyEnv("services: [", liveStack)
 	require.ErrorContains(t, err, "parse the reconstructed stack")

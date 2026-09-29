@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Eldara-Tech/swarmcli/v2/charts"
@@ -35,11 +36,10 @@ func liveEmptyEnv(reconstructed, edited string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse the reconstructed stack: %w", err)
 	}
-	kept, err := emptyEnvByService(edited)
+	keptNames, err := emptyEnvNames(edited)
 	if err != nil {
 		return nil, fmt.Errorf("parse the edited stack: %w", err)
 	}
-	keptNames := slices.Concat(slices.Collect(maps.Values(kept))...)
 	var names []string
 	for _, svc := range slices.Sorted(maps.Keys(live)) {
 		for _, name := range live[svc] {
@@ -65,6 +65,37 @@ func liveEmptyEnv(reconstructed, edited string) ([]string, error) {
 	return slices.Compact(names), nil
 }
 
+// emptyEnvNames returns every name the services of a compose document give the
+// value "" (emptyEnvByService), sorted and without duplicates.
+func emptyEnvNames(doc string) ([]string, error) {
+	byService, err := emptyEnvByService(doc)
+	if err != nil {
+		return nil, err
+	}
+	names := slices.Concat(slices.Collect(maps.Values(byService))...)
+	slices.Sort(names)
+	return slices.Compact(names), nil
+}
+
+// namesShown is how many names quoteNames lists before it counts the rest: a
+// dialog taller than the view is cut off, and a stack can hold many.
+const namesShown = 3
+
+// quoteNames lists names for the operator, each quoted so that a control
+// character in one is shown rather than sent to the terminal, and the ones
+// after the first namesShown counted.
+func quoteNames(names []string) string {
+	quoted := make([]string, 0, namesShown)
+	for _, name := range names[:min(len(names), namesShown)] {
+		quoted = append(quoted, strconv.Quote(name))
+	}
+	s := strings.Join(quoted, ", ")
+	if more := len(names) - namesShown; more > 0 {
+		s += fmt.Sprintf(" and %d more", more)
+	}
+	return s
+}
+
 // emptyEnvByService returns, for each service of a compose document, the names
 // its environment: gives the value "" — NAME: "", or NAME= in the list shape.
 // The reconstruction writes every empty value that way, so a null or a bare
@@ -84,7 +115,7 @@ func emptyEnvByService(doc string) (map[string][]string, error) {
 		switch env := s.Environment.(type) {
 		case map[string]any:
 			for _, name := range slices.Sorted(maps.Keys(env)) {
-				if env[name] == "" {
+				if name != "" && env[name] == "" {
 					out[svc] = append(out[svc], name)
 				}
 			}

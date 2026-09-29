@@ -106,7 +106,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		m.endDeploy()
 		toast := fmt.Sprintf("✓ Stack %q deployed — services updating", msg.StackName)
 		if len(msg.KeptEmpty) > 0 {
-			toast += "\nKept empty: " + strings.Join(msg.KeptEmpty, ", ")
+			toast += "\nKept empty: " + quoteNames(msg.KeptEmpty)
 		}
 		m.showToast(toast)
 		// Keep ticking through the toast window so it clears on time rather than
@@ -291,7 +291,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			return tea.Batch(m.beginDeploy(stackName), func() tea.Msg {
 				l().Infof("Redeploying edited stack: %s", stackName)
 				if len(unset) > 0 {
-					l().Infof("Withholding %s from the docker CLI so they stay empty in stack %s", strings.Join(unset, ", "), stackName)
+					l().Infof("Withholding %q from the docker CLI so they stay empty in stack %s", unset, stackName)
 				}
 				err := stackOps.DeployStack(stackName, msg.Content, docker.DeployOptions{UnsetEnv: unset})
 				if err != nil {
@@ -352,6 +352,10 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		m.confirmDialog.Visible = true
 		m.confirmDialog.InfoMode = true
 		m.confirmDialog.Message = fmt.Sprintf("Stack YAML saved to:\n%s", msg.Path)
+		if len(msg.EmptyEnv) > 0 {
+			m.confirmDialog.Message += "\n\nHeld empty in this file, so a deploy of it fills any its environment sets: " +
+				quoteNames(msg.EmptyEnv) + "\nEditing the stack here (e) keeps them empty, or says which it cannot."
+		}
 		return nil
 
 	case stackSaveErrorMsg:
@@ -1125,7 +1129,16 @@ func (m *Model) saveStackToFileCmd(stackName, filePath string) tea.Cmd {
 			return stackSaveErrorMsg{Err: fmt.Errorf("failed to write file: %w", err)}
 		}
 		l().Infof("Stack %s YAML saved to %s", stackName, filePath)
-		return stackSavedMsg{Path: filePath}
+		// The file holds these as "", which a deploy of it fills from its
+		// environment wherever that sets them; no compose syntax keeps them empty.
+		empty, err := emptyEnvNames(yamlContent)
+		if err != nil {
+			l().Warnf("Could not read the environment of stack %s: %v", stackName, err)
+		}
+		if len(empty) > 0 {
+			l().Warnf("Stack %s saved to %s holds %q empty, which a deploy of the file fills wherever its environment sets them", stackName, filePath, empty)
+		}
+		return stackSavedMsg{Path: filePath, EmptyEnv: empty}
 	}
 }
 

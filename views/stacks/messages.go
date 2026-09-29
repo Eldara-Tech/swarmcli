@@ -107,6 +107,9 @@ type filesLoadedMsg struct {
 // stackSavedMsg is sent when stack YAML is successfully saved to file
 type stackSavedMsg struct {
 	Path string
+	// EmptyEnv names the variables the saved file holds empty, which a deploy of
+	// it fills wherever its environment sets them.
+	EmptyEnv []string
 }
 
 // stackSaveErrorMsg is sent when saving stack YAML fails
