@@ -71,16 +71,9 @@ var cliEnv = []string{
 // refusal names the compose key that holds the offending value, and the names
 // come back sorted and without duplicates.
 func EnvLookups(manifest string, files map[string][]byte) ([]string, error) {
-	var doc any
-	if err := yaml.Unmarshal([]byte(manifest), &doc); err != nil {
-		return nil, fmt.Errorf("parse manifest: %w", err)
-	}
-	if err := refuseInterpolation(doc, ""); err != nil {
+	top, err := decodeManifest(manifest)
+	if err != nil {
 		return nil, err
-	}
-	top, ok := doc.(map[string]any)
-	if !ok && doc != nil {
-		return nil, fmt.Errorf("parse manifest: the top level must be a mapping")
 	}
 
 	var remove []string
@@ -141,6 +134,25 @@ func EnvLookups(manifest string, files map[string][]byte) ([]string, error) {
 
 	slices.Sort(remove)
 	return slices.Compact(remove), nil
+}
+
+// decodeManifest decodes a rendered manifest as the docker CLI reads it and
+// refuses one that interpolates or has a key that is not a string, which
+// EnvLookups describes. What it returns holds only string-keyed mappings, so a
+// type assertion on a section cannot miss a sibling.
+func decodeManifest(manifest string) (map[string]any, error) {
+	var doc any
+	if err := yaml.Unmarshal([]byte(manifest), &doc); err != nil {
+		return nil, fmt.Errorf("parse manifest: %w", err)
+	}
+	if err := refuseInterpolation(doc, ""); err != nil {
+		return nil, err
+	}
+	top, ok := doc.(map[string]any)
+	if !ok && doc != nil {
+		return nil, fmt.Errorf("parse manifest: the top level must be a mapping")
+	}
+	return top, nil
 }
 
 // refuseInterpolation refuses the first value under v that the docker CLI would

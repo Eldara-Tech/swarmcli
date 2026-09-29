@@ -266,9 +266,9 @@ func (e *Engine) Rollback(ctx context.Context, release string, targetRev int, op
 	// deploys a manifest naming files that are gone.
 	rel := e.newRevision(release, nextRevision(revs), target.Chart, target.Values, target.Manifest, target.Files)
 	out, err := e.deployAndRecord(ctx, rel, opts)
-	// A stored revision can predate the deploy's environment checks, and it
-	// cannot be changed, so the way forward is a new one.
-	if errors.As(err, new(envRefusal)) {
+	// A stored revision can predate the deploy's manifest checks, and it cannot
+	// be changed, so the way forward is a new one.
+	if errors.As(err, new(manifestRefusal)) {
 		err = fmt.Errorf("%w (revision %d cannot be redeployed as recorded; upgrade to a chart version that passes this check instead of rolling back to it)", err, targetRev)
 	}
 	return out, err
@@ -1364,7 +1364,7 @@ func phaseRank(p Phase) int {
 }
 
 func releaseConfigName(release string, rev int) string {
-	return fmt.Sprintf("swarmcli.release.%s.v%d", release, rev)
+	return fmt.Sprintf("%s%s.v%d", recordNamePrefix, release, rev)
 }
 
 func gzipBytes(b []byte) ([]byte, error) {

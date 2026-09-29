@@ -119,6 +119,9 @@ func gateApply(plan *charts.Plan, pol compatPolicy, skipCompat bool) int {
 		if _, err := charts.EnvLookups(r.Manifest, r.Files); err != nil {
 			return fail(fmt.Errorf("release '%s': %w", r.Name, err))
 		}
+		if err := charts.CheckReserved(r.Manifest, r.Name); err != nil {
+			return fail(fmt.Errorf("release '%s': %w", r.Name, err))
+		}
 	}
 	return -1
 }
