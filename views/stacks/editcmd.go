@@ -14,6 +14,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// execProcess hands the terminal to the editor. It is a variable so that a test
+// can run the editor without a terminal.
+var execProcess = view.ExecProcess
+
 // editWithTempFileCmd creates a temp file pre-populated with `initialData`,
 // opens the user's editor, and calls `onDone` with the edited bytes when the
 // editor exits successfully. On any error (temp file creation, editor
@@ -54,7 +58,7 @@ func editWithTempFileCmd(baseName string, initialData []byte, onDone func([]byte
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	return view.ExecProcess(cmd, func(err error) tea.Msg {
+	return execProcess(cmd, func(err error) tea.Msg {
 		// Clean up temp file
 		defer func(name string) {
 			_ = os.Remove(name)
@@ -77,11 +81,13 @@ func editWithTempFileCmd(baseName string, initialData []byte, onDone func([]byte
 	})
 }
 
-// openEditorForStackCmd opens the user's editor to edit stack YAML and returns it to the create dialog.
-func openEditorForStackCmd(initialData string) tea.Cmd {
+// openEditorForStackCmd opens the user's editor on stack YAML. stackName is
+// the stack being edited, which the edit is redeployed as, or empty for a new
+// stack's content, which returns to the create dialog.
+func openEditorForStackCmd(stackName, initialData string) tea.Cmd {
 	return editWithTempFileCmd("stack", []byte(initialData),
 		func(newData []byte) tea.Msg {
-			return editorContentMsg{Content: string(newData), OriginalContent: initialData}
+			return editorContentMsg{StackName: stackName, Content: string(newData), OriginalContent: initialData}
 		},
 		func(err error) tea.Msg {
 			return stackCreateErrorMsg{err}

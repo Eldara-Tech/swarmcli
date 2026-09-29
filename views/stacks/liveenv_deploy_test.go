@@ -62,8 +62,7 @@ func TestRedeployOfAnEditKeepsALiveEmptyValueEmpty(t *testing.T) {
 
 	reconstructed := "version: \"3.9\"\nservices:\n  web:\n    image: nginx\n    environment:\n      FOO: \"\"\n      KEEP: x\n"
 	m := deployingModel(t)
-	m.editStackName = "web"
-	cmd := m.Update(editorContentMsg{Content: reconstructed + "      BAR: \"\"\n", OriginalContent: reconstructed})
+	cmd := m.Update(editorContentMsg{StackName: "web", Content: reconstructed + "      BAR: \"\"\n", OriginalContent: reconstructed})
 
 	_, ok := firstOfType[stackDeployedMsg](runBatch(cmd))
 	require.True(t, ok)

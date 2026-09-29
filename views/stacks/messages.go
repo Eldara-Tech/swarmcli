@@ -68,6 +68,9 @@ type ChartJumpMsg struct {
 
 // editorContentMsg is sent when editor returns content
 type editorContentMsg struct {
+	// StackName is the stack an edit was opened on, bound when its editor
+	// opened; empty for a new stack's content.
+	StackName       string
 	Content         string
 	OriginalContent string // populated in edit mode to detect no-change
 }

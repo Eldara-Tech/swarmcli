@@ -261,10 +261,9 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		l().Infof("Editor content received: %d bytes, preview: %q", len(msg.Content), preview)
 
 		// Check if we're editing an existing stack or creating new
-		if m.editStackName != "" {
+		if msg.StackName != "" {
 			// Edit mode: redeploy the stack with updated YAML
-			stackName := m.editStackName
-			m.editStackName = "" // Clear edit mode
+			stackName := msg.StackName
 
 			if msg.Content == msg.OriginalContent {
 				l().Infof("No changes to stack %s, skipping redeploy", stackName)
@@ -512,21 +511,19 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			if m.List.Cursor < len(m.List.Filtered) {
 				selected := m.List.Filtered[m.List.Cursor]
 				stackName := selected.Name
-				m.editStackName = stackName // Mark that we're editing
 				l().Infof("Opening editor for stack: %s", stackName)
 
 				// Reconstruct YAML in background and then open editor
 				yamlContent, err := m.deps.Stacks.ReconstructStackCompose(stackName)
 				if err != nil {
 					l().Errorf("Failed to reconstruct YAML for stack %s: %v", stackName, err)
-					m.editStackName = "" // Clear edit mode on error
 					m.confirmDialog.Visible = true
 					m.confirmDialog.ErrorMode = true
 					m.confirmDialog.Message = fmt.Sprintf("Failed to load stack %q for editing:\n%v", stackName, err)
 					return nil
 				}
 				l().Infof("Reconstructed YAML for editing: %s (%d bytes)", stackName, len(yamlContent))
-				return openEditorForStackCmd(yamlContent)
+				return openEditorForStackCmd(stackName, yamlContent)
 			}
 		}
 
@@ -970,10 +967,7 @@ func (m *Model) handleCreateDialogKey(msg tea.KeyMsg) tea.Cmd {
 				l().Infof("Opening editor with content (%d bytes), preview: %q", len(m.createDialogContent), preview)
 				m.createDialogActive = false
 				m.createNameInput.Blur()
-				// This content is a new stack's: an edit an editor failure left
-				// pending must not redeploy it as that stack.
-				m.editStackName = ""
-				return openEditorForStackCmd(m.createDialogContent)
+				return openEditorForStackCmd("", m.createDialogContent)
 			}
 			// Otherwise it is just a letter — route it like any other key.
 			fallthrough
@@ -1265,8 +1259,7 @@ func (m *Model) handleFileBrowserKey(msg tea.KeyMsg) tea.Cmd {
 
 		// Automatically open editor for review/editing before deployment
 		l().Infof("Opening editor for review of loaded file (%d bytes)", len(fileContent))
-		m.editStackName = "" // a new stack's content, as in the create dialog's editor
-		return openEditorForStackCmd(m.createDialogContent)
+		return openEditorForStackCmd("", m.createDialogContent)
 	}
 	return nil
 }

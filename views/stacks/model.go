@@ -94,9 +94,6 @@ type Model struct {
 	fileBrowserFiles    []string
 	fileBrowserCursor   int
 
-	// Edit stack tracking
-	editStackName string // non-empty when editing a stack (vs creating new)
-
 	// Deploy progress
 	deploying       bool
 	deployingStack  string
