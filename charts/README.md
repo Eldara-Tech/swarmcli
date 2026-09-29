@@ -649,6 +649,12 @@ append-only: the highest revision is the current state; lower deployed revisions
 display as `superseded`. This gives HA (Swarm Raft) and rollback with no
 external database.
 
+Those names and labels are swarmcli's own. A chart may not declare a config or
+secret whose name on the swarm starts with `swarmcli.release.`, or give one a
+`com.swarmcli.` label — `template`, `apply` and every deploy refuse it — and a
+config a stack deploy created is never read as a release record, whatever its
+labels say.
+
 ```bash
 docker config ls --filter label=com.swarmcli.release=my-traefik
 ```
