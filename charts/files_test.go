@@ -78,6 +78,13 @@ func TestResolveManifestFilesRefusesEveryShapeOnEveryKey(t *testing.T) {
 			wants: []string{`'files/missing.conf'`, "not in the chart", "files/"},
 		},
 		{
+			// Every other check reads the path as written, and the docker CLI
+			// reads it only after substituting variables in it.
+			name:  "contains a variable",
+			path:  "files/${X}/app.conf",
+			wants: []string{`'files/${X}/app.conf'`, "contains '$'", "files/"},
+		},
+		{
 			// The likeliest author mistake, so the message has to say files/ and
 			// show the corrected path.
 			name:  "outside files/",
@@ -189,6 +196,33 @@ func TestResolveManifestFilesReadsBothEnvFileShapes(t *testing.T) {
 		_, err := ResolveManifestFiles(manifest, chartFiles(), nil)
 		require.ErrorContains(t, err, `'/etc/shadow'`)
 	})
+}
+
+// An env_file: reached through an alias is read like any other, so it is
+// resolved against the chart and refused when it cannot mean a file in it.
+func TestResolveManifestFilesReadsAnAliasedEnvFile(t *testing.T) {
+	manifest := func(p string) string {
+		return "x-ef: &ef\n  - " + quoted(p) + "\nservices:\n  web:\n    image: nginx\n    env_file: *ef\n"
+	}
+	got, err := ResolveManifestFiles(manifest("files/nginx.conf"), chartFiles(), nil)
+	require.NoError(t, err)
+	require.Equal(t, map[string][]byte{"files/nginx.conf": []byte("server { listen 80; }")}, got)
+
+	_, err = ResolveManifestFiles(manifest("/etc/app.env"), chartFiles(), nil)
+	require.ErrorContains(t, err, "services.web.env_file: '/etc/app.env' is an absolute path")
+}
+
+// An env_file: entry that is not a path is refused rather than passed over: the
+// CLI could read a path from it that no check here has seen.
+func TestResolveManifestFilesRefusesAnEnvFileEntryThatIsNotAPath(t *testing.T) {
+	for want, envFile := range map[string]string{
+		"services.web.env_file[1]: an env_file entry must be a path":        "[files/nginx.conf, {path: files/nginx.conf}]",
+		"services.web.env_file: env_file must be a path or a list of paths": "{path: files/nginx.conf}",
+	} {
+		manifest := "services:\n  web:\n    image: nginx\n    env_file: " + envFile + "\n"
+		_, err := ResolveManifestFiles(manifest, chartFiles(), nil)
+		require.ErrorContains(t, err, want)
+	}
 }
 
 // TestResolveManifestFilesSeesEntriesBesideAMalformedOne is the load-bearing

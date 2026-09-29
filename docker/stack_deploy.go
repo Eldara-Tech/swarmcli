@@ -5,10 +5,14 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -96,8 +100,20 @@ func DeployStackResolved(ctx context.Context, stackName string, yamlContent stri
 		return fmt.Errorf("failed to get docker context: %w", err)
 	}
 	// nil files: the TUI's raw-editor path deploys a document the operator typed,
-	// with no chart behind it to resolve a file: against.
-	return DeployStackInContext(ctx, ctxName, stackName, yamlContent, resolve, nil)
+	// with no chart behind it to resolve a file: against. No options either: that
+	// document is the operator's own, so it keeps the operator's environment.
+	return DeployStackInContext(ctx, ctxName, stackName, yamlContent, resolve, nil, DeployOptions{})
+}
+
+// DeployOptions are the parts of a deploy only some callers set. The zero value
+// deploys exactly as `docker stack deploy` would from the invoking shell.
+type DeployOptions struct {
+	// UnsetEnv names variables the docker CLI must not inherit from this
+	// process. The CLI fills a stack's empty environment values from its own
+	// environment, so a name withheld here deploys as the empty value the
+	// manifest declared. Compared without regard to case on Windows, where
+	// variable names are case-insensitive.
+	UnsetEnv []string
 }
 
 // DeployStackInContext deploys a stack to an explicitly named Docker context.
@@ -113,7 +129,7 @@ func DeployStackResolved(ctx context.Context, stackName string, yamlContent stri
 // files are the chart files the manifest's file: and env_file: keys name, keyed
 // by their slash-separated chart-relative path; they are written beside the
 // manifest so those keys resolve to them. nil for a manifest that names none.
-func DeployStackInContext(ctx context.Context, ctxName, stackName, yamlContent string, resolve ResolveImage, files map[string][]byte) error {
+func DeployStackInContext(ctx context.Context, ctxName, stackName, yamlContent string, resolve ResolveImage, files map[string][]byte, opts DeployOptions) error {
 	if ctxName == "" {
 		return fmt.Errorf("docker context name is required")
 	}
@@ -152,7 +168,7 @@ func DeployStackInContext(ctx context.Context, ctxName, stackName, yamlContent s
 	}
 	args = append(args, stackName)
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Env = os.Environ()
+	cmd.Env = deployEnv(os.Environ(), opts.UnsetEnv)
 
 	// Capture output for error reporting
 	output, err := cmd.CombinedOutput()
@@ -175,6 +191,28 @@ func DeployStackInContext(ctx context.Context, ctxName, stackName, yamlContent s
 
 	l().Infof("Stack %q deployed successfully", stackName)
 	return nil
+}
+
+// deployEnv returns environ without the variables unset names.
+func deployEnv(environ, unset []string) []string {
+	out := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		name, _, _ := strings.Cut(kv, "=")
+		if slices.ContainsFunc(unset, func(u string) bool { return envNameEqual(name, u) }) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
+// envNameEqual reports whether two variable names name the same variable on
+// this platform.
+func envNameEqual(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // writeStackTree materialises one deploy into a fresh temporary directory: the
@@ -221,7 +259,10 @@ func writeStackTree(files map[string][]byte, manifest string) (dir string, manif
 			err = fmt.Errorf("failed to create directory for chart file '%s': %w", name, err)
 			return
 		}
-		if err = os.WriteFile(path, data, 0o600); err != nil {
+		if err = writeNewFile(path, data); errors.Is(err, fs.ErrExist) {
+			err = fmt.Errorf("refusing chart file '%s': it names the same file as another chart file on this filesystem", name)
+			return
+		} else if err != nil {
 			err = fmt.Errorf("failed to write chart file '%s': %w", name, err)
 			return
 		}
@@ -234,6 +275,22 @@ func writeStackTree(files map[string][]byte, manifest string) (dir string, manif
 		return
 	}
 	return dir, manifestPath, nil
+}
+
+// writeNewFile writes data to path, which must not exist yet. Two chart files
+// can name one file — two spellings of one path, or on a case-insensitive
+// filesystem two cases of one name — and the deploy must read the bytes that
+// were checked, not whichever key happened to be written last.
+func writeNewFile(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // RemoveStackCLI tears down a stack via `docker stack rm`, the symmetric

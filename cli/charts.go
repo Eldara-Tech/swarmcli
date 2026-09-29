@@ -721,6 +721,11 @@ func prepare(release, ref string, f flags, base map[string]any, pol compatPolicy
 	if err != nil {
 		return "", nil, rc, nil, nil, fail(err)
 	}
+	// The deploy enforces this too; checking here as well means template and
+	// diff refuse the manifest a deploy would, rather than print it.
+	if _, err := charts.EnvLookups(manifest, chartFiles); err != nil {
+		return "", nil, rc, nil, nil, fail(err)
+	}
 	rc = charts.ReleaseChart{Name: ch.Metadata.Name, Version: ch.Metadata.Version, AppVersion: ch.Metadata.AppVersion}
 	return manifest, values, rc, req, chartFiles, -1
 }

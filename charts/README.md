@@ -310,6 +310,7 @@ from a directory on your own disk:
 | `file:` / `env_file:` | |
 |---|---|
 | `files/nginx.conf`, `files/tls/ca.pem` | resolved against the chart |
+| `files/${X}/app.conf` | refused — contains `$`; a chart names its files literally |
 | `values/config` | resolved against the values — see below; a config's `file:` only |
 | `nginx.conf` | refused — outside `files/`, so not something the chart ships |
 | `files/missing.conf` | refused — the chart does not contain it |
@@ -500,11 +501,14 @@ record and the service spec, and both are readable by anyone with Docker access,
 so the credential is disclosed to every operator who can run `docker service
 inspect`. Reference an external Docker secret instead and read it from
 `/run/secrets/<name>`, through the image's `*_FILE` variable or in the service's
-own command — a value that already does either is not flagged, nor is a `${VAR}`
-the deploy substitutes. It is a warning rather than a refusal because the engine
-cannot tell a credential from a value that merely reads like one, and it fires on
-the key even when the rendered value is empty: the key is what will carry the
-credential once an operator supplies one.
+own command — a value that already does either is not flagged, nor is an escaped
+`$${VAR}`, which reaches the service as the literal text `${VAR}`. An unescaped
+`$` is not a lint finding: `template` and every deploy refuse it, because a chart
+is not interpolated from the environment it is deployed from. The credential
+check is a warning rather than a refusal because the engine cannot tell a
+credential from a value that merely reads like one, and it fires on the key even
+when the rendered value is empty: the key is what will carry the credential once
+an operator supplies one.
 
 `--for-version` asks **whether the chart's declared floor admits that version**.
 It cannot tell you the chart *runs* on it: this binary carries one engine's

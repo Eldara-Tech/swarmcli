@@ -265,7 +265,13 @@ func (e *Engine) Rollback(ctx context.Context, release string, targetRev int, op
 	// manifest being replayed refers to, and deploying it without those bytes
 	// deploys a manifest naming files that are gone.
 	rel := e.newRevision(release, nextRevision(revs), target.Chart, target.Values, target.Manifest, target.Files)
-	return e.deployAndRecord(ctx, rel, opts)
+	out, err := e.deployAndRecord(ctx, rel, opts)
+	// A stored revision can predate the deploy's environment checks, and it
+	// cannot be changed, so the way forward is a new one.
+	if errors.As(err, new(envRefusal)) {
+		err = fmt.Errorf("%w (revision %d cannot be redeployed as recorded; upgrade to a chart version that passes this check instead of rolling back to it)", err, targetRev)
+	}
+	return out, err
 }
 
 // History returns every stored revision of a release, ascending, with derived

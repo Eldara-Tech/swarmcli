@@ -58,9 +58,10 @@ const valuesFilesRule = valuesDir + "/ names a value, which the operator supplie
 // to try — and an absolute one has always meant itself, read as the operator
 // into a swarm config that anyone with Docker access can read.
 //
-// This therefore refuses on the way past, in order: a path that is absolute,
-// one that escapes the chart, and one that is neither in the chart's files/ nor
-// in values/. None of it depends on where the chart was loaded from. Trusting a
+// This therefore refuses on the way past, in order: a path containing '$',
+// which the CLI would interpolate before reading it; one that is absolute; one
+// that escapes the chart; and one that is neither in the chart's files/ nor in
+// values/. None of it depends on where the chart was loaded from. Trusting a
 // local-path chart with an absolute path would grant the most privilege to
 // vendoring a repository chart to disk, which is the workflow that most obscures
 // a chart's origin.
@@ -106,6 +107,11 @@ type fileRef struct {
 // offending path and states the rule; the absolute one additionally names its
 // replacements, because it is the only refusal with a working chart behind it.
 func (r fileRef) resolve(files map[string][]byte, values map[string]any) (string, []byte, error) {
+	// First, because every check below reads the path as written, and the docker
+	// CLI reads it only after interpolating it.
+	if strings.Contains(r.path, "$") {
+		return "", nil, fmt.Errorf("%s: '%s' contains '$', and a chart names its files literally — %s", r.key, r.path, chartFilesRule)
+	}
 	if path.IsAbs(r.path) {
 		return "", nil, fmt.Errorf(
 			"%s: '%s' is an absolute path, and %s — copy it into the chart's %s/ and reference it by that path, "+
@@ -234,18 +240,31 @@ func manifestFileRefs(manifest string) ([]fileRef, error) {
 			continue
 		}
 		// env_file is the one of the three compose gives two shapes: a bare
-		// string, or a list of them. Both are read, and the list is walked item
-		// by item so an item of the wrong type does not lose the rest.
-		items := []*yaml.Node{&entry.EnvFile}
-		if entry.EnvFile.Kind == yaml.SequenceNode {
-			items = entry.EnvFile.Content
-		}
-		for _, item := range items {
-			var p string
-			if err := item.Decode(&p); err != nil || p == "" {
-				continue
+		// string, or a list of them. Both are read. A yaml.Node field keeps an
+		// alias as it was written, so it is followed first.
+		// An entry that is not a string is refused rather than passed over: the
+		// CLI could read a path from it that no check here has seen.
+		envFile := unalias(&entry.EnvFile)
+		key := "services." + name + ".env_file"
+		switch envFile.Kind {
+		case yaml.SequenceNode:
+			for i, item := range envFile.Content {
+				var p string
+				if err := item.Decode(&p); err != nil {
+					return nil, fmt.Errorf("%s[%d]: an env_file entry must be a path", key, i)
+				}
+				if p != "" {
+					refs = append(refs, fileRef{key: key, path: p})
+				}
 			}
-			refs = append(refs, fileRef{key: "services." + name + ".env_file", path: p})
+		default:
+			var p string
+			if err := envFile.Decode(&p); err != nil {
+				return nil, fmt.Errorf("%s: env_file must be a path or a list of paths", key)
+			}
+			if p != "" {
+				refs = append(refs, fileRef{key: key, path: p})
+			}
 		}
 	}
 	return refs, nil
@@ -264,4 +283,12 @@ func entries(node yaml.Node) iter.Seq2[string, yaml.Node] {
 			}
 		}
 	}
+}
+
+// unalias returns the node an alias refers to, or n itself.
+func unalias(n *yaml.Node) *yaml.Node {
+	if n.Kind == yaml.AliasNode {
+		return n.Alias
+	}
+	return n
 }

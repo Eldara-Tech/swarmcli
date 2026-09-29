@@ -21,7 +21,7 @@ func TestStackCommandsReportCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := DeployStackInContext(ctx, "no-such-context", "web", "services:\n  a:\n    image: x\n", ResolveImageDefault, nil)
+	err := DeployStackInContext(ctx, "no-such-context", "web", "services:\n  a:\n    image: x\n", ResolveImageDefault, nil, DeployOptions{})
 	require.ErrorIs(t, err, context.Canceled)
 
 	require.ErrorIs(t, RemoveStackCLIInContext(ctx, "no-such-context", "web"), context.Canceled)
@@ -89,6 +89,35 @@ func TestWriteStackTreeRefusesAKeyThatEscapes(t *testing.T) {
 	}
 }
 
+// Two keys that name one file must not leave the second's bytes where the
+// first's were checked. Here they differ by a "." segment, which every
+// filesystem resolves to one path.
+func TestWriteStackTreeRefusesTwoKeysForOneFile(t *testing.T) {
+	dir, manifestPath, err := writeStackTree(map[string][]byte{
+		"files/a.env":   []byte("A=1\n"),
+		"files/./a.env": []byte("B=2\n"),
+	}, testManifest)
+	require.ErrorContains(t, err, "names the same file as another chart file")
+	require.Empty(t, dir)
+	require.Empty(t, manifestPath)
+}
+
+// Here they differ only in case, which names one file on a case-insensitive
+// filesystem such as the macOS and Windows defaults.
+func TestWriteStackTreeRefusesKeysThatDifferOnlyInCase(t *testing.T) {
+	probe := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(probe, "X"), nil, 0o600))
+	if _, err := os.Stat(filepath.Join(probe, "x")); err != nil {
+		t.Skip("the temporary directory is case-sensitive")
+	}
+	t.Setenv("TMPDIR", probe)
+	_, _, err := writeStackTree(map[string][]byte{
+		"files/A.env": []byte("A=1\n"),
+		"files/a.env": []byte("B=2\n"),
+	}, testManifest)
+	require.ErrorContains(t, err, "names the same file as another chart file")
+}
+
 // A failed deploy must take the whole tree with it, not just the manifest the
 // old temp-file version knew about — otherwise every failure leaks a chart's
 // files, readable to nobody but still there.
@@ -99,7 +128,7 @@ func TestDeployStackRemovesTheWholeTree(t *testing.T) {
 	// No networks: key, so the failure path does not go looking for orphaned
 	// networks to clean up through a daemon this test has no business reaching.
 	err := DeployStackInContext(context.Background(), "no-such-context", "web", testManifest,
-		ResolveImageDefault, map[string][]byte{"files/nginx.conf": []byte("server {}")})
+		ResolveImageDefault, map[string][]byte{"files/nginx.conf": []byte("server {}")}, DeployOptions{})
 	require.Error(t, err)
 
 	entries, err := os.ReadDir(tmp)

@@ -268,8 +268,10 @@ var secretishKey = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[_-]
 // inlining one is legitimate.
 var pemPrivateKey = regexp.MustCompile(`-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----`)
 
-// runtimeRef is a value the deploy resolves rather than one the manifest
-// carries: a ${VAR}/$VAR interpolation substituted at deploy time.
+// runtimeRef is a value that names a variable rather than carrying one: an
+// escaped $$VAR/$${VAR}, which reaches the service as the literal reference. An
+// unescaped $VAR/${VAR} matches too, but template and every deploy refuse it, so
+// reporting it is not this rule's job.
 var runtimeRef = regexp.MustCompile(`^\$+\{?[A-Za-z_][A-Za-z0-9_]*\}?$`)
 
 // envPair is one entry of a service's environment: block.
@@ -340,9 +342,10 @@ func lintInlineSecrets(manifest string, add func(LintSeverity, string, ...any)) 
 // quoted the secret it found would disclose it further than the manifest that
 // prompted the warning did.
 func inlineSecret(key, value string) (string, bool) {
-	// A value resolved elsewhere is not material, whatever the key is called:
-	// ${VAR} is substituted at deploy time, and /run/secrets/... is already the
-	// convention this rule exists to ask for.
+	// A value that only names where the material is is not material, whatever
+	// the key is called: an escaped $${VAR} stays a reference in the service's
+	// environment, and /run/secrets/... is already the convention this rule
+	// exists to ask for.
 	if runtimeRef.MatchString(value) || strings.HasPrefix(value, "/run/secrets/") {
 		return "", false
 	}

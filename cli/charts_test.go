@@ -191,6 +191,49 @@ func TestChartsTemplateRefusesAPathOutsideTheChart(t *testing.T) {
 	}
 }
 
+// A manifest the deploy would refuse for reading the environment is refused by
+// template too, so a chart repository's render check sees it before a release.
+func TestChartsTemplateRefusesAManifestThatInterpolates(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "templates"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Chart.yaml"), []byte("name: demo\nversion: 1.0.0\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "templates", "stack.yaml"),
+		[]byte("services:\n  web:\n    image: nginx\n    environment:\n      GREETING: \"${FOO}\"\n"), 0o644))
+	var code int
+	o, errOut := capture(t, func() {
+		code = Dispatch([]string{"charts", "template", "site", dir}, "dev")
+	})
+	require.Equal(t, 1, code)
+	require.Empty(t, o)
+	require.Contains(t, errOut, "services.web.environment.GREETING:")
+	require.Contains(t, errOut, "escape '$' as '$$'")
+}
+
+// apply gates the whole plan before converging any of it, so a release the
+// deploy would refuse stops the apply before an earlier one is deployed, and a
+// preview says so instead of looking clean. A release apply leaves alone is not
+// its to refuse.
+func TestApplyGateRefusesAReleaseTheDeployWould(t *testing.T) {
+	refused := "services:\n  web:\n    image: nginx\n    environment:\n      GREETING: \"${FOO}\"\n"
+	ok := charts.CompatFinding{Status: charts.CompatOK}
+	plan := &charts.Plan{Releases: []charts.ReleasePlan{
+		{Name: "a", Action: charts.ActionUnchanged, Manifest: refused, Compat: ok},
+		{Name: "b", Action: charts.ActionInstall, Manifest: "services:\n  web:\n    image: nginx\n", Compat: ok},
+		{Name: "c", Action: charts.ActionUpgrade, Manifest: refused, Compat: ok},
+	}}
+	for _, pol := range []compatPolicy{compatEnforceNoPrompt, compatWarn} {
+		var code int
+		_, errOut := capture(t, func() { code = gateApply(plan, pol, false) })
+		require.Equal(t, 1, code)
+		require.Contains(t, errOut, "release 'c': services.web.environment.GREETING:")
+	}
+
+	plan.Releases = plan.Releases[:2]
+	var code int
+	capture(t, func() { code = gateApply(plan, compatEnforceNoPrompt, false) })
+	require.Equal(t, -1, code)
+}
+
 // And the shape the refusals exist to permit still renders.
 func TestChartsTemplateAcceptsAFileTheChartShips(t *testing.T) {
 	var code int

@@ -129,6 +129,20 @@ func TestCheckBindSourcesSeesEverySiblingService(t *testing.T) {
 	require.ErrorContains(t, err, `service 'app'`)
 }
 
+// A volumes block, or an entry in one, reached through an alias is read like any
+// other: the loader resolves the alias before it resolves the source.
+func TestCheckBindSourcesFollowsAliases(t *testing.T) {
+	for name, manifest := range map[string]string{
+		"an aliased block":      "x-v: &v [\"~/data:/data\"]\nservices:\n  app:\n    image: nginx\n    volumes: *v\n",
+		"an aliased short item": "x-b: &b \"~/data:/data\"\nservices:\n  app:\n    image: nginx\n    volumes: [*b]\n",
+		"an aliased long item":  "x-m: &m {type: bind, source: ./data, target: /data}\nservices:\n  app:\n    image: nginx\n    volumes: [*m]\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorContains(t, checkBindSources(manifest), "must be absolute")
+		})
+	}
+}
+
 // A manifest with more than one offender always refuses on the same one, so the
 // message an operator fixes against does not depend on map iteration order.
 func TestCheckBindSourcesRefusesTheFirstServiceInOrder(t *testing.T) {
@@ -145,7 +159,7 @@ func TestCheckBindSourcesRefusesTheFirstServiceInOrder(t *testing.T) {
 // error about it is an error that ran too late.
 func TestDeployStackInContextRefusesARelativeBindSource(t *testing.T) {
 	err := DeployStackInContext(context.Background(), "no-such-context", "web",
-		bindManifest(`["./data:/data"]`), ResolveImageDefault, nil)
+		bindManifest(`["./data:/data"]`), ResolveImageDefault, nil, DeployOptions{})
 	require.ErrorContains(t, err, "bind source")
 	require.ErrorContains(t, err, "must be absolute")
 }
