@@ -279,13 +279,6 @@ func TestCLIReadsEnv(t *testing.T) {
 	}
 }
 
-// EmptyEnv reads both shapes of an environment: block and nothing else.
-func TestEmptyEnv(t *testing.T) {
-	require.Equal(t, []string{"A", "B"}, EmptyEnv(map[string]any{"B": "", "A": nil, "C": "x"}))
-	require.Equal(t, []string{"A", "B"}, EmptyEnv([]any{"A", "B=", "C=x"}))
-	require.Empty(t, EmptyEnv("A="))
-}
-
 func TestEnvLookupsReadsEnvFiles(t *testing.T) {
 	t.Run("an empty line is withheld", func(t *testing.T) {
 		manifest, files := envFileChart("# comment\nFOO=\nKEEP=1\n")

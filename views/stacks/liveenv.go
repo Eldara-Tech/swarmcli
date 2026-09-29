@@ -20,7 +20,7 @@ import (
 // or "" from its own environment. reconstructed is the stack as rebuilt from
 // its running services, which the edit started from, and edited is the edit.
 // A name is withheld when a running service holds it with no value and the edit
-// still declares it so: the running services are the source of truth. The edit
+// still gives it "": the running services are the source of truth. The edit
 // is read as a whole, since withholding covers the whole deploy — a service
 // renamed in the editor keeps its empty values empty, and a ${NAME}, or an empty
 // NAME, that the edit adds elsewhere is empty too.
@@ -59,7 +59,10 @@ func liveEmptyEnv(reconstructed, edited string) ([]string, error) {
 }
 
 // emptyEnvByService returns, for each service of a compose document, the names
-// its environment: declares with no value (charts.EmptyEnv).
+// its environment: gives the value "" — NAME: "", or NAME= in the list shape.
+// The reconstruction writes every empty value that way, so a null or a bare
+// NAME in an edit is one the operator wrote: compose's pass-through, which the
+// CLI fills as it always does.
 func emptyEnvByService(doc string) (map[string][]string, error) {
 	var d struct {
 		Services map[string]struct {
@@ -71,7 +74,21 @@ func emptyEnvByService(doc string) (map[string][]string, error) {
 	}
 	out := make(map[string][]string, len(d.Services))
 	for svc, s := range d.Services {
-		out[svc] = charts.EmptyEnv(s.Environment)
+		switch env := s.Environment.(type) {
+		case map[string]any:
+			for _, name := range slices.Sorted(maps.Keys(env)) {
+				if env[name] == "" {
+					out[svc] = append(out[svc], name)
+				}
+			}
+		case []any:
+			for _, item := range env {
+				entry, _ := item.(string)
+				if name, value, ok := strings.Cut(entry, "="); ok && name != "" && value == "" {
+					out[svc] = append(out[svc], name)
+				}
+			}
+		}
 	}
 	return out, nil
 }

@@ -28,7 +28,8 @@ services:
 `
 
 // A name is withheld while a running service holds it empty and the edit still
-// declares it empty in any service, in either shape the edit writes it.
+// gives it "" in any service, in either shape the edit writes it. A null or a
+// bare name is compose's pass-through, which only the operator writes.
 func TestLiveEmptyEnvFollowsTheEdit(t *testing.T) {
 	for _, tc := range []struct {
 		name, edited string
@@ -50,12 +51,21 @@ func TestLiveEmptyEnvFollowsTheEdit(t *testing.T) {
       BAR: x
       FOO: x
 `, nil},
-		{"list form, bare and with '='", `services:
+		{"list form", `services:
   web:
     environment:
-      - BAR
+      - BAR=
       - FOO=
 `, []string{"BAR", "FOO"}},
+		{"null or bare, the operator's pass-through", `services:
+  web:
+    environment:
+      BAR:
+      FOO: ~
+  api:
+    environment:
+      - FOO
+`, nil},
 		{"carried into a service the edit renames", `services:
   web:
     environment:
