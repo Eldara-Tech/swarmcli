@@ -10,12 +10,14 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
 	"testing"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -51,6 +53,11 @@ type fakeBackend struct {
 	secretsErr        error                   // error to return from SecretNames
 	onCreate          func(name string) error // hook to simulate concurrent config creation
 	deleteCfgErr      map[string]error        // config name -> error to return on delete
+	rmVolErrs         map[string][]error      // volume name -> errors RemoveVolume returns, one per call, before it succeeds
+	rmVolCalls        map[string]int          // volume name -> RemoveVolume calls
+	nodes             int                     // SwarmNodes answer
+	nodesErr          error                   // error to return from SwarmNodes
+	volumesErr        error                   // error to return from StackVolumes
 	// listData makes ListConfigs carry each payload, as the Docker backend
 	// does. Off by default so the rest of the suite keeps exercising the
 	// inspect fallback a Backend that omits it relies on.
@@ -141,9 +148,17 @@ func (f *fakeBackend) StackServices(_ context.Context, name string) []ServiceSta
 	return f.services[name]
 }
 func (f *fakeBackend) StackVolumes(_ context.Context, name string) ([]string, error) {
-	return f.volumes[name], nil
+	return f.volumes[name], f.volumesErr
 }
 func (f *fakeBackend) RemoveVolume(_ context.Context, name string) error {
+	if f.rmVolCalls == nil {
+		f.rmVolCalls = map[string]int{}
+	}
+	f.rmVolCalls[name]++
+	if errs := f.rmVolErrs[name]; len(errs) > 0 {
+		f.rmVolErrs[name] = errs[1:]
+		return errs[0]
+	}
 	for stack, vols := range f.volumes {
 		out := vols[:0]
 		for _, v := range vols {
@@ -155,6 +170,8 @@ func (f *fakeBackend) RemoveVolume(_ context.Context, name string) error {
 	}
 	return nil
 }
+
+func (f *fakeBackend) SwarmNodes(context.Context) (int, error) { return f.nodes, f.nodesErr }
 
 func (f *fakeBackend) NetworkScopes(context.Context) (map[string]string, error) {
 	out := map[string]string{}
@@ -667,6 +684,110 @@ func TestUninstallPurgeVolumes(t *testing.T) {
 	_, err := e.Uninstall(ctx, "demo", true)
 	require.NoError(t, err)
 	require.Empty(t, fb.volumes["demo"])
+}
+
+// volumeInUse is what the Docker backend returns for a volume a container still
+// references: the daemon's 409, classified by the client as a conflict.
+var volumeInUse = fmt.Errorf("removing volume 'demo_data': %w", cerrdefs.ErrConflict)
+
+func fastVolumeRelease(t *testing.T, timeout time.Duration) {
+	t.Helper()
+	restoreTimeout, restoreInterval := volumeReleaseTimeout, volumeReleaseInterval
+	volumeReleaseTimeout, volumeReleaseInterval = timeout, 0
+	t.Cleanup(func() { volumeReleaseTimeout, volumeReleaseInterval = restoreTimeout, restoreInterval })
+}
+
+// #661: the stack's containers are still stopping when Uninstall reaches the
+// volumes, so the first removals are refused as in use.
+func TestUninstallPurgeVolumesWaitsForRelease(t *testing.T) {
+	fastVolumeRelease(t, time.Minute)
+	fb := newFakeBackend()
+	fb.volumes["demo"] = []string{"demo_data"}
+	fb.rmVolErrs = map[string][]error{"demo_data": {volumeInUse, volumeInUse}}
+	e := testEngine(fb)
+	ctx := context.Background()
+	_, _ = e.Install(ctx, "demo", ReleaseChart{Name: "demo", Version: "1"}, nil, "services:\n  s:\n    image: x\n", InstallOptions{})
+	_, err := e.Uninstall(ctx, "demo", true)
+	require.NoError(t, err)
+	require.Empty(t, fb.volumes["demo"])
+	require.Equal(t, 3, fb.rmVolCalls["demo_data"])
+}
+
+func TestUninstallPurgeVolumesGivesUpWhenNeverReleased(t *testing.T) {
+	fastVolumeRelease(t, 0)
+	fb := newFakeBackend()
+	fb.volumes["demo"] = []string{"demo_data"}
+	fb.rmVolErrs = map[string][]error{"demo_data": {volumeInUse, volumeInUse}}
+	e := testEngine(fb)
+	ctx := context.Background()
+	_, _ = e.Install(ctx, "demo", ReleaseChart{Name: "demo", Version: "1"}, nil, "services:\n  s:\n    image: x\n", InstallOptions{})
+	_, err := e.Uninstall(ctx, "demo", true)
+	require.ErrorIs(t, err, cerrdefs.ErrConflict)
+	require.Equal(t, "still in use after 0s: removing volume 'demo_data': conflict", err.Error())
+	require.Equal(t, []string{"demo_data"}, fb.volumes["demo"])
+	require.Empty(t, fb.configs, "release records are still deleted")
+}
+
+// A backend that cannot count the swarm's nodes: embedding the interface
+// promotes Backend's methods only, so it is not a SwarmSizer.
+type unsizedBackend struct{ Backend }
+
+// StackVolumes sees only the connected node, so a purge is complete only on a
+// swarm known to have one node (#673).
+func TestUninstallPurgeVolumesFlagsOtherNodes(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		nodes  int
+		err    error
+		sized  bool
+		purge  bool
+		remain bool
+	}{
+		{name: "single node", nodes: 1, sized: true, purge: true, remain: false},
+		{name: "three nodes", nodes: 3, sized: true, purge: true, remain: true},
+		{name: "count fails", nodes: 1, err: errors.New("not a manager"), sized: true, purge: true, remain: true},
+		{name: "backend cannot count", sized: false, purge: true, remain: true},
+		{name: "no purge", nodes: 3, sized: true, purge: false, remain: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fb := newFakeBackend()
+			fb.nodes, fb.nodesErr = tc.nodes, tc.err
+			var b Backend = fb
+			if !tc.sized {
+				b = unsizedBackend{fb}
+			}
+			e := testEngine(b)
+			ctx := context.Background()
+			_, err := e.Install(ctx, "demo", ReleaseChart{Name: "demo", Version: "1"}, nil, "services:\n  s:\n    image: x\n", InstallOptions{})
+			require.NoError(t, err)
+			res, err := e.Uninstall(ctx, "demo", tc.purge)
+			require.NoError(t, err)
+			require.Equal(t, tc.remain, res.VolumesMayRemain)
+		})
+	}
+}
+
+func TestRemoveWhenReleasedReturnsOtherErrorsAtOnce(t *testing.T) {
+	boom := errors.New("permission denied")
+	calls := 0
+	err := RemoveWhenReleased(context.Background(), time.Minute, 0, func(context.Context) error {
+		calls++
+		return boom
+	})
+	require.ErrorIs(t, err, boom)
+	require.Equal(t, 1, calls)
+}
+
+func TestRemoveWhenReleasedStopsOnCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	err := RemoveWhenReleased(ctx, time.Minute, time.Hour, func(context.Context) error {
+		calls++
+		cancel()
+		return volumeInUse
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, calls)
 }
 
 func TestStatusReturnsServices(t *testing.T) {
