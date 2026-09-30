@@ -119,6 +119,12 @@ func chartsMain(args []string) int {
 	return c.Run(c, rest)
 }
 
+// defaultRepos is what a machine that has never configured a repository starts
+// with: the Eldara-Tech community charts.
+var defaultRepos = []charts.RepoEntry{
+	{Name: "swarmcli-charts", URL: "https://eldara-tech.github.io/swarmcli-charts"},
+}
+
 // newStore builds the repository store every charts subcommand resolves
 // through, and is the single place CLI policy is applied to it.
 func newStore(f flags) (*charts.RepoStore, int) {
@@ -128,6 +134,12 @@ func newStore(f flags) (*charts.RepoStore, int) {
 	}
 	s.Warnf = errf
 	s.AllowPlaintext = plaintextAllowed()
+	// Seeded here rather than in the charts package: embedders such as
+	// swarmcli-cd build their own stores and must not grow a repository they
+	// never declared.
+	if err := s.Seed(defaultRepos); err != nil {
+		return nil, fail(err)
+	}
 	// An interactive user who types `charts install foo repo/bar` means the bar
 	// the repository publishes, not the one their cache happened to hold when
 	// they last ran `repo update`. Programs embedding the charts package keep

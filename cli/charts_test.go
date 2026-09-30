@@ -616,6 +616,20 @@ func TestNewStoreWiresTheRefreshPolicy(t *testing.T) {
 	require.Equal(t, charts.RefreshAlways, s.Refresh)
 }
 
+// A machine that never configured a repository starts with the community
+// charts; one that removed them does not get them back.
+func TestChartsRepoSeedsTheDefault(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	o, _ := capture(t, func() { require.Equal(t, 0, Dispatch([]string{"charts", "repo", "list"}, "test")) })
+	require.Contains(t, o, "swarmcli-charts")
+	require.Contains(t, o, "https://eldara-tech.github.io/swarmcli-charts")
+
+	_, _ = capture(t, func() { require.Equal(t, 0, Dispatch([]string{"charts", "repo", "remove", "swarmcli-charts"}, "test")) })
+	o, _ = capture(t, func() { require.Equal(t, 0, Dispatch([]string{"charts", "repo", "list"}, "test")) })
+	require.Contains(t, o, "No repositories configured")
+}
+
 func TestNoRepoUpdateFlagParses(t *testing.T) {
 	_, f, err := parseArgs([]string{"--no-repo-update"})
 	require.NoError(t, err)

@@ -541,6 +541,13 @@ archives live under `$XDG_STATE_HOME/swarmcli/charts` (default
 `~/.local/state/swarmcli/charts`); a repository's name is a component of its
 cache filename, so it is limited to letters, digits, `-`, `_` and `.`.
 
+The CLI starts with one repository, `swarmcli-charts`
+(`https://eldara-tech.github.io/swarmcli-charts`, the community charts), written
+the first time a `charts` command runs on a machine with no repositories
+configured. Nothing is downloaded until a command needs its index. Remove it
+with `repo remove swarmcli-charts` and it stays removed; programs embedding this
+package start with none.
+
 A chart archive is downloaded once. The index publishes a sha256 for it, which
 is checked on every download and again on every read of the cache, so a cached
 archive is used only while it still hashes to what the repository publishes

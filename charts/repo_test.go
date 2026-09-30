@@ -164,6 +164,42 @@ func TestRepoStoreAddRejectsBadURL(t *testing.T) {
 	require.Error(t, s.Add("x", "ftp://example.com"))
 }
 
+// Seed writes only where nothing was ever configured, and fetches nothing: the
+// entries below point at a URL no test server answers.
+func TestRepoStoreSeed(t *testing.T) {
+	seed := []RepoEntry{{Name: "default", URL: "https://charts.invalid"}}
+
+	s := NewRepoStoreAt(t.TempDir())
+	require.NoError(t, s.Seed(seed))
+	repos, err := s.List()
+	require.NoError(t, err)
+	require.Equal(t, seed, repos)
+
+	// A removed seed stays removed: the now-empty file is a choice.
+	require.NoError(t, s.Remove("default"))
+	require.NoError(t, s.Seed(seed))
+	repos, err = s.List()
+	require.NoError(t, err)
+	require.Empty(t, repos)
+
+	// Existing configuration is never touched.
+	s = NewRepoStoreAt(t.TempDir())
+	require.NoError(t, s.save([]RepoEntry{{Name: "mine", URL: "https://mine.invalid"}}))
+	require.NoError(t, s.Seed(seed))
+	repos, err = s.List()
+	require.NoError(t, err)
+	require.Equal(t, []RepoEntry{{Name: "mine", URL: "https://mine.invalid"}}, repos)
+}
+
+// Seed applies the same checks as Add, before writing anything.
+func TestRepoStoreSeedRejectsInvalidEntries(t *testing.T) {
+	s := NewRepoStoreAt(t.TempDir())
+	require.Error(t, s.Seed([]RepoEntry{{Name: "..", URL: "https://charts.invalid"}}))
+	require.Error(t, s.Seed([]RepoEntry{{Name: "plain", URL: "http://charts.invalid"}}))
+	_, err := os.Stat(s.reposFile())
+	require.True(t, os.IsNotExist(err), "a refused seed writes nothing")
+}
+
 // A repository name is a path component of its cached index, and indexFile glues
 // it on *after* "index-" — so "index-.." is an ordinary segment that Clean has
 // nothing to collapse, and a traversing name escapes for the price of one extra
