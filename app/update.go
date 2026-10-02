@@ -95,6 +95,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// addressing the context whose snapshot just failed.
 				docker.SetSessionContext(m.previousContext)
 				docker.ResetClient()
+				m.systemInfo.ResetResourceUsage()
 				m.previousContext = ""
 				m.showAppError(
 					fmt.Sprintf("Error loading snapshot: %v\n\nReverted to previous context.", msg.Err),
@@ -440,7 +441,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 //
 // Both ways into a new context go through here — a switch made from the
 // contexts view and an accepted drift prompt — because a second copy of this
-// sequence is a second chance to forget one of the four things it does.
+// sequence is a second chance to forget one of the five things it does.
 func (m *Model) enterContext(previous string, writesConfig bool) tea.Cmd {
 	m.previousContext = previous
 	m.revertWritesConfig = writesConfig
@@ -448,6 +449,9 @@ func (m *Model) enterContext(previous string, writesConfig bool) tea.Cmd {
 	docker.ResetClient()
 	// Invalidate snapshot cache so stacks load fresh data for new context
 	docker.InvalidateSnapshot()
+	// CPU/MEM describe the swarm being left; show the spinner until the new
+	// one is measured.
+	m.systemInfo.ResetResourceUsage()
 	cmd := m.replaceView(loadingview.ViewName, map[string]string{
 		"title":   "Loading",
 		"header":  "Fetching cluster info",

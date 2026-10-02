@@ -109,8 +109,6 @@ func TestUpdate_Msg(t *testing.T) {
 	m := New(testDeps(), "1.0.0", "ce")
 	cmd := m.Update(Msg{
 		context:    "ctx",
-		cpu:        "10%",
-		mem:        "20%",
 		containers: 3,
 		services:   2,
 	})
@@ -320,4 +318,74 @@ func TestView_VersionLineDoesNotWrap_LongVersions(t *testing.T) {
 				Height, len(lines), tc.version, tc.latest, rendered)
 		})
 	}
+}
+
+// The app re-runs LoadStatus on its 5s tick for the context and counts. That
+// refresh must not put CPU/MEM back into the loading state once a value has
+// arrived: the spinner is for the first collection only, and a refresh used to
+// replace the values with it until the next resource round landed.
+func TestLoadStatus_RefreshKeepsResourceValues(t *testing.T) {
+	m := New(testDeps(), "1.0.0", "ce")
+	m.Update(SlowStatusMsg{cpu: "12.5%", mem: "45.3%"})
+
+	m.Update(m.LoadStatus()())
+	m.Update(SpinnerTickMsg{})
+
+	require.False(t, m.loadingCPU)
+	require.False(t, m.loadingMem)
+	require.Contains(t, m.content, "12.5%")
+	require.Contains(t, m.content, "45.3%")
+}
+
+// Before the first collection the header shows the spinner, and the 5s refresh
+// arriving first does not change that.
+func TestLoadStatus_SpinnerUntilFirstCollection(t *testing.T) {
+	m := New(testDeps(), "1.0.0", "ce")
+	m.Update(m.LoadStatus()())
+
+	require.True(t, m.loadingCPU)
+	require.True(t, m.loadingMem)
+}
+
+// A context switch puts CPU/MEM back to the spinner and forgets the trend, so
+// the new swarm's first reading is not compared against the old swarm's.
+func TestResetResourceUsage_ShowsSpinnerAndForgetsTrend(t *testing.T) {
+	m := New(testDeps(), "1.0.0", "ce")
+	m.Update(SlowStatusMsg{cpu: "10.0%", mem: "20.0%"})
+	m.Update(SlowStatusMsg{cpu: "15.0%", mem: "25.0%"})
+
+	m.ResetResourceUsage()
+
+	require.True(t, m.loadingCPU)
+	require.True(t, m.loadingMem)
+	require.True(t, m.firstLoad)
+	require.NotContains(t, m.content, "15.0%")
+	require.NotContains(t, m.content, "25.0%")
+
+	m.Update(m.LoadSlowStatus()())
+	require.False(t, m.loadingCPU)
+	require.Equal(t, "12.5%", m.cpuUsage, "no trend arrow against the previous swarm")
+	require.Equal(t, "45.3%", m.memUsage)
+}
+
+// A round that started before the switch measured the swarm the session left.
+// It must not clear the spinner, and it hands the chain straight to a new round
+// instead of a tick so the header is not held for an extra interval.
+func TestResetResourceUsage_DropsARoundFromThePreviousContext(t *testing.T) {
+	m := New(testDeps(), "1.0.0", "ce")
+	stale := m.LoadSlowStatus()
+
+	m.ResetResourceUsage()
+	cmd := m.Update(stale())
+
+	require.True(t, m.loadingCPU)
+	require.True(t, m.loadingMem)
+	require.NotContains(t, m.content, "12.5%")
+	require.NotNil(t, cmd)
+	fresh, ok := cmd().(SlowStatusMsg)
+	require.True(t, ok, "the next round starts now, not after a tick")
+
+	m.Update(fresh)
+	require.False(t, m.loadingCPU)
+	require.Contains(t, m.content, "12.5%")
 }

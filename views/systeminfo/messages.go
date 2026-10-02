@@ -18,10 +18,11 @@ func (SpinnerTickMsg) systemInfoMsg()     {}
 func (LatestVersionMsg) systemInfoMsg()   {}
 func (NoVersionUpdateMsg) systemInfoMsg() {}
 
+// Msg carries the cheap header fields LoadStatus refreshes on the app's 5s
+// tick. CPU and MEM are not among them: only SlowStatusMsg reports those, so a
+// refresh cannot put the header back into its first-load spinner.
 type Msg struct {
 	context     string
-	cpu         string
-	mem         string
 	cpuCapacity string
 	memCapacity string
 	containers  int
@@ -31,6 +32,9 @@ type Msg struct {
 type SlowStatusMsg struct {
 	cpu string
 	mem string
+	// generation is the model's generation when the round started. A round
+	// that began before ResetResourceUsage measured the previous context.
+	generation int
 }
 
 type TickMsg time.Time
