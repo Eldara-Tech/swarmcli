@@ -89,7 +89,7 @@ prompt and still runs `docker context use`, so your shell follows along.
 |---|---|---|---|
 | `~/.local/state/swarmcli/app.log` | both | `0600` | JSON logs (`SWARMCLI_ENV=prod`). Rotated at 20 MB, 5 compressed backups, 14 days. |
 | `~/.local/state/swarmcli/app-debug.log` | both | `0600` | Human-readable logs (`SWARMCLI_ENV=dev`), rotated the same way. |
-| `~/.local/state/swarmcli/charts/repos.json` | both | `0644` | Chart repositories configured with `swarmcli charts repo add`. |
+| `~/.local/state/swarmcli/charts/repos.json` | both | `0644` | Chart repositories configured with `swarmcli charts repo add`; seeded with `swarmcli-charts` when absent. |
 | `~/.local/state/swarmcli/charts/cache/index-<repo>.yaml` | both | `0644` | Cached repository index per configured repository. |
 | `~/.local/state/swarmcli/charts/cache/charts/<sha256>.tgz` | both | `0644` | Chart archives already downloaded, kept under the sha256 their repository index publishes. Re-verified on every read, and swept 30 days after the last one. |
 | `~/.config/swarmcli/update-notice.json` | both | `0644` | The release version at which the startup update notice was dismissed. |

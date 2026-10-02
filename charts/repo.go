@@ -259,6 +259,26 @@ func (s *RepoStore) List() ([]RepoEntry, error) {
 	return repos, nil
 }
 
+// Seed writes repos as the configured repositories when none have ever been
+// configured, that is when repos.json does not exist. An existing file, even an
+// empty one, is the user's choice and is left alone, so a seeded repository that
+// was removed stays removed. Nothing is downloaded: the first read of an index
+// fetches it under RefreshAlways, and a first run without network still works.
+func (s *RepoStore) Seed(repos []RepoEntry) error {
+	for _, r := range repos {
+		if err := validateRepoName(r.Name); err != nil {
+			return err
+		}
+		if err := s.checkRepoURL(r.URL); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(s.reposFile()); !os.IsNotExist(err) {
+		return err
+	}
+	return s.save(repos)
+}
+
 // Add registers a repository and downloads its index. It rejects duplicate
 // names, names it will not build a cache path from, and URLs it will not fetch
 // from — all before the download, so a bad request is reported as one.
