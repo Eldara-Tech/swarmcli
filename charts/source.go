@@ -21,38 +21,75 @@ type ChartSource interface {
 	Load(ref, version string) (*Chart, error)
 }
 
+// ChartOrigin is the repository a chart was resolved from: the zero value for a
+// local chart path, which came from none.
+type ChartOrigin struct {
+	Repo string
+	URL  string
+}
+
+// OriginSource is a ChartSource that also reports where a chart came from. It is
+// optional, so ChartSource stays a one-method seam: a release loaded through a
+// source without it records no origin, which Available treats exactly like a
+// record written before origins were recorded.
+type OriginSource interface {
+	ChartSource
+	LoadWithOrigin(ref, version string) (*Chart, ChartOrigin, error)
+}
+
+// LoadWithOrigin loads ref through src, with its origin when src reports one.
+func LoadWithOrigin(src ChartSource, ref, version string) (*Chart, ChartOrigin, error) {
+	if o, ok := src.(OriginSource); ok {
+		return o.LoadWithOrigin(ref, version)
+	}
+	ch, err := src.Load(ref, version)
+	return ch, ChartOrigin{}, err
+}
+
 // NewChartSource returns the standard source, backed by the configured chart
-// repositories for "<repo>/<chart>" references.
+// repositories for "<repo>/<chart>" references. It implements OriginSource.
 func NewChartSource(store *RepoStore) ChartSource { return &repoSource{store: store} }
 
 type repoSource struct{ store *RepoStore }
 
 func (s *repoSource) Load(ref, version string) (*Chart, error) {
+	ch, _, err := s.LoadWithOrigin(ref, version)
+	return ch, err
+}
+
+func (s *repoSource) LoadWithOrigin(ref, version string) (*Chart, ChartOrigin, error) {
 	if IsPathRef(ref) {
 		if version != "" {
 			// Previously the flag was accepted and silently dropped here, so
 			// `install foo ./chart --version 2.0.0` quietly installed whatever
 			// Chart.yaml said. A local directory has exactly one version.
-			return nil, fmt.Errorf("chart '%s' is a local path: --version does not apply (the chart's own Chart.yaml sets the version)", ref)
+			return nil, ChartOrigin{}, fmt.Errorf("chart '%s' is a local path: --version does not apply (the chart's own Chart.yaml sets the version)", ref)
 		}
-		return loadLocalChart(ref)
+		ch, err := loadLocalChart(ref)
+		return ch, ChartOrigin{}, err
 	}
 	// Not syntactically a path, but it might still be a bare directory name
 	// ("./" omitted). Keep resolving those for backwards compatibility.
 	if info, err := os.Stat(ref); err == nil {
 		if version != "" {
-			return nil, fmt.Errorf("chart '%s' is a local path: --version does not apply (the chart's own Chart.yaml sets the version)", ref)
+			return nil, ChartOrigin{}, fmt.Errorf("chart '%s' is a local path: --version does not apply (the chart's own Chart.yaml sets the version)", ref)
 		}
-		return loadStatted(ref, info.IsDir())
+		ch, err := loadStatted(ref, info.IsDir())
+		return ch, ChartOrigin{}, err
 	}
 	if s.store == nil {
-		return nil, fmt.Errorf("chart '%s' not found on disk and no repositories are configured", ref)
+		return nil, ChartOrigin{}, fmt.Errorf("chart '%s' not found on disk and no repositories are configured", ref)
 	}
 	entry, base, err := s.store.Resolve(ref, version)
 	if err != nil {
-		return nil, err
+		return nil, ChartOrigin{}, err
 	}
-	return s.store.Pull(entry, base)
+	ch, err := s.store.Pull(entry, base)
+	if err != nil {
+		return nil, ChartOrigin{}, err
+	}
+	repo, _, _ := strings.Cut(ref, "/")
+	return ch, ChartOrigin{Repo: repo, URL: strings.TrimRight(base, "/")}, nil
 }
 
 // IsPathRef reports whether ref names a local chart path rather than a

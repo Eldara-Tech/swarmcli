@@ -250,12 +250,16 @@ func chartsOutdated(c chartsCmd, args []string) int {
 	if err != nil {
 		return fail(err)
 	}
+	repos, err := store.List()
+	if err != nil {
+		return fail(err)
+	}
 	rels, err := charts.NewEngine().List(context.Background())
 	if err != nil {
 		return fail(err)
 	}
 
-	entries := charts.Outdated(rels, indexes)
+	entries := charts.Outdated(rels, repos, indexes)
 	if len(entries) == 0 {
 		outln("All releases are up to date.")
 		return 0

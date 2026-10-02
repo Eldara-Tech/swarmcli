@@ -60,6 +60,39 @@ func TestChartSourceLoadsFromRepository(t *testing.T) {
 	require.ErrorContains(t, err, "not found")
 }
 
+// A repository chart reports where it came from, so the release can record it.
+func TestChartSourceReportsTheRepositoryOrigin(t *testing.T) {
+	store := serveRepo(t, "0.1.0")
+	repos, err := store.List()
+	require.NoError(t, err)
+
+	ch, origin, err := LoadWithOrigin(NewChartSource(store), "eldara/demo", "0.1.0")
+	require.NoError(t, err)
+	require.Equal(t, "demo", ch.Metadata.Name)
+	require.Equal(t, ChartOrigin{Repo: "eldara", URL: repos[0].URL}, origin)
+}
+
+// A local chart came from no repository, whether the path is explicit or bare.
+func TestChartSourceReportsNoOriginForALocalPath(t *testing.T) {
+	src := NewChartSource(nil)
+	for _, ref := range []string{"./testdata/demo", "testdata/demo"} {
+		ch, origin, err := LoadWithOrigin(src, ref, "")
+		require.NoError(t, err, ref)
+		require.Equal(t, "demo", ch.Metadata.Name, ref)
+		require.Zero(t, origin, ref)
+	}
+}
+
+// A ChartSource that does not implement OriginSource still loads; it just
+// reports no origin.
+func TestLoadWithOriginAcceptsAPlainChartSource(t *testing.T) {
+	want := &Chart{Metadata: Chartfile{Name: "demo", Version: "0.1.0"}}
+	ch, origin, err := LoadWithOrigin(&fakeChartSource{charts: map[string]*Chart{"r/demo@0.1.0": want}}, "r/demo", "0.1.0")
+	require.NoError(t, err)
+	require.Same(t, want, ch)
+	require.Zero(t, origin)
+}
+
 func TestChartSourceLoadsLocalDirAndArchive(t *testing.T) {
 	src := NewChartSource(nil)
 

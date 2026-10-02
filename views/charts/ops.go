@@ -52,6 +52,7 @@ type engineOps struct {
 	// is opened, which is also what the column claims: it compares against
 	// what this machine has cached.
 	once        sync.Once
+	repos       []charts.RepoEntry
 	indexes     map[string]*charts.Index
 	haveIndexes bool
 }
@@ -71,10 +72,11 @@ func (o *engineOps) Available(rels []charts.Release) (map[string]charts.Availabi
 	if !o.haveIndexes {
 		return nil, false
 	}
-	return charts.Available(rels, o.indexes), true
+	return charts.Available(rels, o.repos, o.indexes), true
 }
 
-// loadIndexes reads the cached repository indexes and nothing else.
+// loadIndexes reads the configured repositories and their cached indexes, and
+// nothing else.
 //
 // RefreshNever is the point: this is a browser, and a view that polls must not
 // reach the network behind the operator's back. The store's own timeouts would
@@ -91,6 +93,12 @@ func (o *engineOps) loadIndexes() {
 		l().Warnf("ChartsView: could not read the cached repository indexes: %v", err)
 		return
 	}
+	repos, err := store.List()
+	if err != nil {
+		l().Warnf("ChartsView: could not read the configured repositories: %v", err)
+		return
+	}
+	o.repos = repos
 	o.indexes = indexes
 	o.haveIndexes = len(indexes) > 0
 }

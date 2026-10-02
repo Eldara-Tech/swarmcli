@@ -204,7 +204,8 @@ func TestChartsApplyDiffDoesNotDeploy(t *testing.T) {
 
 // The repository path, end to end on a real swarm: a release file with a
 // `repositories:` block -> EnsureRepos -> Resolve -> Pull -> render -> apply, then
-// `charts outdated` against a newer published version.
+// `charts outdated` against a newer published version — and not against a
+// same-named chart in another configured repository.
 //
 // This is the flow a downstream user actually runs, and it was covered by nothing:
 // the unit tests use a fake chart source that never touches RepoStore, and the
@@ -261,6 +262,21 @@ func TestChartsApplyFromARepositoryAndOutdated(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, charts.StatusDeployed, cur.Status)
 	require.Equal(t, "0.1.0", cur.Chart.Version, "the PINNED version must be installed")
+	require.Equal(t, "itest-repo", cur.Chart.Repo, "the release records the repository it came from")
+	require.Equal(t, srv.URL, cur.Chart.RepoURL)
+
+	// A second repository carrying a same-named chart at a far higher version —
+	// a fork, a mirror, the seeded swarmcli-charts — is a different chart, and
+	// must not be reported as this release's upgrade.
+	decoy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/index.yaml") {
+			_, _ = w.Write([]byte("apiVersion: v1\nentries:\n  itest:\n    - name: itest\n      version: 9.9.9\n      urls: [\"itest-9.9.9.tgz\"]\n"))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer decoy.Close()
+	require.Equal(t, 0, cli.Dispatch([]string{"charts", "repo", "add", "decoy", decoy.URL}, "test"))
 
 	// Nothing newer is published yet.
 	require.Equal(t, 0, cli.Dispatch([]string{"charts", "outdated"}, "test"))
@@ -271,9 +287,8 @@ func TestChartsApplyFromARepositoryAndOutdated(t *testing.T) {
 
 	rels, err := eng.List(ctx)
 	require.NoError(t, err)
-	idxs, err := repoIndexes(t)
-	require.NoError(t, err)
-	entries := charts.Outdated(rels, idxs)
+	repos, idxs := repoIndexes(t)
+	entries := charts.Outdated(rels, repos, idxs)
 
 	var found bool
 	for _, e := range entries {
@@ -287,13 +302,18 @@ func TestChartsApplyFromARepositoryAndOutdated(t *testing.T) {
 	require.True(t, found, "outdated must report the release once a newer chart is published")
 }
 
-// repoIndexes reads the indexes `charts outdated` would compare against.
-func repoIndexes(t *testing.T) (map[string]*charts.Index, error) {
+// repoIndexes reads the repositories and indexes `charts outdated` would compare
+// against.
+func repoIndexes(t *testing.T) ([]charts.RepoEntry, map[string]*charts.Index) {
 	t.Helper()
 	store, err := charts.NewRepoStore()
 	require.NoError(t, err)
 	_, _, _ = store.Update("")
-	return store.Indexes()
+	repos, err := store.List()
+	require.NoError(t, err)
+	idxs, err := store.Indexes()
+	require.NoError(t, err)
+	return repos, idxs
 }
 
 // packChartToTgz packs a chart directory into a .tgz the repo store can pull.

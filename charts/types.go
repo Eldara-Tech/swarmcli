@@ -209,4 +209,11 @@ type ReleaseChart struct {
 	Name       string `yaml:"name" json:"name"`
 	Version    string `yaml:"version" json:"version"`
 	AppVersion string `yaml:"appVersion,omitempty" json:"appVersion,omitempty"`
+	// Repo and RepoURL name the repository the chart was resolved from, so
+	// Available can compare a release against that repository rather than
+	// against every repository carrying a chart of the same name. Both are
+	// empty for a local chart path, and absent on records written before these
+	// fields existed.
+	Repo    string `yaml:"repo,omitempty" json:"repo,omitempty"`
+	RepoURL string `yaml:"repoURL,omitempty" json:"repoURL,omitempty"`
 }

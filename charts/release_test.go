@@ -463,6 +463,39 @@ owner: apply/prod:release/demo
 	}
 }
 
+// A record carries the repository its chart came from. A record written before
+// it did decodes with no source, which Available reads as "compare against every
+// repository" — and a rollback, which replays a stored record, keeps the source
+// of the revision it replays rather than the one it replaces.
+func TestARecordCarriesItsChartSource(t *testing.T) {
+	ctx := context.Background()
+	fb := newFakeBackend()
+	e := testEngine(fb)
+	src := ReleaseChart{Name: "demo", Version: "1", Repo: "swarmcli-charts", RepoURL: "https://eldara-tech.github.io/swarmcli-charts"}
+	manifest := "services:\n  a:\n    image: x\n"
+
+	_, err := e.Install(ctx, "demo", src, nil, manifest, InstallOptions{})
+	require.NoError(t, err)
+	stored := storedYAML(t, fb, "demo", 1)
+	require.Contains(t, stored, "    repo: swarmcli-charts\n")
+	require.Contains(t, stored, "    repoURL: https://eldara-tech.github.io/swarmcli-charts\n")
+	back, err := decodeRelease(fb.configs[releaseConfigName("demo", 1)].data)
+	require.NoError(t, err)
+	require.Equal(t, src, back.Chart)
+
+	_, err = e.Upgrade(ctx, "demo", ReleaseChart{Name: "demo", Version: "2"}, nil, manifest, InstallOptions{})
+	require.NoError(t, err)
+	rb, err := e.Rollback(ctx, "demo", 1, InstallOptions{})
+	require.NoError(t, err)
+	require.Equal(t, src, rb.Chart)
+
+	old, err := gzipBytes([]byte("release: demo\nrevision: 1\nchart:\n    name: demo\n    version: \"1\"\n"))
+	require.NoError(t, err)
+	legacy, err := decodeRelease(old)
+	require.NoError(t, err)
+	require.Equal(t, ReleaseChart{Name: "demo", Version: "1"}, legacy.Chart)
+}
+
 // A stored value that is not base64 must fail loudly, naming the file.
 //
 // Decoding it as empty content would be the worst outcome available: "this

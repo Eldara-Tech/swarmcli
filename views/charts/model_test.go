@@ -54,7 +54,7 @@ func (m *mockOps) Available(rels []charts.Release) (map[string]charts.Availabili
 		entries[chart] = []charts.IndexEntry{{Name: chart, Version: version}}
 	}
 	index := map[string]*charts.Index{"fixture": {APIVersion: "v1", Entries: entries}}
-	return charts.Available(rels, index), true
+	return charts.Available(rels, nil, index), true
 }
 
 func noopOps() *mockOps {

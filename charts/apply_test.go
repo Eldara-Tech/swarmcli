@@ -32,6 +32,18 @@ func (f *fakeChartSource) Load(ref, version string) (*Chart, error) {
 	return nil, fmt.Errorf("chart %q version %q not found", ref, version)
 }
 
+// originChartSource is a fakeChartSource that reports every chart as resolved
+// from origin, the way NewChartSource does for a "<repo>/<chart>" reference.
+type originChartSource struct {
+	*fakeChartSource
+	origin ChartOrigin
+}
+
+func (o originChartSource) LoadWithOrigin(ref, version string) (*Chart, ChartOrigin, error) {
+	ch, err := o.Load(ref, version)
+	return ch, o.origin, err
+}
+
 // demoChart loads testdata/demo and stamps it with a version, so a plan can move
 // a release from one chart version to another.
 func demoChart(t *testing.T, version string) *Chart {
@@ -154,6 +166,52 @@ func TestApplyInstallsThenIsIdempotent(t *testing.T) {
 	require.Equal(t, ActionUnchanged, res2[0].Action)
 	require.Zero(t, res2[0].Revision)
 	require.Len(t, fb.configs, before, "an unchanged apply must not record a revision")
+}
+
+// The release records the repository its chart was resolved from, which is what
+// lets `outdated` compare it against that repository alone.
+func TestApplyRecordsTheChartSource(t *testing.T) {
+	e, _, src, rf := applyEnv(t, oneRelease, "0.1.0")
+	ctx := context.Background()
+	origin := ChartOrigin{Repo: "swarmcli-charts", URL: "https://eldara-tech.github.io/swarmcli-charts"}
+
+	plan, err := e.PlanApply(ctx, rf, originChartSource{src, origin}, PlanOptions{})
+	require.NoError(t, err)
+	_, err = e.Apply(ctx, plan, InstallOptions{})
+	require.NoError(t, err)
+
+	cur, _, err := e.Status(ctx, "hello")
+	require.NoError(t, err)
+	require.Equal(t, origin.Repo, cur.Chart.Repo)
+	require.Equal(t, origin.URL, cur.Chart.RepoURL)
+}
+
+// The source is recorded, not compared. A release installed before sources were
+// recorded — or from a repository since re-pointed — is otherwise identical, and
+// re-deploying every such release on the first apply after upgrading would be
+// churn for a field only `outdated` reads; the source is recorded with the next
+// real change instead.
+func TestApplyDoesNotUpgradeOnlyToRecordTheSource(t *testing.T) {
+	e, fb, src, rf := applyEnv(t, oneRelease, "0.1.0")
+	ctx := context.Background()
+
+	plan, err := e.PlanApply(ctx, rf, src, PlanOptions{})
+	require.NoError(t, err)
+	_, err = e.Apply(ctx, plan, InstallOptions{})
+	require.NoError(t, err)
+	before := len(fb.configs)
+
+	for _, origin := range []ChartOrigin{
+		{Repo: "swarmcli-charts", URL: "https://eldara-tech.github.io/swarmcli-charts"},
+		{Repo: "mirror", URL: "https://mirror.example.com"},
+	} {
+		plan, err := e.PlanApply(ctx, rf, originChartSource{src, origin}, PlanOptions{})
+		require.NoError(t, err)
+		require.Equal(t, ActionUnchanged, plan.Releases[0].Action, origin.Repo)
+		_, err = e.Apply(ctx, plan, InstallOptions{})
+		require.NoError(t, err)
+	}
+	require.Len(t, fb.configs, before, "a source alone must not record a revision")
 }
 
 func TestApplyUpgradesOnVersionBump(t *testing.T) {
@@ -431,6 +489,11 @@ func TestPlanApplyAgainstARealRepository(t *testing.T) {
 	res, err := e.Apply(context.Background(), plan, InstallOptions{})
 	require.NoError(t, err)
 	require.Equal(t, 1, res[0].Revision)
+
+	cur, _, err := e.Status(context.Background(), "hello")
+	require.NoError(t, err)
+	require.Equal(t, "eldara", cur.Chart.Repo)
+	require.Equal(t, url, cur.Chart.RepoURL)
 }
 
 // A release row left in StatusUninstalled must plan as an install, not silently
