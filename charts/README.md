@@ -137,6 +137,12 @@ the `uninstall` command and leaves the decision to you. And an unchanged release
 is skipped **entirely**: history is one Docker Config per revision, so re-applying
 on every CI push would otherwise grow the swarm's config store without bound.
 
+`outdated` compares each release against the repository it was installed from,
+which the release records — a same-named chart in another repository (a fork, a
+mirror) is a different chart, not an upgrade. A release whose repository is no
+longer configured is not reported; one installed before the repository was
+recorded is compared against every configured repository.
+
 ### Ownership
 
 `owner:` names the manifest, and every release it installs is stamped with that

@@ -91,6 +91,23 @@ func TestAvailableOmitsAChartInNoIndex(t *testing.T) {
 	require.NotContains(t, avail, "app")
 }
 
+// A release that recorded its source is compared against that repository, so
+// the view needs the configured repositories as well as their indexes.
+func TestAvailableComparesAgainstTheRecordedSource(t *testing.T) {
+	seedRepoCache(t, "mychart", "1.0.0", "2.1.0")
+
+	ops := &engineOps{}
+	avail, haveIndexes := ops.Available([]charts.Release{
+		{Name: "here", Chart: charts.ReleaseChart{Name: "mychart", Version: "1.0.0", Repo: "testrepo", RepoURL: "https://charts.example.com"}},
+		{Name: "gone", Chart: charts.ReleaseChart{Name: "mychart", Version: "1.0.0", Repo: "localrepo", RepoURL: "http://127.0.0.1:8080"}},
+	})
+
+	require.True(t, haveIndexes)
+	require.Equal(t, "testrepo", avail["here"].Repo)
+	require.True(t, avail["here"].Newer)
+	require.NotContains(t, avail, "gone", "a same-named chart in another repository is not this release's upgrade")
+}
+
 func TestAvailableReportsNoIndexesWhenNoneAreCached(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 

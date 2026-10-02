@@ -679,7 +679,7 @@ func chartsDiff(c chartsCmd, args []string) int {
 // template and diff show a manifest that could actually be deployed, install
 // and upgrade deploy it.
 func prepare(release, ref string, f flags, base map[string]any, pol compatPolicy) (manifest string, values map[string]any, rc charts.ReleaseChart, req *charts.Requirements, chartFiles map[string][]byte, code int) {
-	ch, _, c := loadChart(ref, f)
+	ch, loaded, c := loadChart(ref, f)
 	if c >= 0 {
 		return "", nil, rc, nil, nil, c
 	}
@@ -743,7 +743,7 @@ func prepare(release, ref string, f flags, base map[string]any, pol compatPolicy
 	if err := charts.CheckReserved(manifest, release); err != nil {
 		return "", nil, rc, nil, nil, fail(err)
 	}
-	rc = charts.ReleaseChart{Name: ch.Metadata.Name, Version: ch.Metadata.Version, AppVersion: ch.Metadata.AppVersion}
+	rc = loaded
 	return manifest, values, rc, req, chartFiles, -1
 }
 
@@ -853,11 +853,13 @@ func loadChart(ref string, f flags) (*charts.Chart, charts.ReleaseChart, int) {
 	if code >= 0 {
 		return nil, charts.ReleaseChart{}, code
 	}
-	ch, err := charts.NewChartSource(store).Load(ref, f.version)
+	ch, origin, err := charts.LoadWithOrigin(charts.NewChartSource(store), ref, f.version)
 	if err != nil {
 		return nil, charts.ReleaseChart{}, fail(err)
 	}
-	return ch, charts.ReleaseChartOf(ch), -1
+	rc := charts.ReleaseChartOf(ch)
+	rc.Repo, rc.RepoURL = origin.Repo, origin.URL
+	return ch, rc, -1
 }
 
 func readValuesFiles(paths []string) ([][]byte, error) {

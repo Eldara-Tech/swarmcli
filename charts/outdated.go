@@ -3,7 +3,10 @@
 
 package charts
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Availability is what the cached repository indexes know about one installed
 // release's chart. It exists because "nothing newer" and "nothing to compare
@@ -13,8 +16,8 @@ import "sort"
 type Availability struct {
 	// Repo is the repository that supplied Latest.
 	Repo string
-	// Latest is the newest version of this chart in any index, whether or not
-	// it is newer than what is installed.
+	// Latest is the newest version of this chart in the indexes the release is
+	// compared against, whether or not it is newer than what is installed.
 	Latest string
 	// Newer reports that Latest is an upgrade from the installed version. A
 	// release ahead of every index — installed from a local chart, say — is
@@ -26,16 +29,27 @@ type Availability struct {
 // keyed by release name. A release whose chart appears in no index is absent
 // from the result, which is the one fact Outdated cannot report.
 //
-// A Release does not record which repository it came from, so a chart present in
-// two repositories resolves to the highest version across them, reporting the
-// repository that supplied it. That ambiguity is documented rather than designed
-// away: recording the source repository is a change to persisted release state,
-// which is not worth making for a case most users never hit.
-func Available(rels []Release, indexes map[string]*Index) map[string]Availability {
+// A release that recorded its source repository is compared against that
+// repository alone: the configured repository at its recorded URL, else the one
+// with its recorded name (the URL moved). A release whose source is no longer
+// configured is absent, like a local chart — a same-named chart in another
+// repository is a different chart, not an upgrade. A release recorded before
+// sources were, or from a source that reports none, resolves to the highest
+// version across every repository carrying its chart name, reporting the
+// repository that supplied it.
+func Available(rels []Release, repos []RepoEntry, indexes map[string]*Index) map[string]Availability {
 	out := make(map[string]Availability, len(rels))
 	for _, rel := range rels {
+		candidates := indexes
+		if repo, recorded := sourceRepo(rel.Chart, repos); recorded {
+			idx, ok := indexes[repo]
+			if !ok {
+				continue
+			}
+			candidates = map[string]*Index{repo: idx}
+		}
 		var bestVer, bestRepo string
-		for repo, idx := range indexes {
+		for repo, idx := range candidates {
 			versions := idx.Entries[rel.Chart.Name]
 			if len(versions) == 0 {
 				continue
@@ -57,6 +71,28 @@ func Available(rels []Release, indexes map[string]*Index) map[string]Availabilit
 	return out
 }
 
+// sourceRepo names the configured repository rc was resolved from. recorded is
+// false when rc names no source at all; name is empty when it names one that is
+// no longer configured.
+func sourceRepo(rc ReleaseChart, repos []RepoEntry) (name string, recorded bool) {
+	if rc.Repo == "" && rc.RepoURL == "" {
+		return "", false
+	}
+	if u := strings.TrimRight(rc.RepoURL, "/"); u != "" {
+		for _, r := range repos {
+			if strings.TrimRight(r.URL, "/") == u {
+				return r.Name, true
+			}
+		}
+	}
+	for _, r := range repos {
+		if r.Name == rc.Repo {
+			return r.Name, true
+		}
+	}
+	return "", true
+}
+
 // OutdatedEntry is one installed release with a newer chart version available.
 type OutdatedEntry struct {
 	Release   string
@@ -70,8 +106,8 @@ type OutdatedEntry struct {
 // Releases already at the newest version, those ahead of every index, and those
 // whose chart appears in no index (a local chart) are all omitted — a caller
 // that needs to tell those apart wants Available.
-func Outdated(rels []Release, indexes map[string]*Index) []OutdatedEntry {
-	available := Available(rels, indexes)
+func Outdated(rels []Release, repos []RepoEntry, indexes map[string]*Index) []OutdatedEntry {
+	available := Available(rels, repos, indexes)
 	var out []OutdatedEntry
 	for _, rel := range rels {
 		avail, ok := available[rel.Name]

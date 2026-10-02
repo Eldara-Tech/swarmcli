@@ -43,6 +43,16 @@ func TestReleaseJSONMirrorsYAMLKeys(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "traefik", chart["name"])
 	require.Equal(t, "3.1", chart["appVersion"])
+	// No source recorded: omitempty keeps both keys out.
+	require.NotContains(t, chart, "repo")
+	require.NotContains(t, chart, "repoURL")
+
+	b, err = json.Marshal(ReleaseChart{Name: "traefik", Repo: "swarmcli-charts", RepoURL: "https://eldara-tech.github.io/swarmcli-charts"})
+	require.NoError(t, err)
+	var sourced map[string]any
+	require.NoError(t, json.Unmarshal(b, &sourced))
+	require.Equal(t, "swarmcli-charts", sourced["repo"])
+	require.Equal(t, "https://eldara-tech.github.io/swarmcli-charts", sourced["repoURL"])
 }
 
 func TestPlanJSONKeys(t *testing.T) {

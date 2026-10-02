@@ -267,6 +267,8 @@ func TestChartsCLIRepositoryCommands(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, charts.StatusDeployed, cur.Status)
 	require.Equal(t, "0.1.0", cur.Chart.Version, "the pinned version must be the one installed")
+	require.Equal(t, "itest-repo", cur.Chart.Repo, "install records the repository the chart came from")
+	require.Equal(t, srv.URL, cur.Chart.RepoURL)
 
 	dispatchOK(t, "charts", "diff", "upgrade", release, "itest-repo/itest",
 		"--version", "0.1.0", "--reuse-values")

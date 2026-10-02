@@ -220,7 +220,7 @@ func ownedBy(rel Release, id string) bool {
 func (e *Engine) planRelease(rf *ReleaseFile, spec ReleaseSpec, src ChartSource, deployed map[string]Release, read func(string) ([]byte, error), owner string) (ReleasePlan, error) {
 	ref := rf.ChartRef(spec)
 
-	ch, err := src.Load(ref, spec.Version)
+	ch, origin, err := LoadWithOrigin(src, ref, spec.Version)
 	if err != nil {
 		return ReleasePlan{}, fmt.Errorf("%s: release '%s': %w", rf.Path, spec.Name, err)
 	}
@@ -241,6 +241,7 @@ func (e *Engine) planRelease(rf *ReleaseFile, spec ReleaseSpec, src ChartSource,
 	}
 
 	rc := ReleaseChartOf(ch)
+	rc.Repo, rc.RepoURL = origin.Repo, origin.URL
 	rctx := RenderContext{
 		Values:  values,
 		Release: ReleaseMeta{Name: spec.Name, Namespace: spec.Name, Revision: 1},
