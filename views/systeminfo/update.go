@@ -33,6 +33,13 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		return nil
 
 	case SlowStatusMsg:
+		if msg.generation != m.generation {
+			// Measured the context the session has since left. Drop it and
+			// start a round against the current one now rather than after a
+			// tick, so the spinner is not held for an extra interval. This is
+			// still the one chain: the stale round has finished.
+			return m.LoadSlowStatus()
+		}
 		m.updateCPUMem(msg)
 		// Schedule next tick 8 seconds after collection completes
 		return m.tickCmd()
@@ -159,32 +166,25 @@ func (m *Model) SetContent(msg Msg) {
 		m.memCapacity = msg.memCapacity
 	}
 
-	spinnerMarker := spinner.CharSets[14][0]
-
-	// Only update CPU if it's not the spinner marker
-	if msg.cpu == spinnerMarker {
-		// Keep loading flag, don't update cpuUsage (buildContent will show spinner)
-		m.loadingCPU = true
-	} else if msg.cpu != "" {
-		// Got a real value
-		m.cpuUsage = msg.cpu
-		m.loadingCPU = false
-	}
-	// If msg.cpu is empty, keep current state
-
-	if msg.mem == spinnerMarker {
-		// Keep loading flag, don't update memUsage (buildContent will show spinner)
-		m.loadingMem = true
-	} else if msg.mem != "" {
-		// Got a real value
-		m.memUsage = msg.mem
-		m.loadingMem = false
-	}
-	// If msg.mem is empty, keep current state
-
 	m.containerCount = msg.containers
 	m.serviceCount = msg.services
 
+	m.content = m.buildContent()
+}
+
+// ResetResourceUsage puts CPU and MEM back into their first-load state. The
+// app calls it when the session moves to another context: the values and their
+// trend arrows describe the swarm it left, and the next round measures a
+// different one. A round already in flight is discarded when it lands.
+func (m *Model) ResetResourceUsage() {
+	m.generation++
+	m.loadingCPU = true
+	m.loadingMem = true
+	m.firstLoad = true
+	m.cpuUsage, m.memUsage = "", ""
+	m.prevCPU, m.prevMem = 0, 0
+	m.prevCPUTrend, m.prevMemTrend = "", ""
+	m.cpuBlinkCount, m.memBlinkCount = 0, 0
 	m.content = m.buildContent()
 }
 

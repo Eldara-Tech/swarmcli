@@ -336,3 +336,38 @@ func TestCheckContextDrift_AgreementIsNotInconclusive(t *testing.T) {
 	require.Empty(t, msg.Shell)
 	require.False(t, msg.Inconclusive)
 }
+
+// measuredHeader gives the model a header that has finished its first CPU/MEM
+// round, so a test can see whether a context change puts the spinner back.
+func measuredHeader(t *testing.T, m *Model) {
+	t.Helper()
+	m.systemInfo = systeminfoview.New(docker.Deps{ClusterInfo: stubClusterInfo{}}, "test", "ce")
+	m.systemInfo.Update(m.systemInfo.LoadSlowStatus()())
+	require.Contains(t, m.systemInfo.View(), "0%")
+}
+
+// CPU/MEM describe the swarm being left, so entering another context shows the
+// spinner until the new one is measured.
+func TestEnterContext_ResetsTheResourceUsage(t *testing.T) {
+	m := newTestAppModel(&stubView{})
+	stubContexts(t, "swarm-a", "swarm-b")
+	measuredHeader(t, m)
+
+	m.Update(contextsview.ContextChangedNotification{PreviousContext: "swarm-a"})
+
+	require.NotContains(t, m.systemInfo.View(), "0%")
+}
+
+// A revert after a failed load moves the session again; whatever was measured
+// in between belongs to the context that failed.
+func TestSnapshotFailure_RevertResetsTheResourceUsage(t *testing.T) {
+	m := newTestAppModel(&stubView{})
+	docker.SetSessionContext("swarm-b")
+	t.Cleanup(docker.ResetSessionContext)
+	m.previousContext = "swarm-a"
+	measuredHeader(t, m)
+
+	m.Update(snapshotLoadedMsg{Err: errors.New("cannot connect to the docker daemon")})
+
+	require.NotContains(t, m.systemInfo.View(), "0%")
+}

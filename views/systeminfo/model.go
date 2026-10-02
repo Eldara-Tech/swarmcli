@@ -12,7 +12,6 @@ import (
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	"github.com/Eldara-Tech/swarmcli/v2/telemetry"
 
-	"github.com/briandowns/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/docker/docker/api/types/swarm"
 	"golang.org/x/mod/semver"
@@ -48,6 +47,9 @@ type Model struct {
 	loadingMem bool
 	spinner    int
 	firstLoad  bool
+	// generation advances on ResetResourceUsage, so a collection still in
+	// flight against the previous context can be recognised when it lands.
+	generation int
 
 	// Trend arrow state
 	prevCPUTrend  string // "up", "down", or ""
@@ -395,11 +397,8 @@ func (m *Model) LoadStatus() tea.Cmd {
 			memCapStr = fmt.Sprintf("%.0f GB", float64(memCapacity)/1024/1024/1024)
 		}
 
-		spinnerMarker := spinner.CharSets[14][0]
 		return Msg{
 			context:     context,
-			cpu:         spinnerMarker,
-			mem:         spinnerMarker,
 			cpuCapacity: cpuCapStr,
 			memCapacity: memCapStr,
 			containers:  containers,
@@ -410,6 +409,7 @@ func (m *Model) LoadStatus() tea.Cmd {
 
 func (m *Model) LoadSlowStatus() tea.Cmd {
 	clusterInfo := m.deps.ClusterInfo
+	generation := m.generation
 	return func() tea.Msg {
 		l().Info("LoadSlowStatus: Starting background stats collection")
 
@@ -428,8 +428,9 @@ func (m *Model) LoadSlowStatus() tea.Cmd {
 		l().Info("LoadSlowStatus: CPU=%s MEM=%s", cpu, mem)
 
 		return SlowStatusMsg{
-			cpu: cpu,
-			mem: mem,
+			cpu:        cpu,
+			mem:        mem,
+			generation: generation,
 		}
 	}
 }
