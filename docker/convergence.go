@@ -23,7 +23,9 @@ type ServiceConvergence struct {
 	Running int
 	// Desired is the target count over active nodes.
 	Desired int
-	// Completed counts tasks that ran to completion on an active node. Only
+	// Completed counts tasks that ran to completion on an active node, or for a
+	// replicated one-shot on any node: swarm never moves a finished task, so
+	// draining or losing its node afterwards does not undo the run. Only
 	// meaningful together with Job: for a long-running service a completed task
 	// is one swarm is about to replace, not one that finished its work.
 	Completed int
@@ -143,6 +145,9 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 
 		job := isJobService(svc)
 		native := isNativeJob(svc)
+		// A global service's target is one task per active node, so a task on
+		// any other node is outside it, finished or not.
+		perNode := svc.Spec.Mode.Global != nil || svc.Spec.Mode.GlobalJob != nil
 
 		running, completed, dead := 0, 0, 0
 		deadReason := ""
@@ -158,7 +163,13 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 		// tasks running". An unassigned task has no slot to be the newest of and
 		// is dropped here rather than by the NodeID guard this replaces.
 		for _, t := range newestTaskPerSlot(svc.ID, snap.Tasks) {
-			if _, ok := active[t.NodeID]; !ok {
+			// A replicated one-shot's finished task is a fact about its slot,
+			// not its node: swarm never reschedules it, so once that node is
+			// drained or down, skipping the task would leave the run "0/1"
+			// forever.
+			finished := job && !perNode && (t.Status.State == swarm.TaskStateComplete ||
+				(terminal && isDeadTaskState(t.Status.State)))
+			if _, ok := active[t.NodeID]; !ok && !finished {
 				continue
 			}
 			// A job's earlier runs stay in the task list, and a rerun reuses
