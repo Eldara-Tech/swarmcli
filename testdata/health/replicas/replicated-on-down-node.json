@@ -195,6 +195,7 @@
       "desired": 2,
       "upToDate": 2,
       "convergedRunning": 1,
+      "convergedUpToDate": 1,
       "completed": 0,
       "job": false,
       "deadTask": false

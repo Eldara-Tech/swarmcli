@@ -424,6 +424,7 @@
       "upToDate": 3,
       "rollingOut": false,
       "convergedRunning": 3,
+      "convergedUpToDate": 3,
       "completed": 0,
       "job": false,
       "deadTask": false

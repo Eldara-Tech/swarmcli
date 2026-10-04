@@ -599,10 +599,7 @@ func hasIntendedTaskOnNode(serviceID, nodeID string, snap *SwarmSnapshot) bool {
 // task worth surfacing an error from. Here that preference would pick the
 // outgoing task and report the old generation as current.
 func countUpToDateTasks(svc swarm.Service, snap *SwarmSnapshot) int {
-	var since time.Time
-	if isRollingOut(svc) && svc.UpdateStatus.StartedAt != nil {
-		since = *svc.UpdateStatus.StartedAt
-	}
+	since := rolloutStart(svc)
 	count := 0
 	for _, t := range newestTaskPerSlot(svc.ID, snap.Tasks) {
 		if t.Status.State == swarm.TaskStateRunning && t.CreatedAt.After(since) {
@@ -610,6 +607,16 @@ func countUpToDateTasks(svc swarm.Service, snap *SwarmSnapshot) int {
 		}
 	}
 	return count
+}
+
+// rolloutStart is the instant a task must postdate to belong to the current
+// generation: the update's StartedAt while one is rolling out, and zero
+// otherwise, when every running newest task is current.
+func rolloutStart(svc swarm.Service) time.Time {
+	if isRollingOut(svc) && svc.UpdateStatus.StartedAt != nil {
+		return *svc.UpdateStatus.StartedAt
+	}
+	return time.Time{}
 }
 
 // newestTaskPerSlot indexes one service's tasks by replica, keeping the most

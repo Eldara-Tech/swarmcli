@@ -21,6 +21,13 @@ type ServiceConvergence struct {
 	Mode string
 	// Running counts tasks that are actually running, on an active node.
 	Running int
+	// UpToDate counts the tasks in Running that belong to the current
+	// generation: during an update, those created after it started, because
+	// swarm replaces a slot's task, restarts included, from the spec it now
+	// holds. Like Running it counts active nodes only: a global service keeps
+	// its task on a down node, and counting that one would let a paused rollout
+	// read finished while an active node still runs the old spec.
+	UpToDate int
 	// Desired is the target count over active nodes.
 	Desired int
 	// Completed counts tasks that ran to completion on an active node, or for a
@@ -149,7 +156,8 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 		// any other node is outside it, finished or not.
 		perNode := svc.Spec.Mode.Global != nil || svc.Spec.Mode.GlobalJob != nil
 
-		running, completed, dead := 0, 0, 0
+		running, upToDate, completed, dead := 0, 0, 0, 0
+		since := rolloutStart(svc)
 		deadReason := ""
 		// Only a restart condition of "none" makes a failed task terminal;
 		// "on-failure" is a job too, but swarm replaces the task.
@@ -185,6 +193,9 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 			case (t.DesiredState == swarm.TaskStateRunning || (native && t.DesiredState == swarm.TaskStateComplete)) &&
 				t.Status.State == swarm.TaskStateRunning:
 				running++
+				if t.CreatedAt.After(since) {
+					upToDate++
+				}
 			case job && t.Status.State == swarm.TaskStateComplete:
 				// Swarm sets DesiredState=shutdown once a job's task exits, so
 				// this is not reachable through the running arm above.
@@ -215,6 +226,7 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 			Name:           svc.Spec.Name,
 			Mode:           getServiceMode(svc),
 			Running:        running,
+			UpToDate:       upToDate,
 			Completed:      completed,
 			Job:            job,
 			NativeJob:      native,

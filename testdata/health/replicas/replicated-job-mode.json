@@ -423,6 +423,7 @@
       "desired": 3,
       "upToDate": 0,
       "convergedRunning": 0,
+      "convergedUpToDate": 0,
       "completed": 3,
       "job": true,
       "deadTask": false
@@ -432,6 +433,7 @@
       "desired": 3,
       "upToDate": 1,
       "convergedRunning": 1,
+      "convergedUpToDate": 1,
       "completed": 1,
       "job": true,
       "deadTask": false

@@ -271,6 +271,7 @@
       "desired": 2,
       "upToDate": 2,
       "convergedRunning": 2,
+      "convergedUpToDate": 2,
       "completed": 0,
       "job": false,
       "deadTask": false
@@ -280,6 +281,7 @@
       "desired": 1,
       "upToDate": 1,
       "convergedRunning": 1,
+      "convergedUpToDate": 1,
       "completed": 0,
       "job": false,
       "deadTask": false

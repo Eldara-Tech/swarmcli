@@ -557,6 +557,7 @@
       "desired": 1,
       "upToDate": 0,
       "convergedRunning": 0,
+      "convergedUpToDate": 0,
       "completed": 1,
       "job": true,
       "deadTask": false
@@ -566,6 +567,7 @@
       "desired": 1,
       "upToDate": 0,
       "convergedRunning": 0,
+      "convergedUpToDate": 0,
       "completed": 0,
       "job": true,
       "deadTask": true
@@ -575,6 +577,7 @@
       "desired": 1,
       "upToDate": 0,
       "convergedRunning": 0,
+      "convergedUpToDate": 0,
       "completed": 0,
       "job": true,
       "deadTask": false
@@ -584,6 +587,7 @@
       "desired": 1,
       "upToDate": 1,
       "convergedRunning": 1,
+      "convergedUpToDate": 1,
       "completed": 0,
       "job": false,
       "deadTask": false

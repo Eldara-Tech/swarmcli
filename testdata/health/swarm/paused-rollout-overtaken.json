@@ -1,0 +1,260 @@
+{
+  "description": "A pause every slot has outgrown is settled. shop_api's rollout paused in April, and swarm never clears that state on its own, but each time its node dropped out of the swarm since, swarm recreated both slots from the spec it now holds. Every slot's newest task is running and was created after UpdateStatus.StartedAt, so the rollout has nothing left to do; the shutdown tasks are earlier generations of the same slots and are not judged.",
+  "nodes": [
+    {
+      "ID": "node-1",
+      "Version": {
+        "Index": 4985
+      },
+      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
+      "UpdatedAt": "2026-09-24T11:15:00Z",
+      "Spec": {
+        "Labels": {},
+        "Role": "manager",
+        "Availability": "active"
+      },
+      "Description": {
+        "Hostname": "manager-1",
+        "Platform": {
+          "Architecture": "aarch64",
+          "OS": "linux"
+        },
+        "Resources": {
+          "NanoCPUs": 4000000000,
+          "MemoryBytes": 6199214080
+        },
+        "Engine": {
+          "EngineVersion": "29.2.1"
+        }
+      },
+      "Status": {
+        "State": "ready",
+        "Addr": "10.0.0.1"
+      },
+      "ManagerStatus": {
+        "Leader": true,
+        "Reachability": "reachable",
+        "Addr": "10.0.0.1:2377"
+      }
+    }
+  ],
+  "services": [
+    {
+      "ID": "svc-api",
+      "Version": {
+        "Index": 6573
+      },
+      "CreatedAt": "2026-03-02T10:41:07.99687557Z",
+      "UpdatedAt": "2026-04-04T09:12:40.498301245Z",
+      "Spec": {
+        "Name": "shop_api",
+        "Labels": {
+          "com.docker.stack.namespace": "shop"
+        },
+        "TaskTemplate": {
+          "ContainerSpec": {
+            "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+            "Labels": {
+              "com.docker.stack.namespace": "shop"
+            },
+            "Args": [
+              "sh",
+              "-c",
+              "exec sleep 100000"
+            ],
+            "Isolation": "default"
+          },
+          "Resources": {
+            "Limits": {},
+            "Reservations": {}
+          },
+          "ForceUpdate": 0,
+          "Runtime": "container"
+        },
+        "Mode": {
+          "Replicated": {
+            "Replicas": 2
+          }
+        },
+        "UpdateConfig": {
+          "Parallelism": 1,
+          "Delay": 2000000000,
+          "FailureAction": "pause",
+          "Monitor": 5000000000,
+          "MaxFailureRatio": 0,
+          "Order": "stop-first"
+        },
+        "EndpointSpec": {
+          "Mode": "vip"
+        }
+      },
+      "Endpoint": {
+        "Spec": {}
+      },
+      "UpdateStatus": {
+        "State": "paused",
+        "StartedAt": "2026-04-04T09:12:40.512007113Z",
+        "Message": "update paused due to failure or early termination of task q0x7mfk3ug2bn5lcz9hvdp1ra"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "ID": "api-1",
+      "Version": {
+        "Index": 6551
+      },
+      "CreatedAt": "2026-10-03T20:58:01.118207431Z",
+      "UpdatedAt": "2026-10-03T20:58:01.118207431Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-10-03T20:58:01.118207431Z",
+        "State": "shutdown",
+        "Message": "shutdown",
+        "ContainerStatus": {
+          "ContainerID": "3be1d0f5c2a94e5d8a7c6b1e0f9d2c4a8b7e6d5c1f0a9b8c7d6e5f4a3b2c1d0e",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "api-2",
+      "Version": {
+        "Index": 6551
+      },
+      "CreatedAt": "2026-10-03T20:58:01.118293004Z",
+      "UpdatedAt": "2026-10-03T20:58:01.118293004Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 2,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-10-03T20:58:01.118293004Z",
+        "State": "shutdown",
+        "Message": "shutdown",
+        "ContainerStatus": {
+          "ContainerID": "7c2e9a1b4d6f8e0c3a5b7d9f1e2c4a6b8d0f2e4c6a8b0d2f4e6c8a0b2d4f6e8c",
+          "PID": 0,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "shutdown"
+    },
+    {
+      "ID": "api-3",
+      "Version": {
+        "Index": 6551
+      },
+      "CreatedAt": "2026-10-04T06:39:41.204118790Z",
+      "UpdatedAt": "2026-10-04T06:39:41.204118790Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 1,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-10-04T06:39:41.204118790Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "e4a1c7d2b9f6e3a0c5d8b1f4e7a2c9d6b3f0e5a8c1d4b7f2e9a6c3d0b5f8e1a4",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    },
+    {
+      "ID": "api-4",
+      "Version": {
+        "Index": 6551
+      },
+      "CreatedAt": "2026-10-04T06:39:41.204176552Z",
+      "UpdatedAt": "2026-10-04T06:39:41.204176552Z",
+      "Labels": {},
+      "Spec": {
+        "ContainerSpec": {
+          "Image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+          "Labels": {
+            "com.docker.stack.namespace": "shop"
+          },
+          "Args": [
+            "sh",
+            "-c",
+            "exec sleep 100000"
+          ]
+        },
+        "ForceUpdate": 0
+      },
+      "ServiceID": "svc-api",
+      "Slot": 2,
+      "NodeID": "node-1",
+      "Status": {
+        "Timestamp": "2026-10-04T06:39:41.204176552Z",
+        "State": "running",
+        "Message": "started",
+        "ContainerStatus": {
+          "ContainerID": "a9d3f6b0e2c5a8d1f4b7e0c3a6d9f2b5e8c1a4d7f0b3e6c9a2d5f8b1e4c7a0d3",
+          "PID": 4242,
+          "ExitCode": 0
+        },
+        "PortStatus": {}
+      },
+      "DesiredState": "running"
+    }
+  ],
+  "expect": {
+    "state": "healthy",
+    "failing": [],
+    "converging": []
+  }
+}

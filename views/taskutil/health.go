@@ -69,7 +69,10 @@ type SwarmHealth struct {
 //     nothing in it is failing any more — while its task still fails, the
 //     deployment error makes it degraded. A job's "paused" is ignored, as
 //     charts.ServiceState.Convergence ignores it: swarm pauses every re-run
-//     one-shot, so it says nothing about the job.
+//     one-shot, so it says nothing about the job. So is a pause every slot has
+//     outgrown: swarm never clears the state itself, but once tasks created
+//     after the update started meet the target, running on active nodes,
+//     restarts have rolled the current spec out and nothing is left unfinished.
 //
 // The monitor window is deliberately not consulted: it depends on the clock,
 // and a verdict clients share must be a function of the snapshot alone.
@@ -124,7 +127,7 @@ func unsettledRollout(c docker.ServiceConvergence) string {
 	case "rollback_started":
 		return "rolling back"
 	case "paused":
-		if c.Job {
+		if c.Job || c.UpToDate >= c.Desired {
 			return ""
 		}
 		return "update paused"

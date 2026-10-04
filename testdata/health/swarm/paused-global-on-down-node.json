@@ -1,5 +1,5 @@
 {
-  "description": "A global service targets one task per node that can run one. Drained and down nodes are excluded; a paused node still counts. The task still reported running on the down node is counted by REPLICAS (as docker service ls does) but not by convergence.",
+  "description": "A pause is outgrown only by tasks on active nodes. shop_agent's rollout replaced worker-down's task, then paused when manager-1's first new task failed; manager-1's next attempt has since come up. worker-down then went down: its task was created after UpdateStatus.StartedAt and still reads running, as a down node's tasks do, but the node is outside the target. worker-old was never reached, so it runs the old spec and the rollout is still unfinished. worker-down itself is failing, so the swarm is degraded, and shop_agent is listed as converging too.",
   "nodes": [
     {
       "ID": "node-1",
@@ -47,10 +47,10 @@
       "Spec": {
         "Labels": {},
         "Role": "worker",
-        "Availability": "drain"
+        "Availability": "active"
       },
       "Description": {
-        "Hostname": "worker-drained",
+        "Hostname": "worker-old",
         "Platform": {
           "Architecture": "aarch64",
           "OS": "linux"
@@ -71,7 +71,7 @@
     {
       "ID": "node-3",
       "Version": {
-        "Index": 5090
+        "Index": 5083
       },
       "CreatedAt": "2026-09-15T07:05:33.243129304Z",
       "UpdatedAt": "2026-09-24T11:15:00Z",
@@ -98,37 +98,6 @@
         "State": "down",
         "Addr": "10.0.0.3"
       }
-    },
-    {
-      "ID": "node-4",
-      "Version": {
-        "Index": 5097
-      },
-      "CreatedAt": "2026-09-15T07:05:33.243129304Z",
-      "UpdatedAt": "2026-09-24T11:15:00Z",
-      "Spec": {
-        "Labels": {},
-        "Role": "worker",
-        "Availability": "pause"
-      },
-      "Description": {
-        "Hostname": "worker-paused",
-        "Platform": {
-          "Architecture": "aarch64",
-          "OS": "linux"
-        },
-        "Resources": {
-          "NanoCPUs": 4000000000,
-          "MemoryBytes": 6199214080
-        },
-        "Engine": {
-          "EngineVersion": "29.2.1"
-        }
-      },
-      "Status": {
-        "State": "ready",
-        "Addr": "10.0.0.4"
-      }
     }
   ],
   "services": [
@@ -138,7 +107,7 @@
         "Index": 5104
       },
       "CreatedAt": "2026-09-24T11:06:00Z",
-      "UpdatedAt": "2026-09-24T11:06:00Z",
+      "UpdatedAt": "2026-09-24T11:20:00Z",
       "Spec": {
         "Name": "shop_agent",
         "Labels": {
@@ -172,12 +141,25 @@
         },
         "EndpointSpec": {
           "Mode": "vip"
+        },
+        "UpdateConfig": {
+          "Parallelism": 1,
+          "Delay": 2000000000,
+          "FailureAction": "pause",
+          "Monitor": 5000000000,
+          "MaxFailureRatio": 0,
+          "Order": "stop-first"
         }
       },
       "Endpoint": {
         "Spec": {
           "Mode": "vip"
         }
+      },
+      "UpdateStatus": {
+        "State": "paused",
+        "StartedAt": "2026-09-24T11:20:00.104525873Z",
+        "Message": "update paused due to failure or early termination of task agent-n1-0"
       }
     }
   ],
@@ -187,8 +169,8 @@
       "Version": {
         "Index": 5111
       },
-      "CreatedAt": "2026-09-24T11:16:10Z",
-      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "CreatedAt": "2026-09-24T11:20:21.517390112Z",
+      "UpdatedAt": "2026-09-24T11:20:21.517390112Z",
       "Labels": {},
       "Spec": {
         "ContainerSpec": {
@@ -202,7 +184,7 @@
       "ServiceID": "svc-agent",
       "NodeID": "node-1",
       "Status": {
-        "Timestamp": "2026-09-24T11:16:11Z",
+        "Timestamp": "2026-09-24T11:20:21.517390112Z",
         "State": "running",
         "Message": "started",
         "ContainerStatus": {
@@ -217,10 +199,10 @@
     {
       "ID": "agent-n2",
       "Version": {
-        "Index": 5118
+        "Index": 5111
       },
       "CreatedAt": "2026-09-24T11:16:10Z",
-      "UpdatedAt": "2026-09-24T11:16:40Z",
+      "UpdatedAt": "2026-09-24T11:16:10Z",
       "Labels": {},
       "Spec": {
         "ContainerSpec": {
@@ -234,25 +216,25 @@
       "ServiceID": "svc-agent",
       "NodeID": "node-2",
       "Status": {
-        "Timestamp": "2026-09-24T11:16:40Z",
-        "State": "shutdown",
-        "Message": "shutdown",
+        "Timestamp": "2026-09-24T11:16:10Z",
+        "State": "running",
+        "Message": "started",
         "ContainerStatus": {
           "ContainerID": "cd4c42caabdb0223c50155c2658fb892db95229048fcf48993d22ea8ade443d7",
-          "PID": 0,
+          "PID": 4242,
           "ExitCode": 0
         },
         "PortStatus": {}
       },
-      "DesiredState": "shutdown"
+      "DesiredState": "running"
     },
     {
       "ID": "agent-n3",
       "Version": {
-        "Index": 5125
+        "Index": 5111
       },
-      "CreatedAt": "2026-09-24T11:16:10Z",
-      "UpdatedAt": "2026-09-24T11:16:11Z",
+      "CreatedAt": "2026-09-24T11:20:09.880214503Z",
+      "UpdatedAt": "2026-09-24T11:20:09.880214503Z",
       "Labels": {},
       "Spec": {
         "ContainerSpec": {
@@ -266,39 +248,7 @@
       "ServiceID": "svc-agent",
       "NodeID": "node-3",
       "Status": {
-        "Timestamp": "2026-09-24T11:16:11Z",
-        "State": "running",
-        "Message": "started",
-        "ContainerStatus": {
-          "ContainerID": "e4b12c36b74908f4ec9794ff255183fd311c3b6aef8ac65f72cdd3f5919b6eec",
-          "PID": 4242,
-          "ExitCode": 0
-        },
-        "PortStatus": {}
-      },
-      "DesiredState": "running"
-    },
-    {
-      "ID": "agent-n4",
-      "Version": {
-        "Index": 5132
-      },
-      "CreatedAt": "2026-09-24T11:16:10Z",
-      "UpdatedAt": "2026-09-24T11:16:11Z",
-      "Labels": {},
-      "Spec": {
-        "ContainerSpec": {
-          "Image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
-          "Labels": {
-            "com.docker.stack.namespace": "shop"
-          }
-        },
-        "ForceUpdate": 0
-      },
-      "ServiceID": "svc-agent",
-      "NodeID": "node-4",
-      "Status": {
-        "Timestamp": "2026-09-24T11:16:11Z",
+        "Timestamp": "2026-09-24T11:20:09.880214503Z",
         "State": "running",
         "Message": "started",
         "ContainerStatus": {
@@ -312,15 +262,22 @@
     }
   ],
   "expect": {
-    "svc-agent": {
-      "running": 3,
-      "desired": 2,
-      "upToDate": 3,
-      "convergedRunning": 2,
-      "convergedUpToDate": 2,
-      "completed": 0,
-      "job": false,
-      "deadTask": false
-    }
+    "state": "degraded",
+    "failing": [
+      {
+        "kind": "node",
+        "id": "node-3",
+        "name": "worker-down",
+        "detail": "down"
+      }
+    ],
+    "converging": [
+      {
+        "kind": "rollout",
+        "id": "svc-agent",
+        "name": "shop_agent",
+        "detail": "update paused"
+      }
+    ]
   }
 }

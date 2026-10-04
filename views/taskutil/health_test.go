@@ -34,8 +34,26 @@ func TestUnsettledRollout(t *testing.T) {
 		{"rollback_completed", false, ""},
 	}
 	for _, c := range cases {
-		require.Equal(t, c.want, unsettledRollout(docker.ServiceConvergence{UpdateState: c.state, Job: c.job}), "%s job=%v", c.state, c.job)
+		// One slot the rollout has not reached, so no pause here is outgrown.
+		require.Equal(t, c.want, unsettledRollout(docker.ServiceConvergence{UpdateState: c.state, Job: c.job, Desired: 1}), "%s job=%v", c.state, c.job)
 	}
+
+	outgrown := []struct {
+		state string
+		want  string
+	}{
+		{"paused", ""},
+		// Swarm finishes an update on its own once the monitor window passes.
+		{"updating", "rolling update in progress"},
+		// A rollback keeps the update's StartedAt, so creation order cannot
+		// tell its generations apart.
+		{"rollback_paused", "rollback paused"},
+	}
+	for _, c := range outgrown {
+		require.Equal(t, c.want, unsettledRollout(docker.ServiceConvergence{UpdateState: c.state, UpToDate: 2, Desired: 2}), "%s with every slot up to date", c.state)
+	}
+	require.Empty(t, unsettledRollout(docker.ServiceConvergence{UpdateState: "paused"}),
+		"a paused service scaled to zero has nothing left to roll out")
 }
 
 func TestShortOfTarget(t *testing.T) {
