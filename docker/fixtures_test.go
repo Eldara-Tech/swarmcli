@@ -16,16 +16,18 @@ import (
 // fixtureReplicas is what one service row shows: the REPLICAS column
 // (running/desired), the rollout progress (upToDate, shown only while
 // rollingOut), and the convergence facts
-// a job-aware reading of that ratio needs.
+// a job-aware reading of that ratio needs, and the swarm verdict needs to tell
+// a paused rollout from one every slot has outgrown (convergedUpToDate).
 type fixtureReplicas struct {
-	Running          int  `json:"running"`
-	Desired          int  `json:"desired"`
-	UpToDate         int  `json:"upToDate"`
-	RollingOut       bool `json:"rollingOut"`
-	ConvergedRunning int  `json:"convergedRunning"`
-	Completed        int  `json:"completed"`
-	Job              bool `json:"job"`
-	DeadTask         bool `json:"deadTask"`
+	Running           int  `json:"running"`
+	Desired           int  `json:"desired"`
+	UpToDate          int  `json:"upToDate"`
+	RollingOut        bool `json:"rollingOut"`
+	ConvergedRunning  int  `json:"convergedRunning"`
+	ConvergedUpToDate int  `json:"convergedUpToDate"`
+	Completed         int  `json:"completed"`
+	Job               bool `json:"job"`
+	DeadTask          bool `json:"deadTask"`
 }
 
 // TestReplicaFixtures runs the shared cases in testdata/health/replicas:
@@ -66,7 +68,7 @@ func TestReplicaFixtures(t *testing.T) {
 				for _, conv := range snap.StackConvergence(stack) {
 					if conv.Name == svc.Spec.Name {
 						require.Equal(t, r.Desired, conv.Desired, "convergence and the services view disagree on desired")
-						r.ConvergedRunning, r.Completed, r.Job, r.DeadTask = conv.Running, conv.Completed, conv.Job, conv.DeadTask
+						r.ConvergedRunning, r.ConvergedUpToDate, r.Completed, r.Job, r.DeadTask = conv.Running, conv.UpToDate, conv.Completed, conv.Job, conv.DeadTask
 					}
 				}
 				got[svc.ID] = r
