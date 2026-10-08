@@ -15,9 +15,9 @@ import (
 
 // RolloutLabel, set to RolloutSequential as a deploy label, marks a service that
 // must not be updated together with the others marked the same way. On an
-// upgrade, rollback or apply of a release whose marked services already run,
-// swarmcli deploys everything else first, then each marked service on its own,
-// in name order, waiting for it to converge before the next.
+// upgrade, rollback or apply of a release whose marked services are up, swarmcli
+// deploys everything else first, then each marked service on its own, in name
+// order, waiting for it to converge before the next.
 //
 // `docker stack deploy` updates every changed service at once. For a clustered
 // database that runs one service per peer, as the mariadb-galera chart does,
@@ -43,10 +43,17 @@ type OmittedServicesPreserver interface {
 	PreservesOmittedServices() bool
 }
 
-// heldForRollout returns the marked services that already run, by manifest key
-// and in rollout order: the ones this deploy must not update together. It is
-// empty on an install, where nothing runs yet and every service starts at once
-// as before, and for a backend that cannot deploy a partial manifest.
+// heldForRollout returns the marked services that are up, running every replica
+// they want, by manifest key and in rollout order: the ones this deploy must not
+// update together. It is empty on an install, where nothing runs yet and every
+// service starts at once as before, and for a backend that cannot deploy a
+// partial manifest.
+//
+// A marked service that is down has no availability to protect, so it goes out
+// with the first deploy. Holding it back could deadlock a recovery: after a full
+// stop of the mariadb-galera chart every peer waits for the cluster, and the
+// upgrade that forces one peer to bootstrap also changes peer 1, which would be
+// rolled first and wait forever for the peer it holds back.
 func (e *Engine) heldForRollout(ctx context.Context, rel *Release) ([]string, error) {
 	if p, ok := e.Backend.(OmittedServicesPreserver); !ok || !p.PreservesOmittedServices() {
 		return nil, nil
@@ -56,13 +63,15 @@ func (e *Engine) heldForRollout(ctx context.Context, rel *Release) ([]string, er
 		return nil, err
 	}
 	_ = e.Backend.RefreshSnapshot(ctx)
-	live := map[string]bool{}
+	up := map[string]bool{}
 	for _, s := range e.Backend.StackServices(ctx, rel.Name) {
-		live[s.Name] = true
+		if s.Desired > 0 && s.Running >= s.Desired {
+			up[s.Name] = true
+		}
 	}
 	var held []string
 	for _, key := range marked {
-		if live[rel.Name+"_"+key] {
+		if up[rel.Name+"_"+key] {
 			held = append(held, key)
 		}
 	}
