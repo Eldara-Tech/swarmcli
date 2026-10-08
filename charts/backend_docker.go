@@ -83,15 +83,15 @@ type manifestRefusal struct{ error }
 
 func (e manifestRefusal) Unwrap() error { return e.error }
 
+// PreservesOmittedServices reports true: `docker stack deploy` runs without
+// --prune, so a service the manifest leaves out keeps running as it is. That is
+// what lets a sequential rollout deploy a partial manifest (see rollout.go).
+func (b *dockerBackend) PreservesOmittedServices() bool { return true }
+
 // DeployStack runs the manifest through EnvLookups and CheckReserved first,
 // whatever the caller did before: this is the one point every chart deploy
 // passes, including a rollback, which replays a stored manifest nothing else
 // re-reads.
-// PreservesOmittedServices: `docker stack deploy` runs without --prune, so a
-// service the manifest leaves out keeps running as it is. That is what lets a
-// sequential rollout deploy a partial manifest (see rollout.go).
-func (b *dockerBackend) PreservesOmittedServices() bool { return true }
-
 func (b *dockerBackend) DeployStack(ctx context.Context, req DeployRequest) error {
 	unset, err := EnvLookups(req.Manifest, req.Files)
 	if err != nil {

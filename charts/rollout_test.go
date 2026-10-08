@@ -266,13 +266,10 @@ func TestRolloutTimesOutPerService(t *testing.T) {
 	fastPolls(t)
 	b := newRollBackend()
 	e := installRolling(t, b)
-	b.newPaused = map[string]bool{}
 	// A clock that moves a minute per read, and a peer whose update never starts.
 	tick := time.Unix(1700000000, 0).UTC()
 	e.now = func() time.Time { tick = tick.Add(time.Minute); return tick }
-	b.unchanged = map[string]bool{}
-	stuck := &stuckRollBackend{rollBackend: b}
-	e.Backend = stuck
+	e.Backend = &stuckRollBackend{rollBackend: b}
 
 	_, err := e.Upgrade(context.Background(), "db", ReleaseChart{Name: "galera", Version: "2"}, nil, rolloutManifest, InstallOptions{Timeout: 3 * time.Minute})
 	require.ErrorContains(t, err, "timed out waiting for service 'db_peer-1' to roll out")

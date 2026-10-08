@@ -91,8 +91,8 @@ func inspectService(t *testing.T, ctx context.Context, name string) swarm.Servic
 
 // Services labelled for a sequential rollout update one at a time on a real
 // swarm: the second marked service's update starts only after the first one's
-// completed, by swarm's own account, while the unmarked service goes first with
-// the rest of the stack. The unit suite proves the sequencing against a fake; only
+// new task has run past its monitor window, while the unmarked service goes first
+// with the rest of the stack. The unit suite proves the sequencing against a fake; only
 // docker stack deploy proves a manifest that leaves a service out leaves it alone.
 func TestUpgradeRollsSequentialServicesOneAtATime(t *testing.T) {
 	swarmlog.InitTestIfTestLogEnv()
