@@ -4,6 +4,7 @@
 package docker
 
 import (
+	"reflect"
 	"time"
 
 	"github.com/docker/docker/api/types/swarm"
@@ -79,6 +80,16 @@ type ServiceConvergence struct {
 	// overlaps with other one on this address space"). Empty when swarm recorded
 	// no message.
 	DeadTaskReason string
+	// TaskSpecChanged reports that the service's last update changed what its
+	// tasks run: Spec.TaskTemplate differs from PreviousSpec's. An update that
+	// left it equal, which `docker stack deploy` sends for every service it was
+	// handed, restarts nothing, so there is no rollout to wait for.
+	TaskSpecChanged bool
+	// UpdateStartedAt is when swarm started the service's most recent update,
+	// zero if it never ran one. It is the manager's own timestamp, so comparing
+	// two readings of it shows that a new update began without trusting this
+	// host's clock against the manager's.
+	UpdateStartedAt time.Time
 }
 
 // schedulableNodes returns the nodes that can currently run tasks. A task pinned
@@ -236,6 +247,10 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 			NewestTaskAge:  ageSince(newest),
 			DeadTask:       dead > 0,
 			DeadTaskReason: deadReason,
+			// PreviousSpec is nil until the service's first update, and a service
+			// never updated has no update to wait for either.
+			TaskSpecChanged: svc.PreviousSpec != nil && !reflect.DeepEqual(svc.Spec.TaskTemplate, svc.PreviousSpec.TaskTemplate),
+			UpdateStartedAt: updateStartedAt(svc),
 		})
 	}
 	return out
@@ -348,6 +363,14 @@ func updateState(svc swarm.Service) string {
 		return ""
 	}
 	return string(svc.UpdateStatus.State)
+}
+
+// updateStartedAt is swarm's UpdateStatus.StartedAt, zero when there is none.
+func updateStartedAt(svc swarm.Service) time.Time {
+	if svc.UpdateStatus == nil || svc.UpdateStatus.StartedAt == nil {
+		return time.Time{}
+	}
+	return *svc.UpdateStatus.StartedAt
 }
 
 func monitorWindow(svc swarm.Service) time.Duration {

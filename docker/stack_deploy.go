@@ -122,6 +122,18 @@ type DeployOptions struct {
 	UnsetEnv []string
 }
 
+// stackDeployArgs is the `docker stack deploy` command line. It never carries
+// --prune, and must not: a deploy whose manifest leaves a service out must leave
+// that service running, which a chart's sequential rollout relies on to update
+// its marked services one at a time (charts/rollout.go).
+func stackDeployArgs(ctxName, manifestPath string, resolve ResolveImage, stackName string) []string {
+	args := []string{"--context", ctxName, "stack", "deploy", "-c", manifestPath}
+	if resolve != ResolveImageDefault {
+		args = append(args, "--resolve-image", string(resolve))
+	}
+	return append(args, stackName)
+}
+
 // DeployStackInContext deploys a stack to an explicitly named Docker context.
 //
 // `docker stack deploy` has no SDK equivalent, so this shells out; naming the
@@ -167,13 +179,7 @@ func DeployStackInContext(ctx context.Context, ctxName, stackName, yamlContent s
 		_ = os.RemoveAll(dir)
 	}()
 
-	// Execute docker stack deploy command
-	args := []string{"--context", ctxName, "stack", "deploy", "-c", manifestPath}
-	if resolve != ResolveImageDefault {
-		args = append(args, "--resolve-image", string(resolve))
-	}
-	args = append(args, stackName)
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd := exec.CommandContext(ctx, "docker", stackDeployArgs(ctxName, manifestPath, resolve, stackName)...)
 	cmd.Env = deployEnv(os.Environ(), opts.UnsetEnv)
 
 	// Capture output for error reporting

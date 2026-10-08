@@ -150,3 +150,12 @@ func requireMode(t *testing.T, path string, want os.FileMode) {
 	require.NoError(t, err)
 	require.Equal(t, want, info.Mode().Perm(), "%s", path)
 }
+
+func TestStackDeployArgsNeverPrune(t *testing.T) {
+	for _, resolve := range []ResolveImage{ResolveImageDefault, ResolveImageNever} {
+		args := stackDeployArgs("ctx", "/tmp/stack.yml", resolve, "db")
+		require.NotContains(t, args, "--prune", "a sequential rollout deploys partial manifests; --prune would remove the services they leave out")
+		require.Equal(t, "db", args[len(args)-1])
+	}
+	require.Contains(t, stackDeployArgs("ctx", "/tmp/stack.yml", ResolveImageNever, "db"), "--resolve-image")
+}
