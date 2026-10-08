@@ -153,3 +153,47 @@ func TestUpgradeRollsAStackOfOnlySequentialServices(t *testing.T) {
 	require.False(t, b.UpdateStatus.StartedAt.Before(aNew.Add(5*time.Second)),
 		"b's update started before a's new task was past its monitor window")
 }
+
+// downService is a marked service no node can run, a stand-in for a database
+// peer waiting for its cluster after a full stop: it exists, and runs nothing.
+func downService(rev int) string {
+	return fmt.Sprintf(`
+  b:
+    image: traefik/whoami:v1.10
+    environment:
+      REV: "%d"
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.swarmcli_absent_label == true]
+      labels:
+        %s: %s`, rev, charts.RolloutLabel, charts.RolloutSequential)
+}
+
+// A marked service that is down is not held back: it goes out with the first
+// deploy, and the upgrade does not wait on it. Held back, b would be rolled after
+// a, never converge, and time the upgrade out, which is how the mariadb-galera
+// chart's forceBootstrap recovery would deadlock.
+func TestUpgradeDoesNotHoldADownSequentialService(t *testing.T) {
+	swarmlog.InitTestIfTestLogEnv()
+
+	ctx := context.Background()
+	release := fmt.Sprintf("itest-seqdown-%d", time.Now().UnixNano())
+	eng := charts.NewEngine()
+	defer func() { _, _ = eng.Uninstall(ctx, release, true) }()
+	ch := charts.ReleaseChart{Name: "seq", Version: "0.1.0"}
+
+	// a up and converged first, then b added, so the upgrade below finds a
+	// running and b live but down.
+	_, err := eng.Install(ctx, release, ch, nil, rolloutStack(1, "a"), charts.InstallOptions{Wait: true, Timeout: 2 * time.Minute})
+	require.NoError(t, err)
+	_, err = eng.Upgrade(ctx, release, ch, nil, rolloutStack(1, "a")+downService(1)+"\n", charts.InstallOptions{})
+	require.NoError(t, err)
+
+	_, err = eng.Upgrade(ctx, release, ch, nil, rolloutStack(2, "a")+downService(2)+"\n", charts.InstallOptions{Timeout: 45 * time.Second})
+	require.NoError(t, err, "the upgrade waited on a service that is down")
+	for _, name := range []string{"a", "b"} {
+		require.Contains(t, inspectService(t, ctx, release+"_"+name).Spec.TaskTemplate.ContainerSpec.Env, "REV=2",
+			"service %s was not upgraded", name)
+	}
+}

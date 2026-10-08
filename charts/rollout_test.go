@@ -5,6 +5,7 @@ package charts
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -99,10 +100,12 @@ type rollBackend struct {
 	unchanged     map[string]bool
 	oldPaused     map[string]bool // the peer's previous update was left paused
 	newPaused     map[string]bool // the peer's update pauses after it starts
+	down          map[string]bool // the peer runs no task, as while it waits for its cluster
+	scaledToZero  bool            // every peer is scaled to 0, as before a recovery
 }
 
 func newRollBackend() *rollBackend {
-	return &rollBackend{fakeBackend: newFakeBackend(), unchanged: map[string]bool{}, oldPaused: map[string]bool{}, newPaused: map[string]bool{}}
+	return &rollBackend{fakeBackend: newFakeBackend(), unchanged: map[string]bool{}, oldPaused: map[string]bool{}, newPaused: map[string]bool{}, down: map[string]bool{}}
 }
 
 func (b *rollBackend) PreservesOmittedServices() bool { return true }
@@ -128,6 +131,12 @@ func (b *rollBackend) StackServices(_ context.Context, name string) []ServiceSta
 	out := []ServiceState{withName(settled, name+"_web")}
 	for _, key := range []string{"peer-1", "peer-2", "peer-3"} {
 		st := withName(settled, name+"_"+key)
+		if b.down[key] {
+			st.Running = 0
+		}
+		if b.scaledToZero {
+			st.Running, st.Desired = 0, 0
+		}
 		st.UpdateStartedAt = oldUpdate
 		if b.oldPaused[key] {
 			st.UpdateState = "paused"
@@ -331,4 +340,40 @@ func TestRolloutWhenEveryServiceIsMarked(t *testing.T) {
 	require.Equal(t, []string{"peer-1"}, manifestKeys(t, b.manifests[1]), "a first deploy must carry a service; the first held one goes in it")
 	require.Equal(t, []string{"peer-1", "peer-2"}, manifestKeys(t, b.manifests[2]))
 	require.Equal(t, 4, b.pollsAtDeploy[2], "peer-2 deployed before peer-1 had converged")
+}
+
+func TestRolloutDeploysADownServiceWithTheFirstStage(t *testing.T) {
+	fastPolls(t)
+	b := newRollBackend()
+	e := installRolling(t, b)
+	b.down["peer-2"] = true
+
+	_, err := e.Upgrade(context.Background(), "db", ReleaseChart{Name: "galera", Version: "2"}, nil, rolloutManifest, InstallOptions{})
+	require.NoError(t, err)
+	require.Len(t, b.manifests, 4, "the first deploy, then one per peer that is up")
+	require.Equal(t, []string{"peer-2", "web"}, manifestKeys(t, b.manifests[1]), "a peer that is down has nothing to protect")
+	require.Equal(t, []string{"peer-1", "peer-2", "web"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, []string{"peer-1", "peer-2", "peer-3", "web"}, manifestKeys(t, b.manifests[3]))
+}
+
+// After a full stop every peer waits for its cluster. The upgrade that forces one
+// of them to bootstrap must reach that peer at once, not after peer 1, which can
+// only come up once the forced peer has.
+func TestRolloutHoldsNothingWhenEveryMarkedServiceIsDown(t *testing.T) {
+	for _, scaled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("scaledToZero=%t", scaled), func(t *testing.T) {
+			fastPolls(t)
+			b := newRollBackend()
+			e := installRolling(t, b)
+			for _, key := range []string{"peer-1", "peer-2", "peer-3"} {
+				b.down[key] = true
+			}
+			b.scaledToZero = scaled
+
+			_, err := e.Upgrade(context.Background(), "db", ReleaseChart{Name: "galera", Version: "2"}, nil, rolloutManifest, InstallOptions{})
+			require.NoError(t, err)
+			require.Len(t, b.manifests, 2, "the install, then one deploy of everything")
+			require.Equal(t, []string{"peer-1", "peer-2", "peer-3", "web"}, manifestKeys(t, b.manifests[1]))
+		})
+	}
 }
