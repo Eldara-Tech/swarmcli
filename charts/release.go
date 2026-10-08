@@ -80,6 +80,11 @@ type ServiceState struct {
 	// it. Such a release is finished, not slow (issue #651).
 	DeadTask       bool
 	DeadTaskReason string
+	// TaskSpecChanged and UpdateStartedAt let a sequential rollout tell an
+	// update that restarts the service from one that changed nothing, and an
+	// update swarm has started from the state before it (see rollout.go).
+	TaskSpecChanged bool
+	UpdateStartedAt time.Time
 }
 
 // DeployRequest is one deploy.
@@ -383,11 +388,29 @@ func (e *Engine) deployAndRecord(ctx context.Context, rel *Release, opts Install
 		}
 		return rel, err
 	}
+	// Services marked for a sequential rollout that already run are left out of
+	// this first deploy and updated one at a time after it (see rollout.go).
+	held, err := e.heldForRollout(ctx, rel)
+	first := rel.Manifest
+	if err == nil && len(held) > 0 {
+		drop := make(map[string]bool, len(held))
+		for _, key := range held {
+			drop[key] = true
+		}
+		first, err = withoutServices(rel.Manifest, drop)
+	}
+	if err != nil {
+		rel.Status = StatusFailed
+		for _, n := range created {
+			_ = e.Backend.RemoveOverlayNetwork(ctx, n)
+		}
+		return rel, err
+	}
 	// rel.Files rather than opts.Files: the revision is the one thing every entry
 	// point has already agreed on, and on a rollback it is the only one that
 	// carries files at all.
 	if err := e.Backend.DeployStack(ctx, DeployRequest{
-		Name: rel.Name, Manifest: rel.Manifest, Resolve: opts.ResolveImage, Files: rel.Files,
+		Name: rel.Name, Manifest: first, Resolve: opts.ResolveImage, Files: rel.Files,
 	}); err != nil {
 		rel.Status = StatusFailed
 		// Roll back networks we auto-created for this install so a failed deploy
@@ -409,6 +432,13 @@ func (e *Engine) deployAndRecord(ctx context.Context, rel *Release, opts Install
 	rel.ManagedNetworks = created
 	if err := e.record(ctx, rel); err != nil {
 		return rel, fmt.Errorf("stack '%s' was deployed but recording its release history failed: %w; re-run install/upgrade to reconcile", rel.Name, err)
+	}
+	// Recorded first: the revision is what the swarm now runs or is converging
+	// on, as after a --wait that fails, and a re-run upgrade rolls on from it.
+	if len(held) > 0 {
+		if err := e.rollOneAtATime(ctx, rel, opts, held); err != nil {
+			return rel, err
+		}
 	}
 	if opts.Wait {
 		if err := e.waitReady(ctx, rel.Name, opts.Timeout); err != nil {

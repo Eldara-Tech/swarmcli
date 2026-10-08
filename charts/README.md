@@ -456,6 +456,38 @@ property of compose, and CE leaves the decision with the operator who installs
 the chart. swarmcli-cd, which reconciles charts nobody is watching, additionally
 requires the application's own allowlist to name the path.
 
+### Services that update one at a time
+
+`docker stack deploy` updates every changed service at once. Give a service the
+deploy label `com.swarmcli.rollout: sequential`, and on `upgrade`, `rollback` and
+`apply` swarmcli updates the marked services one at a time instead. It deploys
+every other service first, then each marked service in name order, and waits for
+each to converge, which means running and past its `update_config.monitor`, before
+the next. It is meant for a clustered service that runs one Swarm service per
+member, such as a database peer, where updating every member together is an outage.
+
+```yaml
+services:
+  peer-1:
+    deploy:
+      labels:
+        com.swarmcli.rollout: sequential
+```
+
+- An install starts everything at once: nothing runs yet to protect.
+- A marked service whose update leaves its task definition as it was restarts
+  nothing, and is not waited for.
+- The wait between marked services happens with or without `--wait`. `--timeout`
+  bounds each service, on top of its own monitor window.
+- If a service wedges or times out, the services after it are not updated and the
+  command fails. The revision is recorded, so re-running the upgrade carries on.
+- The label travels in the stored manifest, so a rollback rolls the same way. A
+  swarmcli that predates it ignores it and updates everything at once; declare a
+  `swarmcliVersion` floor (below) to require one that does not.
+- The `swarmcli charts` CLI applies it. A tool driving the engine through its own
+  backend gets it only if that backend leaves the services a deploy omits running
+  (`charts.OmittedServicesPreserver`); otherwise every service updates at once.
+
 ### Declaring the swarmcli a chart needs
 
 A chart may state the chart engine it requires, as a SemVer constraint:
