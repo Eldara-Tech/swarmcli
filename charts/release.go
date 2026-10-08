@@ -392,12 +392,24 @@ func (e *Engine) deployAndRecord(ctx context.Context, rel *Release, opts Install
 	// this first deploy and updated one at a time after it (see rollout.go).
 	held, err := e.heldForRollout(ctx, rel)
 	first := rel.Manifest
+	// When every service is held, the first deploy carries the first of them:
+	// a manifest without services is not one docker stack deploy accepts. That
+	// service is then waited for like the ones after it.
+	leading := ""
+	var leadingBefore time.Time
 	if err == nil && len(held) > 0 {
 		drop := make(map[string]bool, len(held))
 		for _, key := range held {
 			drop[key] = true
 		}
-		first, err = withoutServices(rel.Manifest, drop)
+		var kept int
+		if first, kept, err = withoutServices(rel.Manifest, drop); err == nil && kept == 0 {
+			leading, held = held[0], held[1:]
+			st, _ := e.serviceState(ctx, rel.Name, rel.Name+"_"+leading)
+			leadingBefore = st.UpdateStartedAt
+			delete(drop, leading)
+			first, _, err = withoutServices(rel.Manifest, drop)
+		}
 	}
 	if err != nil {
 		rel.Status = StatusFailed
@@ -435,6 +447,11 @@ func (e *Engine) deployAndRecord(ctx context.Context, rel *Release, opts Install
 	}
 	// Recorded first: the revision is what the swarm now runs or is converging
 	// on, as after a --wait that fails, and a re-run upgrade rolls on from it.
+	if leading != "" {
+		if err := e.waitRolled(ctx, rel.Name, rel.Name+"_"+leading, leadingBefore, opts.Timeout); err != nil {
+			return rel, err
+		}
+	}
 	if len(held) > 0 {
 		if err := e.rollOneAtATime(ctx, rel, opts, held); err != nil {
 			return rel, err

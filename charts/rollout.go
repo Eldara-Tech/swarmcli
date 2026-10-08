@@ -85,7 +85,7 @@ func (e *Engine) rollOneAtATime(ctx context.Context, rel *Release, opts InstallO
 		manifest := rel.Manifest
 		if len(pending) > 0 {
 			var err error
-			if manifest, err = withoutServices(rel.Manifest, pending); err != nil {
+			if manifest, _, err = withoutServices(rel.Manifest, pending); err != nil {
 				return err
 			}
 		}
@@ -221,14 +221,15 @@ func sequentialServices(manifest string) ([]string, error) {
 }
 
 // withoutServices returns the manifest with the named services left out and
-// everything else, networks, volumes, configs and secrets included, as it was.
-func withoutServices(manifest string, drop map[string]bool) (string, error) {
+// everything else, networks, volumes, configs and secrets included, as it was,
+// and how many services it still has.
+func withoutServices(manifest string, drop map[string]bool) (string, int, error) {
 	root, services, err := manifestServices(manifest)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if services == nil || services.Kind != yaml.MappingNode {
-		return manifest, nil
+		return manifest, 0, nil
 	}
 	kept := make([]*yaml.Node, 0, len(services.Content))
 	for i := 0; i+1 < len(services.Content); i += 2 {
@@ -239,7 +240,7 @@ func withoutServices(manifest string, drop map[string]bool) (string, error) {
 	services.Content = kept
 	out, err := yaml.Marshal(root)
 	if err != nil {
-		return "", fmt.Errorf("write manifest: %w", err)
+		return "", 0, fmt.Errorf("write manifest: %w", err)
 	}
-	return string(out), nil
+	return string(out), len(kept) / 2, nil
 }

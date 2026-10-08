@@ -70,8 +70,9 @@ func TestSequentialServicesReadsBothLabelForms(t *testing.T) {
 }
 
 func TestWithoutServicesKeepsEverythingElse(t *testing.T) {
-	out, err := withoutServices(rolloutManifest, map[string]bool{"peer-1": true, "peer-3": true})
+	out, kept, err := withoutServices(rolloutManifest, map[string]bool{"peer-1": true, "peer-3": true})
 	require.NoError(t, err)
+	require.Equal(t, 2, kept)
 	require.Equal(t, []string{"peer-2", "web"}, manifestKeys(t, out))
 
 	var doc map[string]any
@@ -94,6 +95,7 @@ type rollBackend struct {
 	pollsAtDeploy []int
 	polls         int
 	running       bool // whether the stack's services exist yet
+	upgradeFrom   int  // index of the first deploy after the install
 	unchanged     map[string]bool
 	oldPaused     map[string]bool // the peer's previous update was left paused
 	newPaused     map[string]bool // the peer's update pauses after it starts
@@ -130,19 +132,27 @@ func (b *rollBackend) StackServices(_ context.Context, name string) []ServiceSta
 		if b.oldPaused[key] {
 			st.UpdateState = "paused"
 		}
-		// The deploy that first carries this peer is the one that updates it.
-		deployed := len(b.manifests) > 0 && contains(manifestKeysQuiet(b.manifests[len(b.manifests)-1]), key)
-		firstCarried := deployed && (len(b.manifests) < 2 || !contains(manifestKeysQuiet(b.manifests[len(b.manifests)-2]), key))
+		// The first upgrade deploy that carries this peer is the one that updates
+		// it, and that update gets a start time of its own.
+		at := -1
+		for d := b.upgradeFrom; d < len(b.manifests); d++ {
+			if contains(manifestKeysQuiet(b.manifests[d]), key) {
+				at = d
+				break
+			}
+		}
+		started := newUpdate.Add(time.Duration(at) * time.Second)
+		latest := at == len(b.manifests)-1
 		switch {
-		case !deployed:
+		case at < 0:
 		case b.unchanged[key]:
 			st.TaskSpecChanged = false
-		case firstCarried && b.polls <= 1:
+		case latest && b.polls <= 1:
 			st.TaskSpecChanged = true // swarm has not started the update yet
-		case firstCarried && b.polls == 2:
-			st.TaskSpecChanged, st.UpdateStartedAt, st.UpdateState = true, newUpdate, "updating"
+		case latest && b.polls == 2:
+			st.TaskSpecChanged, st.UpdateStartedAt, st.UpdateState = true, started, "updating"
 		default:
-			st.TaskSpecChanged, st.UpdateStartedAt, st.UpdateState = true, newUpdate, "completed"
+			st.TaskSpecChanged, st.UpdateStartedAt, st.UpdateState = true, started, "completed"
 			if b.newPaused[key] {
 				st.UpdateState = "paused"
 			}
@@ -189,6 +199,7 @@ func installRolling(t *testing.T, b *rollBackend) *Engine {
 	require.Len(t, b.manifests, 1, "an install has nothing running to protect, so every service starts at once")
 	require.Equal(t, []string{"peer-1", "peer-2", "peer-3", "web"}, manifestKeys(t, b.manifests[0]))
 	b.running = true
+	b.upgradeFrom = len(b.manifests)
 	return e
 }
 
@@ -292,4 +303,35 @@ func TestBackendThatMayPruneGetsTheWholeManifest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"peer-1", "peer-2", "peer-3", "web"}, manifestKeys(t, fb.deployed["db"]))
 	require.Equal(t, calls, fb.stackServiceCalls, "a backend that cannot deploy a partial manifest is not even asked what runs")
+}
+
+// onlyPeersManifest is a stack of marked services and nothing else, as the
+// mariadb-galera chart renders without its proxy and exporters.
+const onlyPeersManifest = `services:
+  peer-1:
+    image: mariadb
+    deploy:
+      labels: ["com.swarmcli.rollout=sequential"]
+  peer-2:
+    image: mariadb
+    deploy:
+      labels: ["com.swarmcli.rollout=sequential"]
+`
+
+func TestRolloutWhenEveryServiceIsMarked(t *testing.T) {
+	fastPolls(t)
+	b := newRollBackend()
+	e := testEngine(b)
+	ctx := context.Background()
+	_, err := e.Install(ctx, "db", ReleaseChart{Name: "galera", Version: "1"}, nil, onlyPeersManifest, InstallOptions{})
+	require.NoError(t, err)
+	b.running = true
+	b.upgradeFrom = len(b.manifests)
+
+	_, err = e.Upgrade(ctx, "db", ReleaseChart{Name: "galera", Version: "2"}, nil, onlyPeersManifest, InstallOptions{})
+	require.NoError(t, err)
+	require.Len(t, b.manifests, 3, "the install, then one deploy per peer")
+	require.Equal(t, []string{"peer-1"}, manifestKeys(t, b.manifests[1]), "a first deploy must carry a service; the first held one goes in it")
+	require.Equal(t, []string{"peer-1", "peer-2"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, 4, b.pollsAtDeploy[2], "peer-2 deployed before peer-1 had converged")
 }
