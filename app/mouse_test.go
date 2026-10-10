@@ -9,8 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	"github.com/Eldara-Tech/swarmcli/v2/telemetry"
 	"github.com/Eldara-Tech/swarmcli/v2/ui"
+	helpview "github.com/Eldara-Tech/swarmcli/v2/views/help"
+	inspectview "github.com/Eldara-Tech/swarmcli/v2/views/inspect"
+	logsview "github.com/Eldara-Tech/swarmcli/v2/views/logs"
 	"github.com/Eldara-Tech/swarmcli/v2/views/view"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -66,9 +70,41 @@ func newMouseModel(t *testing.T, v *rowView) *Model {
 	t.Helper()
 	m := newLayoutTestModel(v)
 	m.mouseOn = true
+	m.syncMouse() // as the first message would
 	m.updateForResize(tea.WindowSizeMsg{Width: 100, Height: 40})
 	v.received = nil
 	return m
+}
+
+// mouseSwitches runs cmd and returns the mouse switches among the messages it
+// produces, looking inside batches.
+func mouseSwitches(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	var out []tea.Msg
+	switch msg := cmd().(type) {
+	case tea.BatchMsg:
+		for _, c := range msg {
+			out = append(out, mouseSwitches(c)...)
+		}
+	default:
+		if msg == tea.EnableMouseCellMotion() || msg == tea.DisableMouse() {
+			out = append(out, msg)
+		}
+	}
+	return out
+}
+
+// newTextView registers a view with no rows, as inspect, logs and help are,
+// under a name of its own and returns it.
+func newTextView(t *testing.T) *keyRecordingView {
+	t.Helper()
+	v := &keyRecordingView{frameStubView: frameStubView{stubView: stubView{name: t.Name()}}}
+	view.RegisterView(t.Name(), func(docker.Deps, int, int, any) (view.View, tea.Cmd) {
+		return v, nil
+	})
+	return v
 }
 
 func press(button tea.MouseButton, y int) tea.MouseMsg {
@@ -97,11 +133,77 @@ func TestMouseFromEnv(t *testing.T) {
 	}
 }
 
-func TestProgramOptionsCarryTheMouseUnlessSwitchedOff(t *testing.T) {
+// The model takes the mouse, so a build whose main passes only the alternate
+// screen gets the same terminal as one passing ProgramOptions.
+func TestProgramOptionsLeaveTheMouseToTheModel(t *testing.T) {
 	t.Setenv(MouseEnv, "")
-	require.Len(t, ProgramOptions(), 2, "alt screen and mouse")
-	t.Setenv(MouseEnv, "off")
 	require.Len(t, ProgramOptions(), 1, "alt screen only")
+}
+
+// Only a list has the mouse. Anywhere else the terminal keeps it, so text in
+// inspect, logs or help selects and copies natively (#691).
+func TestMouseIsCapturedOnlyOnAList(t *testing.T) {
+	text := newTextView(t)
+	m := newLayoutTestModel(&rowView{rows: 5})
+	m.mouseOn = true
+
+	_, cmd := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	require.Equal(t, []tea.Msg{tea.EnableMouseCellMotion()}, mouseSwitches(cmd), "the first message takes it")
+
+	_, cmd = m.Update(view.NavigateToMsg{ViewName: text.name})
+	require.Equal(t, []tea.Msg{tea.DisableMouse()}, mouseSwitches(cmd))
+
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	require.Empty(t, mouseSwitches(cmd), "nothing to switch while the view stays")
+
+	_, cmd = m.Update(view.GoBackMsg{})
+	require.Equal(t, []tea.Msg{tea.EnableMouseCellMotion()}, mouseSwitches(cmd))
+
+	_, cmd = m.Update(view.NavigateToMsg{ViewName: text.name, Replace: true})
+	require.Equal(t, []tea.Msg{tea.DisableMouse()}, mouseSwitches(cmd), "a replaced view counts too")
+}
+
+func TestMouseSwitchedOffStaysOffAcrossViews(t *testing.T) {
+	text := newTextView(t)
+	m := newMouseModel(t, &rowView{rows: 5})
+
+	_, cmd := m.Update(view.ToggleMouseMsg{})
+	require.Equal(t, []tea.Msg{tea.DisableMouse()}, mouseSwitches(cmd))
+
+	_, cmd = m.Update(view.NavigateToMsg{ViewName: text.name})
+	require.Empty(t, mouseSwitches(cmd))
+	_, cmd = m.Update(view.GoBackMsg{})
+	require.Empty(t, mouseSwitches(cmd))
+}
+
+// `:mouse` in a text view changes the session's choice; the terminal keeps the
+// mouse until a list is current.
+func TestToggleInATextViewTakesEffectOnTheList(t *testing.T) {
+	text := newTextView(t)
+	m := newMouseModel(t, &rowView{rows: 5})
+	m.Update(view.NavigateToMsg{ViewName: text.name})
+
+	_, cmd := m.Update(view.ToggleMouseMsg{})
+	require.Empty(t, mouseSwitches(cmd))
+	_, cmd = m.Update(view.ToggleMouseMsg{})
+	require.Empty(t, mouseSwitches(cmd))
+	require.True(t, m.mouseOn)
+
+	_, cmd = m.Update(view.GoBackMsg{})
+	require.Equal(t, []tea.Msg{tea.EnableMouseCellMotion()}, mouseSwitches(cmd))
+}
+
+// The views that show text must not turn into lists by accident: a ClickRow on
+// one would take the mouse back from text selection.
+func TestTextViewsAreNotLists(t *testing.T) {
+	for name, v := range map[string]any{
+		"inspect": (*inspectview.Model)(nil),
+		"logs":    (*logsview.Model)(nil),
+		"help":    (*helpview.Model)(nil),
+	} {
+		_, list := v.(view.RowClicker)
+		require.False(t, list, name)
+	}
 }
 
 // A click must land on the line it was aimed at in every layout, so the test
@@ -309,11 +411,13 @@ func TestMouseIsIgnoredWhileSomethingHoldsTheKeyboard(t *testing.T) {
 	}
 }
 
-// A view that is not a list still scrolls with the wheel, and a click on it is
-// harmless.
-func TestViewWithoutRowsGetsOnlyTheWheel(t *testing.T) {
+// A view that is not a list gets no mouse at all. Reports the terminal sent
+// before it was told to stop still arrive, and must reach nothing.
+func TestViewWithoutRowsGetsNoMouse(t *testing.T) {
 	v := &keyRecordingView{}
 	m := newLayoutTestModel(v)
+	parent := &stubView{name: view.NameStacks}
+	m.viewStack.Push(parent)
 	m.mouseOn = true
 	m.updateForResize(tea.WindowSizeMsg{Width: 100, Height: 40})
 	v.keys = nil
@@ -321,8 +425,10 @@ func TestViewWithoutRowsGetsOnlyTheWheel(t *testing.T) {
 	m.Update(press(tea.MouseButtonLeft, 10))
 	m.Update(press(tea.MouseButtonLeft, 10))
 	m.Update(press(tea.MouseButtonWheelDown, 10))
+	m.Update(press(tea.MouseButtonRight, 10))
 
-	require.Equal(t, []tea.KeyType{tea.KeyDown}, v.keys)
+	require.Empty(t, v.keys)
+	require.Same(t, v, m.currentView, "a right click must not go back")
 }
 
 type keyRecordingView struct {
@@ -339,8 +445,9 @@ func (v *keyRecordingView) Update(msg tea.Msg) tea.Cmd {
 
 func TestToggleMouse(t *testing.T) {
 	setStackBarSuffix(t, "")
-	m := newTestAppModel(&stubView{name: view.NameStacks})
+	m := newTestAppModel(&rowView{rows: 5})
 	m.mouseOn = true
+	m.syncMouse()
 
 	_, cmd := m.Update(view.ToggleMouseMsg{})
 	require.False(t, m.mouseOn)
@@ -370,17 +477,26 @@ func TestTelemetryNoticeOutranksTheMouseNotice(t *testing.T) {
 }
 
 // The terminal forgets mouse reporting when an editor takes it over, so the
-// app switches it back on afterwards — but only if the session has it on.
+// app switches it back on afterwards — but only if the session has it on and
+// a list is current.
 func TestRestoreMouse(t *testing.T) {
-	m := newTestAppModel(&stubView{name: view.NameStacks})
-
+	m := newTestAppModel(&rowView{rows: 5})
 	m.mouseOn = true
+	m.syncMouse()
+
 	_, cmd := m.Update(view.RestoreMouseMsg{})
 	require.Equal(t, tea.EnableMouseCellMotion(), cmd())
 
 	m.mouseOn = false
+	m.syncMouse()
 	_, cmd = m.Update(view.RestoreMouseMsg{})
 	require.Nil(t, cmd)
+
+	m = newTestAppModel(&stubView{name: view.NameInspect})
+	m.mouseOn = true
+	m.syncMouse()
+	_, cmd = m.Update(view.RestoreMouseMsg{})
+	require.Nil(t, cmd, "a text view keeps the terminal's own mouse")
 }
 
 // A right click is Esc, so it takes the steps Esc takes: a passive search bar
@@ -413,14 +529,16 @@ func TestRightClickForgetsTheLastClick(t *testing.T) {
 	require.Empty(t, v.keys())
 }
 
-// trailView counts how often it is entered and left.
+// trailView counts how often it is entered and left. It is a list with no
+// rows, as the app only has the mouse on a list.
 type trailView struct {
 	frameStubView
 	entered, exited int
 }
 
-func (v *trailView) OnEnter() tea.Cmd { v.entered++; return nil }
-func (v *trailView) OnExit() tea.Cmd  { v.exited++; return nil }
+func (v *trailView) OnEnter() tea.Cmd  { v.entered++; return nil }
+func (v *trailView) OnExit() tea.Cmd   { v.exited++; return nil }
+func (v *trailView) ClickRow(int) bool { return false }
 
 // newTrailModel stacks deepTrail, so the stack bar reads
 // " … → tasks → inspect → logs " when there is room for three segments.

@@ -18,8 +18,9 @@ import (
 // changes nothing.
 //
 // The app only calls it when nothing is capturing input, so a view does not
-// have to check its own dialogs. Views without it still get the wheel, as
-// up/down keypresses. Checked via type assertion in app/mouse.go.
+// have to check its own dialogs. Views without it get no mouse at all: the app
+// switches mouse reporting off while one is current, so the text it shows
+// selects natively. Checked via type assertion in app/mouse.go.
 type RowClicker interface {
 	ClickRow(line int) bool
 }
@@ -28,8 +29,9 @@ type RowClicker interface {
 // rest of the session.
 type ToggleMouseMsg struct{}
 
-// RestoreMouseMsg asks the app to switch mouse reporting back on if the session
-// has it on. It follows a terminal handover; see ExecProcess.
+// RestoreMouseMsg tells the app a terminal handover has switched mouse
+// reporting off, so it switches it back on if the current view should have it.
+// See ExecProcess.
 type RestoreMouseMsg struct{}
 
 // ExecProcess is tea.ExecProcess for a session that may have the mouse on.
