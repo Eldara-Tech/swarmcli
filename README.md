@@ -280,10 +280,10 @@ The mouse works in the lists too: the wheel moves the selection, a click selects
 a row and a double click opens it, as Enter does. A right click is Esc, and a
 click on a breadcrumb goes back to that view. In a list, hold Shift (Option in
 iTerm2) to select text in the terminal. Views that show text — inspect, logs,
-help — leave the mouse to the terminal, so text selects and copies as usual, and
-the wheel scrolls them wherever the terminal turns it into arrow keys (iTerm2 and
-xterm do not by default). `:mouse` switches it off for the session, and
-`SWARMCLI_MOUSE=off` starts without it.
+help — leave the mouse to the terminal, so text selects and copies as usual; see
+[Mouse and text selection](docs/configuration.md#mouse-and-text-selection) for
+what each terminal does with the wheel there. `:mouse` switches it off for the
+session, and `SWARMCLI_MOUSE=off` starts without it.
 
 ## Project Hygiene
 
