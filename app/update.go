@@ -30,7 +30,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// Update handles msg, then switches mouse reporting to suit the view that is
+// current afterwards.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	return next, tea.Batch(cmd, m.syncMouse())
+}
+
+func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Startup overlay captures KeyMsg exclusively while active.
 	if startupOverlay != nil && startupOverlay.Active() {
 		if _, isKey := msg.(tea.KeyMsg); isKey {
@@ -302,15 +309,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case view.ToggleMouseMsg:
 		m.mouseOn = !m.mouseOn
 		m.mouseNoticeActive = true
-		if m.mouseOn {
-			return m, tea.EnableMouseCellMotion
-		}
-		return m, tea.DisableMouse
+		return m, nil
 
 	case view.RestoreMouseMsg:
-		if m.mouseOn {
-			return m, tea.EnableMouseCellMotion
-		}
+		// The handover switched reporting off; syncMouse switches it back on.
+		m.mouseCaptured = false
 		return m, nil
 
 	case tickMsg:
