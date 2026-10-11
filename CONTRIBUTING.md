@@ -68,6 +68,31 @@ then assert on the rows that carry content.
 **Mutation-check any guard you add**: break the thing it protects and confirm the
 test fails. A guard that has never failed is an untested claim.
 
+**Driving the real binary.** End to end, a Python `pty.fork()` harness can run
+the built TUI against a swarm, send keys and SGR mouse bytes, and assert on the
+raw output stream — footer text, mode escapes — with no terminal emulator. Three
+behaviours of Bubble Tea v1 and lipgloss make a naive harness fail in ways that
+look like app bugs:
+
+- **Type one byte at a time**, about 150 ms apart. Printable runes arriving in
+  one read become a single `KeyMsg`, so writing `:config\r` at once sends the
+  key `":config"`, the `:` bar never opens, and every later key lands on the
+  wrong view.
+- **Answer the startup queries.** lipgloss sends `ESC]11;?` (background colour)
+  and `ESC[6n` (cursor position), then waits about 5.5 s for replies, so a
+  harness with a fixed boot delay passes or fails by timing. Reply
+  `ESC]11;rgb:0000/0000/0000ESC\` and `ESC[1;1R` when they appear.
+- **Injected mouse bytes ignore the terminal's mode.** Bubble Tea parses SGR
+  sequences even after the app sent `ESC[?1002l`, so a click that works proves
+  nothing about mouse reporting being restored. Assert on the `ESC[?1002h`
+  escape in the output instead, and check that assertion fails against a build
+  without the fix.
+
+The renderer repaints only changed lines, so the stream is a diff: match text
+that changes, never a whole screen. Set `XDG_STATE_HOME` to a temporary
+directory so the app's log is readable and separate, and
+`SWARMCLI_TELEMETRY=none`.
+
 ## Pull Request Process
 
 1. Fork the repo and create your branch from `main`.
