@@ -30,7 +30,7 @@ var now = time.Now
 
 // Mouse notices for the stack bar, shown after `:mouse` until the next key.
 const (
-	mouseOnNotice       = "Mouse on · hold Shift (Option in iTerm2) to select text · :mouse"
+	mouseOnNotice       = "Mouse on in lists · text views select as usual · :mouse"
 	mouseOnNoticeShort  = "Mouse on · :mouse"
 	mouseOffNotice      = "Mouse off · text selection works as usual · :mouse to turn it back on"
 	mouseOffNoticeShort = "Mouse off · :mouse"
@@ -45,19 +45,38 @@ func mouseFromEnv() bool {
 }
 
 // ProgramOptions are the tea.Program options a TUI entry point starts with:
-// the alternate screen, and mouse capture unless MouseEnv switches it off. An
-// extension build's own main passes them too, so both builds agree on the
-// terminal they set up.
+// the alternate screen. Mouse capture is not among them, because the model
+// switches it as views change (see syncMouse), so a build whose main passes
+// only the alternate screen still gets the same mouse.
+func ProgramOptions() []tea.ProgramOption {
+	return []tea.ProgramOption{tea.WithAltScreen()}
+}
+
+// wantsMouse reports whether the terminal should report the mouse to the app:
+// while the session has it on and the current view is a list. Anywhere else —
+// inspect, logs, help — the terminal keeps it, so text selects natively.
+func (m *Model) wantsMouse() bool {
+	_, list := m.currentView.(view.RowClicker)
+	return m.mouseOn && list
+}
+
+// syncMouse switches mouse reporting to what wantsMouse says, and does nothing
+// when the terminal is already there. Update runs it after every message, so no
+// view change, toggle or terminal handover has to remember to.
 //
 // Cell motion rather than all motion: clicks, releases and the wheel are all
 // the app uses, and all-motion delivers an Update for every cell the pointer
 // crosses.
-func ProgramOptions() []tea.ProgramOption {
-	opts := []tea.ProgramOption{tea.WithAltScreen()}
-	if mouseFromEnv() {
-		opts = append(opts, tea.WithMouseCellMotion())
+func (m *Model) syncMouse() tea.Cmd {
+	want := m.wantsMouse()
+	if want == m.mouseCaptured {
+		return nil
 	}
-	return opts
+	m.mouseCaptured = want
+	if want {
+		return tea.EnableMouseCellMotion
+	}
+	return tea.DisableMouse
 }
 
 // handleMouse is where every mouse event ends. None is delegated as it arrives:
@@ -66,9 +85,11 @@ func ProgramOptions() []tea.ProgramOption {
 // cursor. The wheel becomes up/down keypresses for the current view; a left
 // click inside the frame selects a row, and a second one on the same line
 // opens it the way Enter does. A left click on a breadcrumb goes back to that
-// view, and a right click anywhere is Esc.
+// view, and a right click anywhere is Esc. Reports the terminal sent before it
+// was told to stop still arrive, so a view that does not want the mouse
+// ignores them here.
 func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
-	if !m.mouseOn || msg.Action != tea.MouseActionPress || m.mouseBlocked() {
+	if !m.wantsMouse() || msg.Action != tea.MouseActionPress || m.mouseBlocked() {
 		return nil
 	}
 	switch msg.Button {

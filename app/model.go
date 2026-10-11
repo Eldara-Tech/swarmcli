@@ -63,10 +63,13 @@ type Model struct {
 	telemetryNoticeActive bool
 
 	// Mouse capture, on unless MouseEnv switches it off and toggled by
-	// `:mouse`; see mouse.go. mouseNoticeActive shows the toggle's result on
-	// the stack bar until the next keystroke, the way the disclosure above is
-	// shown. lastClickAt and lastClickLine time a double click.
+	// `:mouse`; see mouse.go. mouseCaptured is whether the terminal reports the
+	// mouse right now, which syncMouse keeps in step with the view.
+	// mouseNoticeActive shows the toggle's result on the stack bar until the
+	// next keystroke, the way the disclosure above is shown. lastClickAt and
+	// lastClickLine time a double click.
 	mouseOn           bool
+	mouseCaptured     bool
 	mouseNoticeActive bool
 	lastClickAt       time.Time
 	lastClickLine     int

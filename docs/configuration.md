@@ -17,7 +17,7 @@ apply to every build.
 | `LOG_LEVEL` | both | Log verbosity: `debug`, `info`, `warn`, `error`. | `debug` in dev, `info` in prod | startup |
 | `DOCKER_CONTEXT` | both | Docker context to talk to. It overrides `docker context use`, so while it is set the context switcher refuses to move to a different context rather than writing a switch that could not take effect. | the active context | startup |
 | `SWARMCLI_TELEMETRY` | both | Governs the one request swarmcli makes at startup. Unset reports usage and checks for updates. `off` stops [usage reporting](license.md#usage-reporting) — no install id, nothing about your machine — while still telling you when a newer release exists. `none` makes no outbound request at all, which is what an air-gapped or policy-restricted cluster wants. | unset (reporting on) | startup |
-| `SWARMCLI_MOUSE` | both | `off` starts the TUI without mouse support, so the terminal's own text selection works without a modifier key. With it on — the default — the wheel moves the selection, a click selects a row, a double click opens it, a right click is Esc and a click on a breadcrumb goes back to that view; hold Shift (Option in iTerm2) to select text. `:mouse` toggles it for the session either way. Accepts the same spellings of off as `SWARMCLI_TELEMETRY`; anything else leaves it on. | unset (mouse on) | startup |
+| `SWARMCLI_MOUSE` | both | `off` starts the TUI without mouse support, so the terminal's own text selection works without a modifier key. With it on — the default — the lists take the mouse: the wheel moves the selection, a click selects a row, a double click opens it, a right click is Esc and a click on a breadcrumb goes back to that view; hold Shift (Option in iTerm2) to select text there. Views that show text, such as inspect, logs and help, always leave the mouse to the terminal; see [Mouse and text selection](#mouse-and-text-selection). `:mouse` toggles it for the session either way. Accepts the same spellings of off as `SWARMCLI_TELEMETRY`; anything else leaves it on. | unset (mouse on) | startup |
 | `SWARMCLI_CHARTS_ALLOW_PLAINTEXT` | both | Allows chart repositories served over plain `http://`, which are refused by default (see [charts/README.md](../charts/README.md#transport)). | unset (https only) | `charts` commands |
 | `SWARMCLI_CHARTS_NO_AUTO_UPDATE` | both | Stops a `charts` command refreshing a repository index before resolving a chart from it. `--no-repo-update` does the same for one invocation. | unset (refreshes) | `charts` commands |
 | `EDITOR` | both | Editor invoked by the in-TUI edit actions (stack, config, secret). | `nano` | edit action |
@@ -59,6 +59,29 @@ and the license file are installed into a swarm. There is no precedence between
 them, because neither is loaded on its own, and
 [Features](features.md) for how `SWARMCLI_REVEAL_IMAGE`,
 `SWARMCLI_SHELL_CMD`, and `SWARMCLI_FORWARD_IDLE_TIMEOUT` are used.
+
+## Mouse and text selection
+
+With the mouse on, the lists take it: the wheel moves the selection, a click
+selects a row, a double click opens it, a right click is Esc and a click on a
+breadcrumb goes back to that view. To select text in a list, hold the
+terminal's bypass modifier while you drag. Views that show text — inspect, logs
+and help — leave the mouse to the terminal, so a plain drag selects and copies.
+The wheel scrolls those views only where the terminal turns it into arrow keys;
+the keys always do. In the bordered layout a selection picks up the frame's
+`│`, and `f` (fullscreen) drops the border.
+
+| Terminal | Select text in a list | Wheel in inspect, logs and help |
+|---|---|---|
+| iTerm2 | Option-drag | Off by default: Settings → Advanced → "Scroll wheel sends arrow keys when in alternate screen mode" |
+| Terminal.app | ⌘R turns mouse reporting off; drag, then ⌘R again | If it does not scroll: Settings → Profiles → Keyboard → "Scroll alternate screen" |
+| xterm | Shift-drag | Off by default: set the `XTerm*alternateScroll: true` resource |
+| Windows Terminal 1.20+, GNOME Terminal and other VTE terminals, Konsole, kitty, Alacritty, WezTerm, Ghostty | Shift-drag | On |
+| VS Code | Shift-drag on Windows and Linux; on macOS, Option-drag once `terminal.integrated.macOptionClickForcesSelection` is on | On |
+
+Under tmux with `set -g mouse on`, tmux holds the mouse whatever swarmcli does: a
+drag selects into tmux's copy mode, Shift-drag selects in the outer terminal,
+and the wheel does not scroll the text views, so use the keys.
 
 ## The Docker context
 

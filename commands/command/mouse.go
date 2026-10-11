@@ -24,10 +24,12 @@ func (Mouse) Description() string {
 func (Mouse) Spec() registry.CommandSpec {
 	return registry.CommandSpec{
 		Detail: "Switches mouse support off, or back on, until swarmcli exits. " +
-			"With it on, the wheel moves the selection, a click selects a row, " +
-			"a double click opens it, a right click is Esc and a click on a " +
-			"breadcrumb goes back to that view; hold Shift (Option in iTerm2) " +
-			"to select text. It starts on unless SWARMCLI_MOUSE=off.",
+			"With it on, the lists take the mouse: the wheel moves the selection, " +
+			"a click selects a row, a double click opens it, a right click is Esc " +
+			"and a click on a breadcrumb goes back to that view; hold Shift " +
+			"(Option in iTerm2) to select text there. Views that show text, such " +
+			"as inspect, logs and help, leave the mouse to the terminal. It " +
+			"starts on unless SWARMCLI_MOUSE=off.",
 		Examples: []string{":mouse"},
 	}
 }
