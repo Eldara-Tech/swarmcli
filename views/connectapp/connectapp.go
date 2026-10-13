@@ -206,7 +206,7 @@ func (m *Model) download(unavailable string) string {
 		headingStyle.Render("SwarmCLI for iPhone and Android"),
 		textStyle.Render(wordwrap.String("Swarm health, logs and restarts from your phone. Free.", textColumn)),
 		"",
-		textStyle.Render(wordwrap.String("Scan to get it from the App Store or Google Play.", textColumn)),
+		textStyle.Render(wordwrap.String("Scan with your phone for the app.", textColumn)),
 		"",
 		greyStyle.Render(wordwrap.String("No swarm at hand? The app has a built-in demo swarm.", textColumn)),
 	}
