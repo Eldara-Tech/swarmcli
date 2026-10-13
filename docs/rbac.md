@@ -39,11 +39,13 @@ Disabled or missing users get **403** before any Docker API call.
 
 Every request, reads included, is authorised against the roles bound to
 the caller. The policy is default-deny: a request passes only if one of
-those roles grants its resource and verb. Three roles are built in:
+those roles grants its resource and verb. Four roles are built in
+(`responder` on rbac-proxy releases that include it):
 
 | Role | Grants |
 |---|---|
 | `viewer` | Read-only: stacks, stack logs, services, nodes, networks. No secrets, volumes or configs; no exec, port-forward, deploy or other mutation. |
+| `responder` | Everything `viewer` reads, plus updating services — which the proxy limits to scaling, restarting and rolling back, because the role cannot create services. Meant for [phones](mobile-app.md). |
 | `operator` | Everything `viewer` reads, plus volumes and configs; deploy and update stacks and services; exec and port-forward into non-protected tasks. No deletes, no reading secrets, no swarm-level state. |
 | `admin` | Everything. |
 
