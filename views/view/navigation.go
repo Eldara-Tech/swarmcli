@@ -36,6 +36,10 @@ type GoBackMsg struct{}
 // OpenUnlockDialogMsg requests the app to open the swarm unlock-key dialog.
 type OpenUnlockDialogMsg struct{}
 
+// OpenConnectAppMsg requests the app to open the popup that connects the
+// SwarmCLI phone app (the "c" key and :connect).
+type OpenConnectAppMsg struct{}
+
 // OpenUpdateDialogMsg requests the app to force-show the "update available"
 // notice on demand (the dev-only :dev-update command), bypassing the
 // per-version dismissal. Version overrides the displayed latest version when

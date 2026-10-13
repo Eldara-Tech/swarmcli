@@ -33,8 +33,15 @@ import (
 // Update handles msg, then switches mouse reporting to suit the view that is
 // current afterwards.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// An open phone-app popup sees every non-key message as well: its Connect
+	// tab is an extension's, and the replies to its own commands are types the
+	// app has never heard of. Keys reach it through handleKey, exclusively.
+	var popupCmd tea.Cmd
+	if _, isKey := msg.(tea.KeyMsg); !isKey && m.connectApp.Visible() {
+		popupCmd = m.connectApp.Update(msg)
+	}
 	next, cmd := m.update(msg)
-	return next, tea.Batch(cmd, m.syncMouse())
+	return next, tea.Batch(popupCmd, cmd, m.syncMouse())
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -53,10 +60,11 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// handles — not the first key of the session. While a startup overlay is up
 	// it covers the screen and takes every keystroke, so retiring the notice
 	// there would retire something nobody could have read.
-	if m.telemetryNoticeActive || m.mouseNoticeActive {
+	if m.telemetryNoticeActive || m.mouseNoticeActive || m.connectNoticeActive {
 		if _, isKey := msg.(tea.KeyMsg); isKey {
 			m.telemetryNoticeActive = false
 			m.mouseNoticeActive = false
+			m.connectNoticeActive = false
 		}
 	}
 
@@ -178,7 +186,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		// If an app-level dialog is active, route all keys to handleKey
 		// which forwards them to the dialog exclusively.
-		if m.appErrorDialogActive || m.unlockDialogActive || m.updateDialogActive {
+		if m.appErrorDialogActive || m.unlockDialogActive || m.updateDialogActive || m.connectApp.Visible() {
 			return m.handleKey(msg)
 		}
 
@@ -370,7 +378,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateDialogActive = false
 			m.updateDialog.Visible = false
 			if msg.CheckboxChecked && m.pendingUpdateVersion != "" {
-				if err := (settings.Settings{DismissedUpdateVersion: m.pendingUpdateVersion}).Save(); err != nil {
+				s := settings.Load()
+				s.DismissedUpdateVersion = m.pendingUpdateVersion
+				if err := s.Save(); err != nil {
 					swarmlog.L().Infow("failed to persist update-notice dismissal", "error", err)
 				}
 			}
@@ -390,6 +400,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmd := m.delegateToCurrentView(msg)
 		return m, cmd
+
+	case view.OpenConnectAppMsg:
+		return m, m.openConnectApp()
 
 	case view.OpenUnlockDialogMsg:
 		m.unlockDialog.Show()
@@ -592,6 +605,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// If the phone-app popup is open, forward keys to it exclusively
+	if m.connectApp.Visible() {
+		cmd := m.connectApp.Update(msg)
+		return m, cmd
+	}
+
 	// If current view is capturing input, forward keys to it first
 	if viewWithDialog, ok := m.currentView.(interface{ CapturesInput() bool }); ok {
 		if viewWithDialog.CapturesInput() {
@@ -732,6 +751,16 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// The phone-app popup. A view that binds "c" itself keeps it (configs
+	// clones with it, contexts creates); :connect reaches the popup there.
+	if msg.String() == connectAppKey && !m.hidesGlobalKeys() && !m.viewOwnsKey(connectAppKey) {
+		if searchView, ok := m.currentView.(interface{ IsSearching() bool }); ok && searchView.IsSearching() {
+			cmd := m.currentView.Update(msg)
+			return m, cmd
+		}
+		return m, m.openConnectApp()
+	}
+
 	// Global quit handler: Ctrl+Q (primary) and Ctrl+C (standard terminal fallback)
 	if msg.String() == "ctrl+q" || msg.Type == tea.KeyCtrlC {
 		exitCmd := m.currentView.OnExit()
@@ -751,7 +780,9 @@ func (m *Model) openHelp() tea.Cmd {
 	if provider, ok := m.currentView.(interface {
 		HelpContent() []helpview.HelpCategory
 	}); ok {
-		categories = provider.HelpContent()
+		// The view's own screen, plus the keys that work everywhere, which a
+		// view describing itself has no reason to know about.
+		categories = append(provider.HelpContent(), helpview.FromKeys("", nil, m.globalHelpEntries())...)
 	} else {
 		categories = helpview.FromKeys(
 			m.currentView.FrameTitle(),

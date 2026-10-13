@@ -113,7 +113,8 @@ func (m *Model) dialogActive() bool {
 	return m.appErrorDialogActive ||
 		m.unlockDialogActive ||
 		m.updateDialogActive ||
-		m.contextDriftDialogActive
+		m.contextDriftDialogActive ||
+		m.connectApp.Visible()
 }
 
 // showContextDriftNotice raises the confirm-mode dialog offering the switch.

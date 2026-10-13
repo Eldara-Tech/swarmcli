@@ -413,18 +413,6 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			return m.confirmDialog.Update(msg)
 		}
 
-		// Handle keyboard shortcuts
-		if msg.String() == "c" {
-			m.createDialogActive = true
-			m.createDialogStep = "source"
-			m.createStackSource = "file"
-			m.createNameInput.SetValue("")
-			m.createFileInput.SetValue("")
-			m.createDialogContent = defaultStackTemplate
-			m.createDialogError = ""
-			return nil
-		}
-
 		// --- normal mode ---
 		// If ESC is pressed and there's an active filter, clear it instead of quitting
 		if msg.Type == tea.KeyEsc && m.List.Query != "" {
@@ -476,7 +464,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 
 		// 'g' goes to the chart release this stack belongs to, if any.
 		// Lowercase because capitals in this view are its sort keys, and 'c'
-		// is already create-stack.
+		// is the app's phone-app key.
 		if msg.String() == "g" {
 			if m.List.Cursor < len(m.List.Filtered) {
 				return m.chartJumpCmd(m.List.Filtered[m.List.Cursor].Name)

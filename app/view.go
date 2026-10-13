@@ -37,7 +37,7 @@ func (m *Model) View() string {
 		if inputBar != "" {
 			out = lipgloss.JoinVertical(lipgloss.Left, inputBar, out)
 		}
-		return m.overlayStartup(m.overlayUnlock(m.overlayAppError(m.overlayUpdate(m.overlayContextDrift(out)))))
+		return m.overlayStartup(m.overlayUnlock(m.overlayAppError(m.overlayUpdate(m.overlayContextDrift(m.overlayConnectApp(out))))))
 	}
 
 	systemInfo := m.systemInfo.View()
@@ -69,7 +69,7 @@ func (m *Model) View() string {
 	rows = append(rows, framedView, m.renderStackBar())
 
 	out := lipgloss.JoinVertical(lipgloss.Left, rows...)
-	return m.overlayStartup(m.overlayUnlock(m.overlayAppError(m.overlayUpdate(m.overlayContextDrift(out)))))
+	return m.overlayStartup(m.overlayUnlock(m.overlayAppError(m.overlayUpdate(m.overlayContextDrift(m.overlayConnectApp(out))))))
 }
 
 // renderInputBar renders whichever of the ":" command bar and the "/" search
@@ -93,11 +93,15 @@ func (m *Model) globalHelpEntries() []helpbar.HelpEntry {
 	if m.hidesGlobalKeys() {
 		return nil
 	}
-	return []helpbar.HelpEntry{
-		{Key: "f", Desc: "Fullscreen"},
-		{Key: "?", Desc: "Help"},
-		{Key: helpbar.KeyQuit, Desc: "Quit"},
+	var entries []helpbar.HelpEntry
+	if !m.viewOwnsKey(connectAppKey) {
+		entries = append(entries, helpbar.HelpEntry{Key: connectAppKey, Desc: "Connect app"})
 	}
+	return append(entries,
+		helpbar.HelpEntry{Key: "f", Desc: "Fullscreen"},
+		helpbar.HelpEntry{Key: "?", Desc: "Help"},
+		helpbar.HelpEntry{Key: helpbar.KeyQuit, Desc: "Quit"},
+	)
 }
 
 // hidesGlobalKeys reports whether the current view suppresses the app-level

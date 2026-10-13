@@ -9,6 +9,7 @@ import (
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	"github.com/Eldara-Tech/swarmcli/v2/views/commandinput"
 	"github.com/Eldara-Tech/swarmcli/v2/views/confirmdialog"
+	"github.com/Eldara-Tech/swarmcli/v2/views/connectapp"
 	"github.com/Eldara-Tech/swarmcli/v2/views/helpbar"
 	"github.com/Eldara-Tech/swarmcli/v2/views/searchinput"
 	systeminfoview "github.com/Eldara-Tech/swarmcli/v2/views/systeminfo"
@@ -67,6 +68,7 @@ func newTestAppModel(cv view.View) *Model {
 		unlockDialog:       unlockdialog.New(200, 50),
 		updateDialog:       confirmdialog.New(200, 50),
 		contextDriftDialog: confirmdialog.New(200, 50),
+		connectApp:         connectapp.New(),
 		systemInfo:         systeminfoview.New(docker.DefaultDeps(), "test", "test"),
 		terminalWidth:      200,
 		terminalHeight:     50,
