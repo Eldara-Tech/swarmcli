@@ -91,8 +91,12 @@ func TestHelpKey_PrefersTheViewsOwnScreen(t *testing.T) {
 	_, cmd := m.Update(runeKey('?'))
 	categories := helpCategories(t, cmd)
 
-	require.Len(t, categories, 1)
+	require.Len(t, categories, 2)
 	require.Equal(t, "Written by hand", categories[0].Title)
+	// A view that writes its own screen still gets the keys that work
+	// everywhere: it has no reason to know them, and they used to be missing.
+	require.Equal(t, "Everywhere", categories[1].Title)
+	require.Contains(t, categories[1].Items, helpview.HelpItem{Keys: "<f>", Description: "Fullscreen"})
 }
 
 func TestHelpKey_IsACharacterWhileSearching(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	swarmlog "github.com/Eldara-Tech/swarmcli/v2/utils/log"
 	"github.com/Eldara-Tech/swarmcli/v2/views/commandinput"
 	"github.com/Eldara-Tech/swarmcli/v2/views/confirmdialog"
+	"github.com/Eldara-Tech/swarmcli/v2/views/connectapp"
 	loadingview "github.com/Eldara-Tech/swarmcli/v2/views/loading"
 	"github.com/Eldara-Tech/swarmcli/v2/views/searchinput"
 	systeminfoview "github.com/Eldara-Tech/swarmcli/v2/views/systeminfo"
@@ -73,6 +74,10 @@ type Model struct {
 	mouseNoticeActive bool
 	lastClickAt       time.Time
 	lastClickLine     int
+
+	// App-level popup that connects the SwarmCLI phone app ("c", :connect).
+	// Its own Visible() is the "active" flag the other dialogs keep separately.
+	connectApp *connectapp.Model
 
 	// App-level "the Docker context changed outside swarmcli" prompt. The
 	// session is pinned to one context (docker.SessionContext), so a
@@ -157,6 +162,7 @@ func InitialModel() *Model {
 		unlockDialog:       unlockdialog.New(terminalWidth, terminalHeight),
 		updateDialog:       confirmdialog.New(terminalWidth, terminalHeight),
 		contextDriftDialog: confirmdialog.New(terminalWidth, terminalHeight),
+		connectApp:         connectapp.New(),
 		terminalWidth:      terminalWidth,
 		terminalHeight:     terminalHeight,
 		mouseOn:            mouseFromEnv(),

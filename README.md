@@ -263,6 +263,7 @@ TEST_LOG=1 ./test-setup/testenv.sh test
 | Key      | Action                  |
 | :------- | :---------------------- |
 | `?`      | Show Help / Cheat Sheet |
+| `c`      | Get the SwarmCLI phone app (`:connect` where a view uses `c` itself) |
 | `:stack` | Navigate to Stacks      |
 | `:svc`   | Navigate to Services    |
 | `:node`  | Navigate to Nodes       |

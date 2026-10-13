@@ -55,6 +55,7 @@ views/
   volumes/                 Volume list and file browser. This is the view the `volumes-all-nodes` Pro gate below applies to
   taskutil/                Shared task helpers used by the task-bearing views
   unlockdialog/            Secret/config unlock prompt
+  connectapp/              The phone-app popup ("c", :connect): the download QR code, plus a Connect tab an extension supplies through connectapp.NewPane
 commands/
   api/                     Command context & arg parsing
   command/                 Top-level built-in commands (help.go, contexts.go, quit.go, alias.go, bootstrap.go, devupdate.go); docker-entity commands live under command/docker/<entity>/ls.go (service, node, network, volume, secret, config). devupdate.go registers `:dev-update` only when SWARMCLI_ENV=dev (force-shows the update-available notice for previewing)
@@ -74,10 +75,11 @@ features/
 args/
   args.go                  Argument parsing shared by the CLI dispatch path
 settings/
-  settings.go              Persists small single-purpose CLI preferences to the user config dir
+  settings.go              Persists small single-purpose CLI preferences to the user config dir. Writers load, set their own field and save: Save writes the whole file
 ui/
   columns.go, dialog/, components/, framebox
                            Shared widgets nearly every view under views/ builds on — the filterable list, dialog styling, the frame box
+  qr/                      QR codes drawn as half-block text, white on black so a phone reads them on any terminal theme
 core/primitives/hash/      Small shared primitives
 assets/                    Logos and the demo GIF (no Go code)
 utils/log/

@@ -284,12 +284,16 @@ func TestKey_N_OpensCreateDialog(t *testing.T) {
 	require.Equal(t, "source", m.createDialogStep)
 }
 
-func TestKey_C_OpensCreateDialog(t *testing.T) {
+// "c" was an undocumented second key for create; it is the app's phone-app key
+// now, and "n" is the one the help bar has always advertised.
+func TestKey_C_LeavesCreateToN(t *testing.T) {
 	m := testModel()
 	loadStacks(m, fakeStacks("s1"))
 	m.Update(key("c"))
-	require.True(t, m.createDialogActive)
-	require.Equal(t, "source", m.createDialogStep)
+	require.False(t, m.createDialogActive)
+	for _, entry := range m.ShortHelpItems() {
+		require.NotEqual(t, "c", entry.Key, "the stacks view must not claim c from the app")
+	}
 }
 
 func TestKey_CtrlD_StackDeleteIntent(t *testing.T) {
