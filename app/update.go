@@ -60,11 +60,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// handles — not the first key of the session. While a startup overlay is up
 	// it covers the screen and takes every keystroke, so retiring the notice
 	// there would retire something nobody could have read.
-	if m.telemetryNoticeActive || m.mouseNoticeActive || m.connectNoticeActive {
+	if m.telemetryNoticeActive || m.mouseNoticeActive {
 		if _, isKey := msg.(tea.KeyMsg); isKey {
 			m.telemetryNoticeActive = false
 			m.mouseNoticeActive = false
-			m.connectNoticeActive = false
 		}
 	}
 
@@ -378,9 +377,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateDialogActive = false
 			m.updateDialog.Visible = false
 			if msg.CheckboxChecked && m.pendingUpdateVersion != "" {
-				s := settings.Load()
-				s.DismissedUpdateVersion = m.pendingUpdateVersion
-				if err := s.Save(); err != nil {
+				if err := (settings.Settings{DismissedUpdateVersion: m.pendingUpdateVersion}).Save(); err != nil {
 					swarmlog.L().Infow("failed to persist update-notice dismissal", "error", err)
 				}
 			}

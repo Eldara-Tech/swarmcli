@@ -2,11 +2,8 @@
 // Copyright © 2026 Eldara Tech
 
 // Package settings persists small, single-purpose CLI preferences to the user
-// config dir (~/.config/swarmcli): the version at which the user dismissed the
-// startup update notice, and whether the phone-app notice has been shown.
-//
-// Every writer loads, changes its own field and saves, because Save writes the
-// whole file and a fresh Settings{} would erase the other fields.
+// config dir (~/.config/swarmcli). Today it records only the version at which
+// the user dismissed the startup update notice.
 package settings
 
 import (
@@ -33,10 +30,6 @@ type Settings struct {
 	// ticked "do not show again for this version" in the startup update
 	// notice. A different latest version re-shows the notice.
 	DismissedUpdateVersion string `json:"dismissedUpdateVersion,omitempty"`
-
-	// ConnectAppNoticeShown records that the one-time "press c" line about the
-	// phone app has been on the stack bar once, so it is not shown again.
-	ConnectAppNoticeShown bool `json:"connectAppNoticeShown,omitempty"`
 }
 
 func path() (string, error) {
