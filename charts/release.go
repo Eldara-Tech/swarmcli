@@ -20,6 +20,8 @@ import (
 
 	cerrdefs "github.com/containerd/errdefs"
 	"gopkg.in/yaml.v3"
+
+	"github.com/Eldara-Tech/swarmcli/v2/docker"
 )
 
 // maxConfigPayload guards against Docker's per-Config size limit (~500 KB). We
@@ -1260,7 +1262,7 @@ var waitPollInterval = 2 * time.Second
 // starts and then dies inside UpdateConfig.Monitor counts as a rollout failure,
 // so returning at first parity reports success for a service that is about to
 // crash-loop.
-const defaultStabilityWindow = 5 * time.Second
+const defaultStabilityWindow = docker.DefaultMonitor
 
 // waitReady polls until every service in the release is running its target task
 // count and has held it for the stability window, or the timeout elapses.

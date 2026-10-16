@@ -140,6 +140,40 @@ func TestServiceStatesFromReportsAFinishedJobAsCompleted(t *testing.T) {
 	require.Equal(t, PhaseConverged, Rollup(states).Phase, "and the release is converged, not degraded")
 }
 
+// A service run on a schedule by its restart delay rests with nothing running
+// between runs, which is its success state as much as a finished job's: the
+// ratio counts the run that ended, and the release is converged
+// (Eldara-Tech/swarmcli-cd#322).
+func TestServiceStatesFromReportsARestingServiceAsCompleted(t *testing.T) {
+	svc := stackService("renovate", "mystack", 1)
+	delay := 4 * time.Hour
+	svc.Spec.TaskTemplate.RestartPolicy = &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny, Delay: &delay}
+	start := time.Now().Add(-time.Hour)
+
+	snap := &docker.SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{svc},
+		Tasks: []swarm.Task{{
+			ID: "run", ServiceID: "renovate", NodeID: "n1", Slot: 1,
+			Meta:         swarm.Meta{CreatedAt: start},
+			DesiredState: swarm.TaskStateShutdown,
+			Status:       swarm.TaskStatus{State: swarm.TaskStateComplete},
+		}, {
+			ID: "next", ServiceID: "renovate", NodeID: "n1", Slot: 1,
+			Meta:         swarm.Meta{CreatedAt: start.Add(10 * time.Minute)},
+			DesiredState: swarm.TaskStateReady,
+			Status:       swarm.TaskStatus{State: swarm.TaskStateReady},
+		}},
+	}
+
+	states := ServiceStatesFrom(snap, "mystack")
+	require.Len(t, states, 1)
+	require.False(t, states[0].Job)
+	require.Equal(t, "1/1", states[0].Replicas)
+	require.Equal(t, "completed", states[0].Status)
+	require.Equal(t, PhaseConverged, Rollup(states).Phase)
+}
+
 // A native job's ratio is its progress, completions against TotalCompletions,
 // and it reads "completed" only once every completion is in (issue #666).
 func TestServiceStatesFromReportsNativeJobProgress(t *testing.T) {
