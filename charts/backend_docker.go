@@ -231,7 +231,9 @@ func ServiceStatesFrom(snap *docker.SwarmSnapshot, name string) []ServiceState {
 			// A finished job has no running task, so the replica ratio built
 			// from ServiceEntry reads 0/N and the release looks degraded when
 			// it is complete. Count the completed tasks toward the target and
-			// say so in the status column (issue #443).
+			// say so in the status column (issue #443). A service resting out
+			// its restart delay after a clean run is the same picture
+			// (Eldara-Tech/swarmcli-cd#322).
 			switch {
 			// A native job's ratio is its progress, as `docker service ls`
 			// shows it: completions against the target.
@@ -240,7 +242,7 @@ func ServiceStatesFrom(snap *docker.SwarmSnapshot, name string) []ServiceState {
 				if c.Completed >= c.Desired {
 					st.Status = "completed"
 				}
-			case c.Job && c.Completed > 0:
+			case c.Completed > 0:
 				st.Replicas = fmt.Sprintf("%d/%d", c.Running+c.Completed, c.Desired)
 				st.Status = "completed"
 			}
