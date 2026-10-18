@@ -2,7 +2,7 @@ module github.com/Eldara-Tech/swarmcli/v2
 
 go 1.27
 
-toolchain go1.27.0
+toolchain go1.27.2
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
