@@ -1,0 +1,193 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright © 2026 Eldara Tech
+
+# Installs the latest release through every published channel, the way the
+# docs tell a user to, and fails when one breaks, goes stale or warns. Nothing
+# else installs from the channels: release CI checks what it uploaded, not what
+# a user gets. Homebrew 6 made `brew tap` + `brew install swarmcli` fail with an
+# untrusted tap, and nobody noticed for four months.
+name: install-channels
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/install-channels.yml
+      - scripts/expect-installed-version.sh
+
+permissions: read-all
+
+concurrency:
+  group: install-channels-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.latest.outputs.version }}
+      expect: ${{ steps.latest.outputs.expect }}
+    steps:
+      - name: Resolve the latest GA release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # The merged build publishes about an hour after the oss half, so
+        # inside that window the channels it feeds still serve the previous
+        # version. EXPECT_VERSION is left empty until the release is 2 h old.
+        run: |
+          read -r tag published < <(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '"\(.tag_name) \(.published_at)"')
+          version=${tag#v}
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ $(( $(date +%s) - $(date -d "$published" +%s) )) -ge 7200 ]; then
+            echo "expect=$version" >> "$GITHUB_OUTPUT"
+          fi
+          echo "latest GA: $tag, published $published"
+
+  homebrew:
+    needs: release
+    runs-on: macos-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { cask: swarmcli, build: business }
+          - { cask: swarmcli-oss, build: oss }
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: brew install Eldara-Tech/tap/${{ matrix.cask }}
+        run: |
+          set -o pipefail
+          brew install "Eldara-Tech/tap/${{ matrix.cask }}" 2>&1 | tee "$RUNNER_TEMP/brew.log"
+      - name: Check the installed build
+        env:
+          EXPECT_VERSION: ${{ needs.release.outputs.expect }}
+        run: scripts/expect-installed-version.sh ${{ matrix.build }} swarmcli
+      - name: Fail on Homebrew warnings
+        run: |
+          if grep -E '^(Warning|Error):' "$RUNNER_TEMP/brew.log"; then
+            echo "::error::brew warned while installing ${{ matrix.cask }}"
+            exit 1
+          fi
+
+  install-script:
+    needs: release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        edition:
+          - { arg: '', build: business }
+          - { arg: ce, build: oss }
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: curl -fsSL https://swarmcli.io/install.sh | sh
+        run: curl -fsSL https://swarmcli.io/install.sh | sh -s -- ${{ matrix.edition.arg }} "$HOME/.local/bin"
+      - name: Check the installed build
+        env:
+          EXPECT_VERSION: ${{ needs.release.outputs.expect }}
+        run: scripts/expect-installed-version.sh ${{ matrix.edition.build }} "$HOME/.local/bin/swarmcli"
+
+  docker:
+    needs: release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+        image:
+          # There is no moving tag for the oss image, by design.
+          - { tag: latest, build: business }
+          - { tag: oss, build: oss }
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check the image's build
+        env:
+          EXPECT_VERSION: ${{ needs.release.outputs.expect }}
+          REF: ${{ matrix.image.tag == 'oss' && format('v{0}-oss', needs.release.outputs.version) || matrix.image.tag }}
+        run: scripts/expect-installed-version.sh ${{ matrix.image.build }} docker run --rm --pull always "eldaratech/swarmcli:$REF"
+
+  scoop:
+    needs: release
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { manifest: swarmcli, build: business }
+          - { manifest: swarmcli-oss, build: oss }
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Scoop
+        shell: pwsh
+        run: |
+          iex "& {$(irm get.scoop.sh)} -RunAsAdmin"
+          "$env:USERPROFILE\scoop\shims" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: scoop install ${{ matrix.manifest }}
+        shell: pwsh
+        run: |
+          scoop bucket add eldara-tech https://github.com/Eldara-Tech/scoop-bucket
+          scoop install ${{ matrix.manifest }} *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\scoop.log"
+      - name: Check the installed build
+        shell: bash
+        env:
+          EXPECT_VERSION: ${{ needs.release.outputs.expect }}
+        run: scripts/expect-installed-version.sh ${{ matrix.build }} swarmcli
+      - name: Fail on Scoop warnings
+        shell: bash
+        run: |
+          if grep -E '^(WARN|ERROR)' "$RUNNER_TEMP/scoop.log"; then
+            echo "::error::scoop warned while installing ${{ matrix.manifest }}"
+            exit 1
+          fi
+
+  archives:
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download every release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "v${{ needs.release.outputs.version }}" -R "$GITHUB_REPOSITORY" -D "$RUNNER_TEMP/assets"
+      # install.sh verifies nothing it downloads, so this is the one check that
+      # the archives match the checksums published beside them.
+      - name: Verify every archive against its checksums file
+        working-directory: ${{ runner.temp }}/assets
+        env:
+          FRESH: ${{ needs.release.outputs.expect == '' }}
+        run: |
+          for sums in checksums-oss.txt checksums-merged.txt; do
+            if [ ! -f "$sums" ] && [ "$FRESH" = true ]; then
+              echo "$sums not published yet; the release is under 2 h old"
+              continue
+            fi
+            sha256sum -c "$sums"
+          done
+          for archive in swarmcli_*; do
+            awk '{print $2}' checksums-*.txt | grep -qxF "$archive" || { echo "::error::$archive is in no checksums file"; exit 1; }
+          done
+      - name: Check the Linux x86_64 builds
+        working-directory: ${{ runner.temp }}/assets
+        run: |
+          for build in business oss; do
+            suffix=$([ "$build" = oss ] && echo _oss || true)
+            archive=swarmcli_Linux_x86_64$suffix.tar.gz
+            [ -f "$archive" ] || { echo "$archive not published yet"; continue; }
+            mkdir "$build" && tar -xzf "$archive" -C "$build"
+            EXPECT_VERSION=${{ needs.release.outputs.version }} \
+              "$GITHUB_WORKSPACE/scripts/expect-installed-version.sh" "$build" "./$build/swarmcli"
+          done
