@@ -155,7 +155,7 @@ publishes two artefacts under one tag, and the plain name is the full product:
 | License | this repository's code is Apache 2.0; the licensed code is commercial | wholly Apache 2.0 |
 | Contains | everything, with Business Edition features **inert** until a license verifies | the Community Edition, and nothing else |
 | Binary on disk | `swarmcli` | `swarmcli` (same name) |
-| Get it | `brew install swarmcli`, `scoop install swarmcli`, `eldaratech/swarmcli:<tag>` | `swarmcli-oss` on either, or `eldaratech/swarmcli:<tag>-oss` |
+| Get it | `brew install Eldara-Tech/tap/swarmcli`, `scoop install swarmcli`, `eldaratech/swarmcli:<tag>` | `swarmcli-oss` on either, or `eldaratech/swarmcli:<tag>-oss` |
 
 So **activating Business Edition is installing a license, not installing a
 different program.** If you already run `swarmcli` from the Homebrew tap, the
@@ -194,6 +194,10 @@ docker pull eldaratech/swarmcli:latest      # Docker
 
 The `swarmcli-be` forms of these commands no longer work — see [The retired
 `swarmcli-be` names](#the-retired-swarmcli-be-names) for the one-line switch.
+
+If `brew upgrade` reports nothing while a newer release exists, the tap was
+added before Homebrew 6 began requiring trust, and Homebrew skips it without a
+word. Run `brew trust eldara-tech/tap` once.
 
 For binary installs, replace the file on disk with the new archive's
 contents.
