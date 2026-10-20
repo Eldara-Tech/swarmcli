@@ -67,9 +67,11 @@ jobs:
         env:
           EXPECT_VERSION: ${{ needs.release.outputs.expect }}
         run: scripts/expect-installed-version.sh ${{ matrix.build }} swarmcli
+      # Under GitHub Actions brew prints warnings as `::warning::` annotations,
+      # not `Warning:` lines; both are matched.
       - name: Fail on Homebrew warnings
         run: |
-          if grep -E '^(Warning|Error):' "$RUNNER_TEMP/brew.log"; then
+          if grep -E '^(::(warning|error)[ :]|(Warning|Error):)' "$RUNNER_TEMP/brew.log"; then
             echo "::error::brew warned while installing ${{ matrix.cask }}"
             exit 1
           fi
