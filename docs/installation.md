@@ -27,7 +27,7 @@ manifest and image were renamed on 2026-08-07 and retired on 2026-09-11 — see
 brew install Eldara-Tech/tap/swarmcli
 ```
 
-The formula is hosted at
+The cask is hosted at
 [Eldara-Tech/homebrew-tap](https://github.com/Eldara-Tech/homebrew-tap).
 It conflicts with the `swarmcli-oss` cask and with the retired `swarmcli-be`
 one; brew will refuse to install two at once and will offer to remove the
@@ -36,7 +36,7 @@ other.
 ### Scoop (Windows)
 
 ```powershell
-scoop bucket add eldara https://github.com/Eldara-Tech/scoop-bucket
+scoop bucket add eldara-tech https://github.com/Eldara-Tech/scoop-bucket
 scoop install swarmcli
 ```
 
@@ -60,7 +60,8 @@ config `swarmcli-license`, so it is already persistent and follows the context
 rather than the container (see
 [License — Per-swarm storage](license.md#per-swarm-storage)).
 
-Available tags: `latest`, `vX.Y.Z`. Multi-arch images cover `linux/amd64`
+Available tags: `latest`, `vX.Y.Z`, and `vX.Y.Z-oss` for the
+[Apache-2.0 build](editions.md). Multi-arch images cover `linux/amd64`
 and `linux/arm64`.
 
 ### Raw binary
