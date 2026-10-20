@@ -71,6 +71,7 @@ jobs:
       # not `Warning:` lines; both are matched.
       - name: Fail on Homebrew warnings
         run: |
+          grep -q 'was successfully installed' "$RUNNER_TEMP/brew.log" || { echo "::error::brew.log does not hold brew's output"; exit 1; }
           if grep -E '^(::(warning|error)[ :]|(Warning|Error):)' "$RUNNER_TEMP/brew.log"; then
             echo "::error::brew warned while installing ${{ matrix.cask }}"
             exit 1
@@ -149,6 +150,7 @@ jobs:
       - name: Fail on Scoop warnings
         shell: bash
         run: |
+          grep -q 'was installed successfully' "$RUNNER_TEMP/scoop.log" || { echo "::error::scoop.log does not hold scoop's output"; exit 1; }
           if grep -E '^(WARN|ERROR)' "$RUNNER_TEMP/scoop.log"; then
             echo "::error::scoop warned while installing ${{ matrix.manifest }}"
             exit 1
