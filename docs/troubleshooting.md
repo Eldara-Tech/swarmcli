@@ -264,7 +264,7 @@ the package.** The `swarmcli-be` names were retired on 2026-09-11; install
 `swarmcli-be` names](installation.md#the-retired-swarmcli-be-names).
 
 **`scoop install swarmcli` cannot find the package.**
-Add the bucket first: `scoop bucket add eldara https://github.com/Eldara-Tech/scoop-bucket`.
+Add the bucket first: `scoop bucket add eldara-tech https://github.com/Eldara-Tech/scoop-bucket`.
 
 **Docker container starts but immediately exits.**
 The TUI requires a TTY. Pass `-it` to `docker run` and ensure your
