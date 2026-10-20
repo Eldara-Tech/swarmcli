@@ -11,11 +11,11 @@ superset of CE: the OSS feature set is included unchanged. Aliases, scripts,
 and CI invocations from a CE installation continue to work without
 modification when you switch to BE.
 
-The package/formula/image names are `swarmcli` for this build and
+The package/cask/image names are `swarmcli` for this build and
 `swarmcli-oss` for the wholly Apache-2.0 one, so the package manager can offer
 both artefacts side by side. They install the same binary name, so **you can
 have either at any time, but not both**. See [CE and BE are one
-download](#ce-and-be-are-one-download) below. The older `swarmcli-be` formula,
+download](#ce-and-be-are-one-download) below. The older `swarmcli-be` cask,
 manifest and image were renamed on 2026-08-07 and retired on 2026-09-11 — see
 [The retired `swarmcli-be` names](#the-retired-swarmcli-be-names).
 
