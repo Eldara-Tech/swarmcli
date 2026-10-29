@@ -263,7 +263,7 @@ func TestWaitWaveFailsFastOnAWedgedRelease(t *testing.T) {
 	quickPoll(t)
 	fb := newFakeBackend()
 	fb.services["fine"] = settled("fine")
-	fb.services["stuck"] = []ServiceState{{Name: "stuck", UpdateState: "paused"}}
+	fb.services["stuck"] = []ServiceState{{Name: "stuck", Running: 1, Desired: 1, UpdateState: "paused"}}
 	e := NewEngineWith(fb)
 
 	err := e.waitWave(context.Background(), []string{"fine", "stuck"}, time.Hour)

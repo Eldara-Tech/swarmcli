@@ -174,6 +174,46 @@ func TestServiceStatesFromReportsARestingServiceAsCompleted(t *testing.T) {
 	require.Equal(t, PhaseConverged, Rollup(states).Phase)
 }
 
+// The keycloak service in Eldara-Tech/swarmcli-cd#336: its update paused on a
+// failed task, a restart then brought the new spec up, and the service read
+// wedged although nothing was left on the old one. A second slot the rollout
+// never reached keeps the same pause wedged.
+func TestServiceStatesFromSettlesAPauseEverySlotHasOutgrown(t *testing.T) {
+	svc := stackService("keycloak", "mystack", 1)
+	started := time.Now().Add(-24 * time.Hour)
+	svc.UpdateStatus = &swarm.UpdateStatus{State: swarm.UpdateStatePaused, StartedAt: &started}
+	task := func(slot int, created time.Time, desired, state swarm.TaskState) swarm.Task {
+		return swarm.Task{
+			ServiceID: "keycloak", NodeID: "n1", Slot: slot,
+			Meta:         swarm.Meta{CreatedAt: created},
+			DesiredState: desired,
+			Status:       swarm.TaskStatus{State: state},
+		}
+	}
+	snap := &docker.SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{svc},
+		Tasks: []swarm.Task{
+			task(1, started.Add(-time.Hour), swarm.TaskStateShutdown, swarm.TaskStateShutdown),
+			task(1, started.Add(time.Minute), swarm.TaskStateShutdown, swarm.TaskStateFailed),
+			task(1, started.Add(2*time.Minute), swarm.TaskStateRunning, swarm.TaskStateRunning),
+		},
+	}
+
+	states := ServiceStatesFrom(snap, "mystack")
+	require.Len(t, states, 1)
+	require.Equal(t, "paused", states[0].UpdateState)
+	require.Equal(t, 1, states[0].UpToDate)
+	require.Equal(t, PhaseConverged, Rollup(states).Phase)
+
+	replicas := uint64(2)
+	snap.Services[0].Spec.Mode.Replicated.Replicas = &replicas
+	snap.Tasks = append(snap.Tasks, task(2, started.Add(-time.Hour), swarm.TaskStateRunning, swarm.TaskStateRunning))
+	states = ServiceStatesFrom(snap, "mystack")
+	require.Equal(t, 1, states[0].UpToDate)
+	require.Equal(t, PhaseWedged, Rollup(states).Phase)
+}
+
 // A native job's ratio is its progress, completions against TotalCompletions,
 // and it reads "completed" only once every completion is in (issue #666).
 func TestServiceStatesFromReportsNativeJobProgress(t *testing.T) {
