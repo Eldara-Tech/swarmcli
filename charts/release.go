@@ -55,6 +55,11 @@ type ServiceState struct {
 	// counts them wherever they sit — a down node's stale task included (see
 	// issue #480).
 	Running int
+	// UpToDate counts the tasks in Running created from the spec the service
+	// now holds: during an update, those created after it started. It is what
+	// tells a pause every slot has since outgrown from one still running the old
+	// spec somewhere (see Convergence).
+	UpToDate int
 	// Desired is the target task count over active nodes.
 	Desired int
 	// Completed counts tasks that ran to completion, and Job marks a service
@@ -1392,6 +1397,15 @@ func (s ServiceState) Convergence() Convergence {
 		}
 		// Not "converged" outright: the checks below still apply, and this is
 		// only the removal of an UpdateStatus that was never evidence.
+		state = ""
+	}
+	// Swarm never clears a pause on its own, but every task it creates after
+	// one, a restart included, runs the spec it now holds. Once those tasks meet
+	// the target nothing is left on the old spec, and the pause is history that
+	// read wedged until the next deploy (Eldara-Tech/swarmcli-cd#336). The same
+	// rule settles it in the swarm health verdict (#686); the checks below still
+	// apply.
+	if state == "paused" && s.UpToDate >= s.Desired {
 		state = ""
 	}
 	switch state {

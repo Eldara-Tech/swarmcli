@@ -217,6 +217,7 @@ func ServiceStatesFrom(snap *docker.SwarmSnapshot, name string) []ServiceState {
 		}
 		if c, ok := conv[e.ServiceName]; ok {
 			st.Running = c.Running
+			st.UpToDate = c.UpToDate
 			st.Desired = c.Desired
 			st.Completed = c.Completed
 			st.Job = c.Job
