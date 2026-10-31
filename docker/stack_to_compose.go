@@ -5,6 +5,7 @@ package docker
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types/swarm"
+	"github.com/docker/docker/client"
 	"gopkg.in/yaml.v3"
 )
 
@@ -310,12 +313,19 @@ func ReconstructStackCompose(stackName string) (string, error) {
 		netID2Name = map[string]string{}
 	}
 
+	cli, err := GetClient()
+	if err != nil {
+		return "", fmt.Errorf("docker client: %w", err)
+	}
+
 	// Inspect every service, then hand the parsed specs to the pure
 	// assembler. Keeping exec out of assembleCompose lets the reconstruction
 	// be unit-tested without Docker (see #430).
 	var services []ServiceInspect
 	for _, fullSvcName := range serviceNames {
-		si, err := inspectService(fullSvcName)
+		ctx, cancel := context.WithTimeout(context.Background(), apiTimeout)
+		si, err := inspectServiceWith(ctx, cli, fullSvcName)
+		cancel()
 		if err != nil {
 			l().Warnf("Failed to inspect service %s: %v", fullSvcName, err)
 			continue
@@ -763,11 +773,6 @@ func stackServicesArgs(stackName string) []string {
 	return contextArgs("stack", "services", stackName, "--format", "{{.Name}}")
 }
 
-// serviceInspectArgs builds the argument list for inspecting one service.
-func serviceInspectArgs(serviceName string) []string {
-	return contextArgs("service", "inspect", serviceName)
-}
-
 // networkListArgs builds the argument list for the id-to-name network listing.
 func networkListArgs() []string {
 	return contextArgs("network", "ls", "--no-trunc", "--format", "{{.ID}}\t{{.Name}}")
@@ -796,23 +801,21 @@ func getStackServices(stackName string) ([]string, error) {
 	return serviceNames, nil
 }
 
-// inspectService returns the inspect data for a service
-func inspectService(serviceName string) (*ServiceInspect, error) {
-	cmd := exec.Command("docker", serviceInspectArgs(serviceName)...)
-	var out bytes.Buffer
-	var errb bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	err := cmd.Run()
+// inspectServiceWith returns the spec a service actually stores. Not `docker
+// service inspect`: the CLI asks the daemon to insert swarmkit's defaults, so
+// every reconstructed stack showed a stop_grace_period, a restart_policy and
+// update/rollback configs nobody had deployed (#694).
+func inspectServiceWith(ctx context.Context, cli *client.Client, serviceName string) (*ServiceInspect, error) {
+	_, raw, err := cli.ServiceInspectWithRaw(ctx, serviceName, swarm.ServiceInspectOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("docker service inspect failed: %v\n%s", err, errb.String())
+		return nil, fmt.Errorf("service inspect: %w", err)
 	}
 
-	var arr []ServiceInspect
-	if err := json.Unmarshal(out.Bytes(), &arr); err != nil || len(arr) == 0 {
+	var si ServiceInspect
+	if err := json.Unmarshal(raw, &si); err != nil {
 		return nil, fmt.Errorf("failed to parse service inspect json: %w", err)
 	}
-	return &arr[0], nil
+	return &si, nil
 }
 
 // dockerNetworkIDToNameMap builds a map of network IDs to names

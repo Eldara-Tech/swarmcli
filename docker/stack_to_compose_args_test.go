@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// These three commands used to carry no --context at all, so they followed
+// These two commands used to carry no --context at all, so they followed
 // ~/.docker/config.json — neither the context the SDK client is connected to
 // nor the one DOCKER_CONTEXT names. A stack selected from one swarm could be
 // reconstructed from another's services and networks (#611).
@@ -22,9 +22,6 @@ func TestStackToComposeArgs_NameTheSessionContext(t *testing.T) {
 	require.Equal(t,
 		[]string{"--context", "swarm-a", "stack", "services", "web", "--format", "{{.Name}}"},
 		stackServicesArgs("web"))
-	require.Equal(t,
-		[]string{"--context", "swarm-a", "service", "inspect", "web_api"},
-		serviceInspectArgs("web_api"))
 	require.Equal(t,
 		[]string{"--context", "swarm-a", "network", "ls", "--no-trunc", "--format", "{{.ID}}\t{{.Name}}"},
 		networkListArgs())
@@ -41,6 +38,6 @@ func TestStackToComposeArgs_UnresolvableContextStillRuns(t *testing.T) {
 	activeContextFn = func() (string, error) { return "", errors.New("docker not running") }
 
 	require.Equal(t,
-		[]string{"service", "inspect", "web_api"},
-		serviceInspectArgs("web_api"))
+		[]string{"stack", "services", "web", "--format", "{{.Name}}"},
+		stackServicesArgs("web"))
 }
