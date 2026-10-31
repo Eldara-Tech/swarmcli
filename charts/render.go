@@ -6,6 +6,8 @@ package charts
 import (
 	"bytes"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -73,6 +75,14 @@ func Render(ch *Chart, ctx RenderContext) (string, error) {
 		return "", fmt.Errorf("chart '%s' rendered an empty manifest", ch.Metadata.Name)
 	}
 
+	// text/template prints '<no value>' for a key the values do not have. Charts
+	// test optional keys with {{ if }}, so missingkey=error is not an option, and
+	// without this a misspelt key, or values missing a key the chart reads, would
+	// deploy an image, a network or a secret named '<no value>' (#687).
+	if at, ok := noValue(merged, ""); ok {
+		return "", fmt.Errorf("rendered manifest: %s holds '<no value>', which a template prints for a value that is not set — set it, or check the key's spelling in the template", at)
+	}
+
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
@@ -86,6 +96,36 @@ func Render(ch *Chart, ctx RenderContext) (string, error) {
 		return "", fmt.Errorf("rendered manifest is not a valid Docker stack: %w", err)
 	}
 	return out, nil
+}
+
+// noValue returns the path of the first key or string under v that holds
+// text/template's '<no value>', in the dotted form the other manifest refusals
+// use.
+func noValue(v any, at string) (string, bool) {
+	switch v := v.(type) {
+	case map[string]any:
+		for _, k := range slices.Sorted(maps.Keys(v)) {
+			key := k
+			if at != "" {
+				key = at + "." + k
+			}
+			if strings.Contains(k, "<no value>") {
+				return key, true
+			}
+			if p, ok := noValue(v[k], key); ok {
+				return p, true
+			}
+		}
+	case []any:
+		for i, e := range v {
+			if p, ok := noValue(e, fmt.Sprintf("%s[%d]", at, i)); ok {
+				return p, true
+			}
+		}
+	case string:
+		return at, strings.Contains(v, "<no value>")
+	}
+	return "", false
 }
 
 // renderOne parses every template in the chart (so cross-file named templates

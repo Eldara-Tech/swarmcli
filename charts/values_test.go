@@ -167,3 +167,30 @@ func TestLookupPathReportsAbsence(t *testing.T) {
 		require.False(t, ok, "%q names no value", path)
 	}
 }
+
+// A key the new chart version adds keeps its default, a key the previous
+// release had keeps its previous value — nested keys too — and neither input
+// is mutated (#687).
+func TestReuseValuesLayersThePreviousReleaseOverTheDefaults(t *testing.T) {
+	defaults := map[string]any{
+		"replicas": 1,
+		"image":    map[string]any{"repo": "nginx", "tag": "1.27"},
+		"metrics":  map[string]any{"enabled": false, "port": 9104},
+	}
+	previous := map[string]any{"replicas": 3, "image": map[string]any{"tag": "1.25"}}
+
+	got := ReuseValues(defaults, previous)
+	require.Equal(t, map[string]any{
+		"replicas": 3,
+		"image":    map[string]any{"repo": "nginx", "tag": "1.25"},
+		"metrics":  map[string]any{"enabled": false, "port": 9104},
+	}, got)
+
+	got["metrics"].(map[string]any)["enabled"] = true
+	got["image"].(map[string]any)["tag"] = "x"
+	require.Equal(t, false, defaults["metrics"].(map[string]any)["enabled"])
+	require.Equal(t, "1.27", defaults["image"].(map[string]any)["tag"])
+	require.Equal(t, map[string]any{"replicas": 3, "image": map[string]any{"tag": "1.25"}}, previous)
+
+	require.Equal(t, defaults, ReuseValues(defaults, nil), "no previous release: the defaults alone")
+}

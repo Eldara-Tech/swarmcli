@@ -393,7 +393,7 @@ var flagDocs = []flagDoc{
 	{Name: "--history-max", Value: "<n>", Desc: "Max release revisions to retain"},
 	{Name: "--resolve-image", Value: "<mode>", Desc: "always | changed | never — how the daemon resolves image tags to digests at deploy time (default: always)"},
 	{Name: "--install", Desc: "Install the release if it is absent"},
-	{Name: "--reuse-values", Desc: "Layer overrides on the previous release's values"},
+	{Name: "--reuse-values", Desc: "Layer the previous release's values over the chart's defaults, and the overrides over both"},
 	{Name: "--revision", Value: "<n>", Desc: "Select a specific revision"},
 	{Name: "--purge-volumes", Desc: "Also remove the release's volumes (connected node only; every node is a Business Edition feature)"},
 	{Name: "--diff", Desc: "Show each changed release's manifest diff (implies --dry-run)"},
