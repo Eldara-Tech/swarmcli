@@ -465,20 +465,20 @@ func chartsUpgrade(c chartsCmd, args []string) int {
 	}
 	release, ref := pos[0], pos[1]
 
-	var base map[string]any
+	var previous map[string]any
 	if f.reuseValues {
 		cur, err := charts.NewEngine().GetRevision(context.Background(), release, 0)
 		switch {
 		case err == nil:
-			base = cur.Values
+			previous = cur.Values
 		case !f.install:
 			return fail(err)
 			// With --install and no existing release there are no prior values to
-			// reuse; fall through with base=nil so chart defaults apply. Upgrade
+			// reuse; fall through with previous=nil so chart defaults apply. Upgrade
 			// re-validates the release, so a genuine backend error still surfaces.
 		}
 	}
-	manifest, values, rc, req, chartFiles, code := prepare(release, ref, f, base, compatEnforce)
+	manifest, values, rc, req, chartFiles, code := prepare(release, ref, f, previous, compatEnforce)
 	if code >= 0 {
 		return code
 	}
@@ -652,11 +652,11 @@ func chartsDiff(c chartsCmd, args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	var base map[string]any
+	var previous map[string]any
 	if f.reuseValues {
-		base = cur.Values
+		previous = cur.Values
 	}
-	next, _, _, _, _, code := prepare(release, ref, f, base, compatWarn)
+	next, _, _, _, _, code := prepare(release, ref, f, previous, compatWarn)
 	if code >= 0 {
 		return code
 	}
@@ -669,8 +669,8 @@ func chartsDiff(c chartsCmd, args []string) int {
 }
 
 // prepare loads the chart, merges + validates values, and renders the manifest.
-// base, when non-nil, replaces the chart defaults as the merge base (used by
-// `upgrade --reuse-values` to layer overrides over the previous release).
+// previous, when non-nil, is the previous release's values, layered over the
+// chart defaults before the overrides (`upgrade --reuse-values`).
 //
 // chartFiles are the chart files the rendered manifest's file:/env_file: keys
 // name. They are resolved here because this is one of only two places a *Chart
@@ -678,7 +678,7 @@ func chartsDiff(c chartsCmd, args []string) int {
 // returns — and every command routed through prepare wants the same answer:
 // template and diff show a manifest that could actually be deployed, install
 // and upgrade deploy it.
-func prepare(release, ref string, f flags, base map[string]any, pol compatPolicy) (manifest string, values map[string]any, rc charts.ReleaseChart, req *charts.Requirements, chartFiles map[string][]byte, code int) {
+func prepare(release, ref string, f flags, previous map[string]any, pol compatPolicy) (manifest string, values map[string]any, rc charts.ReleaseChart, req *charts.Requirements, chartFiles map[string][]byte, code int) {
 	ch, loaded, c := loadChart(ref, f)
 	if c >= 0 {
 		return "", nil, rc, nil, nil, c
@@ -689,14 +689,11 @@ func prepare(release, ref string, f flags, base map[string]any, pol compatPolicy
 	if c := applyCompat(charts.CheckCompat(ch.Metadata), pol, f.skipCompatCheck); c >= 0 {
 		return "", nil, rc, nil, nil, c
 	}
-	if base == nil {
-		base = ch.Values
-	}
 	files, err := readValuesFiles(f.values)
 	if err != nil {
 		return "", nil, rc, nil, nil, fail(err)
 	}
-	values, err = charts.MergeValues(base, files, f.sets)
+	values, err = charts.MergeValues(charts.ReuseValues(ch.Values, previous), files, f.sets)
 	if err != nil {
 		return "", nil, rc, nil, nil, fail(err)
 	}
