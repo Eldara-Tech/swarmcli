@@ -16,7 +16,7 @@
 # is a strict subset. It is where `ca-certificates` (chart repositories over
 # HTTPS), `openssh-client` (`ssh://` Docker contexts) and `git` are installed;
 # the daemon stack is what the dind layers add on top. See #548.
-FROM docker:29-cli@sha256:3f4743208d2338c934d7b8bcfbe1bb54c0b2355c510ad5e0f31c0c4a54bd704e
+FROM docker:29-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb
 
 # dockers_v2 runs a single multi-platform buildx build and stages each
 # platform's binary under its $TARGETPLATFORM (e.g. linux/amd64/swarmcli).
