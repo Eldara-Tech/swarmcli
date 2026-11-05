@@ -154,7 +154,11 @@ func startSSHDind(t *testing.T, pubKey string) {
 	}
 
 	setup := strings.Join([]string{
-		"apk add --no-cache openssh-server",
+		// --upgrade with the client: the dind image ships openssh-client at the
+		// release it was built with, and the server package requires the client
+		// at its own. Once Alpine moves on (10.3_p1-r1 to -r2 broke it), a plain
+		// add refuses: "openssh-client-common-…-r1: breaks: openssh-client-default-…-r2".
+		"apk add --no-cache --upgrade openssh-server openssh-client-default",
 		"ssh-keygen -A",
 		"mkdir -p /root/.ssh",
 		"printf '%s\\n' \"" + pubKey + "\" > /root/.ssh/authorized_keys",
