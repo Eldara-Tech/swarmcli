@@ -101,11 +101,12 @@ type rollBackend struct {
 	oldPaused     map[string]bool // the peer's previous update was left paused
 	newPaused     map[string]bool // the peer's update pauses after it starts
 	down          map[string]bool // the peer runs no task, as while it waits for its cluster
+	starting      map[string]bool // the peer's task is on its way up, healthcheck pending, until it is updated
 	scaledToZero  bool            // every peer is scaled to 0, as before a recovery
 }
 
 func newRollBackend() *rollBackend {
-	return &rollBackend{fakeBackend: newFakeBackend(), unchanged: map[string]bool{}, oldPaused: map[string]bool{}, newPaused: map[string]bool{}, down: map[string]bool{}}
+	return &rollBackend{fakeBackend: newFakeBackend(), unchanged: map[string]bool{}, oldPaused: map[string]bool{}, newPaused: map[string]bool{}, down: map[string]bool{}, starting: map[string]bool{}}
 }
 
 func (b *rollBackend) PreservesOmittedServices() bool { return true }
@@ -149,6 +150,9 @@ func (b *rollBackend) StackServices(_ context.Context, name string) []ServiceSta
 				at = d
 				break
 			}
+		}
+		if b.starting[key] && at < 0 {
+			st.Running, st.Starting = 0, 1
 		}
 		started := newUpdate.Add(time.Duration(at) * time.Second)
 		latest := at == len(b.manifests)-1
@@ -376,4 +380,39 @@ func TestRolloutHoldsNothingWhenEveryMarkedServiceIsDown(t *testing.T) {
 			require.Equal(t, []string{"peer-1", "peer-2", "peer-3", "web"}, manifestKeys(t, b.manifests[1]))
 		})
 	}
+}
+
+// A peer that has just restarted is Starting until its healthcheck passes, while
+// the others serve. It is held like them and rolled in its turn, not sent out with
+// the first deploy: there the next peer would follow it at once, and two peers
+// would restart together.
+func TestRolloutHoldsAStartingServiceWhileOthersAreUp(t *testing.T) {
+	fastPolls(t)
+	b := newRollBackend()
+	e := installRolling(t, b)
+	b.starting["peer-1"] = true
+
+	_, err := e.Upgrade(context.Background(), "db", ReleaseChart{Name: "galera", Version: "2"}, nil, rolloutManifest, InstallOptions{})
+	require.NoError(t, err)
+	require.Len(t, b.manifests, 5, "one deploy without the peers, then one per peer")
+	require.Equal(t, []string{"web"}, manifestKeys(t, b.manifests[1]), "a starting peer is not down")
+	require.Equal(t, []string{"peer-1", "web"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, 4, b.pollsAtDeploy[3], "peer-2 deployed before peer-1 had converged")
+}
+
+// After a full stop every peer is Starting, waiting for its cluster, while the
+// stack's other services run. None is up, so none is held, exactly as when they
+// run no task at all: the forced peer of a recovery must not wait behind peer 1.
+func TestRolloutHoldsNothingWhenEveryMarkedServiceIsStarting(t *testing.T) {
+	fastPolls(t)
+	b := newRollBackend()
+	e := installRolling(t, b)
+	for _, key := range []string{"peer-1", "peer-2", "peer-3"} {
+		b.starting[key] = true
+	}
+
+	_, err := e.Upgrade(context.Background(), "db", ReleaseChart{Name: "galera", Version: "2"}, nil, rolloutManifest, InstallOptions{})
+	require.NoError(t, err)
+	require.Len(t, b.manifests, 2, "the install, then one deploy of everything")
+	require.Equal(t, []string{"peer-1", "peer-2", "peer-3", "web"}, manifestKeys(t, b.manifests[1]))
 }

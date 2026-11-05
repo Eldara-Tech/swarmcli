@@ -109,6 +109,23 @@ func TestServiceStatesFromCarriesBothHalves(t *testing.T) {
 	require.Equal(t, 2, states[0].Desired)
 }
 
+// A task waiting on its healthcheck reaches the caller as Starting: a sequential
+// rollout holds such a service rather than treat it as down.
+func TestServiceStatesFromCarriesTasksOnTheirWayUp(t *testing.T) {
+	task := runningTask("peer", "n1", 1)
+	task.Status.State = swarm.TaskStateStarting
+	snap := &docker.SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{stackService("peer", "mystack", 1)},
+		Tasks:    []swarm.Task{task},
+	}
+
+	states := ServiceStatesFrom(snap, "mystack")
+	require.Len(t, states, 1)
+	require.Equal(t, 0, states[0].Running)
+	require.Equal(t, 1, states[0].Starting)
+}
+
 // The rule this function exists to keep one copy of. A one-shot step ends with
 // its task Complete and nothing running, which is its success state — without
 // this the release reads 0/1 forever and looks degraded when it is done (#443).

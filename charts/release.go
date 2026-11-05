@@ -55,6 +55,9 @@ type ServiceState struct {
 	// counts them wherever they sit — a down node's stale task included (see
 	// issue #480).
 	Running int
+	// Starting counts tasks on their way to Running: taken by a node, not running
+	// yet. A task with a healthcheck stays here until its first probe passes.
+	Starting int
 	// UpToDate counts the tasks in Running created from the spec the service
 	// now holds: during an update, those created after it started. It is what
 	// tells a pause every slot has since outgrown from one still running the old
