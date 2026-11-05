@@ -197,3 +197,78 @@ func TestUpgradeDoesNotHoldADownSequentialService(t *testing.T) {
 			"service %s was not upgraded", name)
 	}
 }
+
+// slowStartService is a marked service whose task reports healthy only after
+// seconds after it starts, so for that long swarm keeps it Starting.
+func slowStartService(name string, rev, after int) string {
+	return fmt.Sprintf(`
+  %s:
+    image: alpine:latest
+    command: ["sh", "-c", "sleep %d; touch /tmp/up; exec sleep 100000"]
+    environment:
+      REV: "%d"
+    stop_grace_period: 1s
+    healthcheck:
+      test: ["CMD", "test", "-e", "/tmp/up"]
+      interval: 1s
+      timeout: 1s
+      retries: 3
+      start_period: 60s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      update_config:
+        monitor: 5s
+        order: stop-first
+      labels:
+        %s: %s`, name, after, rev, charts.RolloutLabel, charts.RolloutSequential)
+}
+
+// A marked service that has just restarted is Starting until its healthcheck
+// passes, while the other serves. It is held and rolled first, and the next one
+// waits for it: sent out with the first deploy instead, as a down service is, the
+// next one would follow within seconds and both would restart together, which is
+// how the mariadb-galera chart's lifecycle test saw two peers restart 3s apart.
+func TestUpgradeHoldsAStartingSequentialService(t *testing.T) {
+	swarmlog.InitTestIfTestLogEnv()
+
+	ctx := context.Background()
+	release := fmt.Sprintf("itest-seqstarting-%d", time.Now().UnixNano())
+	eng := charts.NewEngine()
+	defer func() { _, _ = eng.Uninstall(ctx, release, true) }()
+	ch := charts.ReleaseChart{Name: "seq", Version: "0.1.0"}
+	const healthyAfter = 20
+	stack := func(rev int) string {
+		return "version: \"3.9\"\n\nservices:" + slowStartService("a", rev, healthyAfter) + slowStartService("b", rev, healthyAfter) + "\n"
+	}
+
+	_, err := eng.Install(ctx, release, ch, nil, stack(1), charts.InstallOptions{Wait: true, Timeout: 2 * time.Minute})
+	require.NoError(t, err)
+
+	// Restart a, and upgrade while its new task is still Starting.
+	cli, err := docker.GetClient()
+	require.NoError(t, err)
+	a := inspectService(t, ctx, release+"_a")
+	spec := a.Spec
+	spec.TaskTemplate.ForceUpdate++
+	_, err = cli.ServiceUpdate(ctx, a.ID, a.Version, spec, swarm.ServiceUpdateOptions{})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		tasks, err := cli.TaskList(ctx, swarm.TaskListOptions{Filters: filters.NewArgs(
+			filters.Arg("service", release+"_a"), filters.Arg("desired-state", "running"))})
+		return err == nil && len(tasks) == 1 && tasks[0].Status.State == swarm.TaskStateStarting
+	}, 30*time.Second, 200*time.Millisecond, "a's restarted task never read Starting")
+
+	_, err = eng.Upgrade(ctx, release, ch, nil, stack(2), charts.InstallOptions{Timeout: 2 * time.Minute})
+	require.NoError(t, err)
+
+	b := inspectService(t, ctx, release+"_b")
+	require.Contains(t, b.Spec.TaskTemplate.ContainerSpec.Env, "REV=2")
+	require.NotNil(t, b.UpdateStatus)
+	require.NotNil(t, b.UpdateStatus.StartedAt)
+	aNew := revTaskCreated(t, ctx, release+"_a", 2)
+	require.False(t, b.UpdateStatus.StartedAt.Before(aNew.Add((healthyAfter-5)*time.Second)),
+		"b's update started at %s, %s after a's new task, which takes %ds to come up: both restarted together",
+		b.UpdateStatus.StartedAt, b.UpdateStatus.StartedAt.Sub(aNew), healthyAfter)
+}

@@ -22,6 +22,11 @@ type ServiceConvergence struct {
 	Mode string
 	// Running counts tasks that are actually running, on an active node.
 	Running int
+	// Starting counts tasks on their way to running, on an active node: assigned
+	// through starting. A task with a healthcheck stays Starting until its first
+	// probe passes, so a service that has just restarted reads Running 0 and
+	// Starting 1, not down. A Pending task is not counted, even with a node named.
+	Starting int
 	// UpToDate counts the tasks in Running that belong to the current
 	// generation: during an update, those created after it started, because
 	// swarm replaces a slot's task, restarts included, from the spec it now
@@ -170,7 +175,7 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 		// any other node is outside it, finished or not.
 		perNode := svc.Spec.Mode.Global != nil || svc.Spec.Mode.GlobalJob != nil
 
-		running, upToDate, completed, dead := 0, 0, 0, 0
+		running, starting, upToDate, completed, dead := 0, 0, 0, 0, 0
 		since := rolloutStart(svc)
 		deadReason := ""
 		// Only a restart condition of "none" makes a failed task terminal;
@@ -220,6 +225,10 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 				if t.CreatedAt.After(since) {
 					upToDate++
 				}
+			case t.DesiredState == swarm.TaskStateRunning && comingUp(t.Status.State):
+				// Not running yet, so not part of the window below either.
+				starting++
+				continue
 			case resting || (job && t.Status.State == swarm.TaskStateComplete):
 				// Swarm sets DesiredState=shutdown once a job's task exits, so
 				// this is not reachable through the running arm above. A resting
@@ -251,6 +260,7 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 			Name:           svc.Spec.Name,
 			Mode:           getServiceMode(svc),
 			Running:        running,
+			Starting:       starting,
 			UpToDate:       upToDate,
 			Completed:      completed,
 			Job:            job,
@@ -268,6 +278,17 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 		})
 	}
 	return out
+}
+
+// comingUp reports the task states between a node taking a task and the task
+// running.
+func comingUp(s swarm.TaskState) bool {
+	switch s {
+	case swarm.TaskStateAssigned, swarm.TaskStateAccepted, swarm.TaskStatePreparing,
+		swarm.TaskStateReady, swarm.TaskStateStarting:
+		return true
+	}
+	return false
 }
 
 // ageSince is how long ago t was, clamped at zero. CreatedAt comes off the

@@ -478,6 +478,10 @@ services:
   marked service that is down, running fewer tasks than it wants: holding it back
   could wait on a recovery that another service's update is needed for, such as
   a database peer that can only start once another peer has bootstrapped.
+- A marked service still coming up, its task on a node but not yet healthy, is
+  held like the others while another marked service runs, so it never restarts
+  together with the next one. While none runs, as after a full stop, it goes out
+  with the first deploy too.
 - A marked service whose update leaves its task definition as it was restarts
   nothing, and is not waited for.
 - The wait between marked services happens with or without `--wait`. `--timeout`

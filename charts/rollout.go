@@ -54,6 +54,12 @@ type OmittedServicesPreserver interface {
 // stop of the mariadb-galera chart every peer waits for the cluster, and the
 // upgrade that forces one peer to bootstrap also changes peer 1, which would be
 // rolled first and wait forever for the peer it holds back.
+//
+// A marked service still coming up, its tasks taken by a node but not running yet
+// (swarm keeps a task Starting until its healthcheck passes), is held as well while
+// another marked service is up. Sent out with the first deploy, it would restart
+// together with the first held service, which follows without waiting for it. With
+// none up, as after that full stop, where every peer is Starting, none is held.
 func (e *Engine) heldForRollout(ctx context.Context, rel *Release) ([]string, error) {
 	if p, ok := e.Backend.(OmittedServicesPreserver); !ok || !p.PreservesOmittedServices() {
 		return nil, nil
@@ -63,15 +69,22 @@ func (e *Engine) heldForRollout(ctx context.Context, rel *Release) ([]string, er
 		return nil, err
 	}
 	_ = e.Backend.RefreshSnapshot(ctx)
-	up := map[string]bool{}
+	up, starting := map[string]bool{}, map[string]bool{}
 	for _, s := range e.Backend.StackServices(ctx, rel.Name) {
-		if s.Desired > 0 && s.Running >= s.Desired {
+		switch {
+		case s.Desired > 0 && s.Running >= s.Desired:
 			up[s.Name] = true
+		case s.Desired > 0 && s.Running+s.Starting >= s.Desired:
+			starting[s.Name] = true
 		}
+	}
+	anyUp := false
+	for _, key := range marked {
+		anyUp = anyUp || up[rel.Name+"_"+key]
 	}
 	var held []string
 	for _, key := range marked {
-		if up[rel.Name+"_"+key] {
+		if name := rel.Name + "_" + key; up[name] || (anyUp && starting[name]) {
 			held = append(held, key)
 		}
 	}
