@@ -1442,7 +1442,7 @@ func (m *Model) setRenderItem() {
 			errorDisplayText = truncateWithEllipsis(stackErrorText, colWidths[3])
 		}
 
-		// Color entire row red if there's an error (like configs view)
+		// Tint the entire row red if a service fails, amber if one converges
 		var baseStyle = itemStyle
 		if stackHasError {
 			baseStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))

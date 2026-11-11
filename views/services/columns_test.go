@@ -197,14 +197,33 @@ func TestExpandedRow_TintsByTaskState(t *testing.T) {
 	require.Equal(t, fgSeq(lipgloss.Color("7")), rowTint(t, out, "node-old"))
 
 	// The task under the cursor keeps its tint as the bar (issue #711).
+	m.List.Viewport.Width = 300 // wider than a row, so the bar is padded
 	plain := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("24")).Bold(true)
 	for i, bar := range []lipgloss.Style{plain, ui.TintedCursor(lipgloss.NewStyle().Foreground(lipgloss.Color("3"))),
 		ui.TintedCursor(lipgloss.NewStyle().Foreground(lipgloss.Color("9")))} {
 		m.selectedTaskIndex = i
 		node := m.serviceTasks["id-web"][i].NodeName
-		require.Equal(t, sgrPrefix.FindString(bar.Render("x")), rowTint(t, m.List.RenderItem(m.List.Filtered[0], true, 0), node), node)
+		requireOneStyle(t, rowFor(t, m.List.RenderItem(m.List.Filtered[0], true, 0), node), bar, true, node)
 	}
 }
+
+// requireOneStyle fails unless every styled run on line opens with style's
+// sequence, so any full-width padding is the same bar as the row it extends.
+// padded asks for that padding to be there: a service row's columns already
+// fill the viewport, a task row's do not.
+func requireOneStyle(t *testing.T, line string, style lipgloss.Style, padded bool, msgAndArgs ...any) {
+	t.Helper()
+	want := sgrPrefix.FindString(style.Render("x"))
+	runs := sgrOpen.FindAllString(line, -1)
+	if padded {
+		require.Greater(t, len(runs), 1, "the row is not padded: widen the viewport")
+	}
+	for _, seq := range runs {
+		require.Equal(t, want, seq, msgAndArgs...)
+	}
+}
+
+var sgrOpen = regexp.MustCompile(`\x1b\[[0-9;]*[1-9][0-9;]*m`)
 
 // Once a task is over, CURRENT STATE has already said so and the container's
 // "exited" adds nothing — worse, whether the cell can say it at all turns on
@@ -540,8 +559,7 @@ func TestRowStyle_ConvergingServiceIsAmber(t *testing.T) {
 		if want != "117" {
 			bar = ui.TintedCursor(lipgloss.NewStyle().Foreground(want))
 		}
-		require.Equal(t, sgrPrefix.FindString(bar.Render("x")),
-			rowTint(t, m.List.RenderItem(e, true, 0), e.ServiceName), "under cursor: %s", e.ServiceName)
+		requireOneStyle(t, rowFor(t, m.List.RenderItem(e, true, 0), e.ServiceName), bar, false, "under cursor: %s", e.ServiceName)
 	}
 	require.True(t, m.HasWarnings())
 	require.True(t, m.HasErrors())

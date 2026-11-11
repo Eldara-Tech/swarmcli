@@ -38,7 +38,7 @@ var (
 // TintedCursor is the cursor for a row its status tints (failing, converging):
 // the tint becomes the bar's background, so moving onto the row does not hide
 // what it says, as ListSelectedStyle's fixed colours would (issue #711). A row
-// with no tint keeps ListSelectedStyle.
+// with no tint keeps its view's usual cursor.
 func TintedCursor(tint lipgloss.Style) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("0")).
