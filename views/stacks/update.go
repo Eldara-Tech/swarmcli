@@ -183,11 +183,14 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 
-		if msg.Confirmed && m.List.Cursor < len(m.List.Filtered) {
-			selected := m.List.Filtered[m.List.Cursor]
+		if msg.Confirmed {
+			// The stack the dialog named, not the row under the cursor now: a
+			// reload while the dialog was open keeps the cursor's position, not
+			// its stack.
+			stackName := m.removeStackName
 
 			if m.pendingAction == "remove" {
-				l().Debugln("Starting remove for stack", selected.Name)
+				l().Debugln("Starting remove for stack", stackName)
 				removeNetworks := msg.CheckboxChecked // Capture checkbox state
 				stackOps := m.deps.Stacks
 				snapOps := m.deps.Snapshot
@@ -195,21 +198,21 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 				return func() tea.Msg {
 					ctx, cancel := context.WithTimeout(context.Background(), userActionTimeout)
 					defer cancel()
-					l().Infof("Executing remove for stack: %s (remove networks: %v)", selected.Name, removeNetworks)
-					if err := stackOps.RemoveStack(ctx, selected.Name); err != nil {
-						l().Errorf("Failed to remove stack %s: %v", selected.Name, err)
+					l().Infof("Executing remove for stack: %s (remove networks: %v)", stackName, removeNetworks)
+					if err := stackOps.RemoveStack(ctx, stackName); err != nil {
+						l().Errorf("Failed to remove stack %s: %v", stackName, err)
 						return RemoveErrorMsg{
-							StackName: selected.Name,
+							StackName: stackName,
 							Error:     err,
 						}
 					}
-					l().Infof("Successfully removed stack: %s", selected.Name)
+					l().Infof("Successfully removed stack: %s", stackName)
 
 					// Remove networks if checkbox was checked
 					if removeNetworks {
-						l().Infof("Removing networks for stack: %s", selected.Name)
-						if err := stackOps.RemoveStackNetworks(ctx, selected.Name); err != nil {
-							l().Warnf("Failed to remove networks for stack %s: %v", selected.Name, err)
+						l().Infof("Removing networks for stack: %s", stackName)
+						if err := stackOps.RemoveStackNetworks(ctx, stackName); err != nil {
+							l().Warnf("Failed to remove networks for stack %s: %v", stackName, err)
 							// Don't fail the whole operation if network removal fails
 						}
 					}
@@ -233,6 +236,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 
 	case StackDeleteIntentMsg:
 		m.pendingAction = "remove"
+		m.removeStackName = msg.StackName
 		m.confirmDialog.Visible = true
 		m.confirmDialog.ErrorMode = false
 		if msg.ChartRelease != "" {

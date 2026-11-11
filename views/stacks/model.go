@@ -100,6 +100,8 @@ type Model struct {
 	confirmDialog *confirmdialog.Model
 	// pendingAction tracks what action is awaiting confirmation
 	pendingAction string
+	// removeStackName is the stack the open remove confirmation names
+	removeStackName string
 
 	// Create stack dialog
 	createDialogActive  bool
