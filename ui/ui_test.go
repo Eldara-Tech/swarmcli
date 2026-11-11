@@ -252,3 +252,13 @@ func stripSGR(s string) string {
 	}
 	return b.String()
 }
+
+// The cursor on a tinted row is a bar in the tint, so a failing row under the
+// cursor still reads red (issue #711).
+func TestTintedCursor_PaintsTheBarInTheTint(t *testing.T) {
+	red := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	got := TintedCursor(red)
+	require.Equal(t, lipgloss.Color("9"), got.GetBackground())
+	require.Equal(t, lipgloss.Color("0"), got.GetForeground())
+	require.True(t, got.GetBold())
+}

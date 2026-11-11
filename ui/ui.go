@@ -35,6 +35,17 @@ var (
 				Bold(true)
 )
 
+// TintedCursor is the cursor for a row its status tints (failing, converging):
+// the tint becomes the bar's background, so moving onto the row does not hide
+// what it says, as ListSelectedStyle's fixed colours would (issue #711). A row
+// with no tint keeps ListSelectedStyle.
+func TintedCursor(tint lipgloss.Style) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color("0")).
+		Background(tint.GetForeground()).
+		Bold(true)
+}
+
 // styleFrameTitle applies the default frame-title style to a plain title. A
 // title that already carries its own ANSI styling (e.g. from ScopedTitle) is
 // returned unchanged so the caller's per-segment colours are preserved rather

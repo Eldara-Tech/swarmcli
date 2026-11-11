@@ -1442,9 +1442,20 @@ func (m *Model) setRenderItem() {
 			errorDisplayText = truncateWithEllipsis(stackErrorText, colWidths[3])
 		}
 
+		// Color entire row red if there's an error (like configs view)
+		var baseStyle = itemStyle
+		if stackHasError {
+			baseStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+		} else if m.stackConverging[s.Name] {
+			baseStyle = taskutil.ConvergingStyle
+		}
+
 		// Render all columns in one format string using precision to truncate if needed
 		if selected {
 			selStyle := ui.ListSelectedStyle
+			if stackHasError || m.stackConverging[s.Name] {
+				selStyle = ui.TintedCursor(baseStyle)
+			}
 			line := selStyle.Render(fmt.Sprintf(" %-*.*s%-*.*s%-*.*s%-*.*s",
 				colWidths[0]-1, colWidths[0]-1, name,
 				colWidths[1], colWidths[1], svcStr,
@@ -1468,7 +1479,7 @@ func (m *Model) setRenderItem() {
 						taskErr := truncateWithEllipsis(task.Error, 30)
 						taskSelected := m.selectedTaskIndex == ti
 						if taskSelected {
-							taskSelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("24")).Bold(true)
+							taskSelStyle := taskutil.TaskCursorStyle(task, lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("24")).Bold(true))
 							line += "\n" + taskSelStyle.Render(fmt.Sprintf("   %-22s  %-12s  %-13s  %-40s  %s", taskName, taskNode, taskDesired, taskCurrent, taskErr))
 						} else {
 							taskStyle := taskutil.TaskRowStyle(task, taskRowBaseStyle)
@@ -1480,14 +1491,6 @@ func (m *Model) setRenderItem() {
 				}
 			}
 			return line
-		}
-
-		// Non-selected: color entire row red if there's an error (like configs view)
-		var baseStyle = itemStyle
-		if stackHasError {
-			baseStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-		} else if m.stackConverging[s.Name] {
-			baseStyle = taskutil.ConvergingStyle
 		}
 
 		line := baseStyle.Render(fmt.Sprintf(" %-*.*s%-*.*s%-*.*s%-*.*s",

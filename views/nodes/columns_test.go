@@ -119,8 +119,8 @@ func TestClickRow_ResetsScrollLikeTheArrowKeys(t *testing.T) {
 		"scroll offset must reset when a click moves the cursor")
 }
 
-// An unhealthy node renders red unless the cursor is on it, where the selection
-// highlight wins as it does in the services view; a drained node stays plain.
+// An unhealthy node renders red, and under the cursor as a red bar as it does in
+// the services view (issue #711); a drained node stays plain.
 func TestRowStyle_UnhealthyNodeIsRed(t *testing.T) {
 	prev := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
@@ -137,12 +137,14 @@ func TestRowStyle_UnhealthyNodeIsRed(t *testing.T) {
 	for _, n := range m.List.Filtered {
 		row := m.List.RenderRow(n, false)
 		got := m.List.RenderItem(n, false, 0)
+		bar := ui.ListSelectedStyle
 		if n.Hostname == "gone" {
 			require.Equal(t, red.Render(row), got)
+			bar = ui.TintedCursor(red)
 		} else {
 			require.Equal(t, ui.ListItemStyle.Render(row), got, n.Hostname)
 		}
-		require.Equal(t, ui.ListSelectedStyle.Render(m.List.RenderRow(n, true)),
+		require.Equal(t, bar.Render(m.List.RenderRow(n, true)),
 			m.List.RenderItem(n, true, 0), n.Hostname)
 	}
 }

@@ -195,6 +195,15 @@ func TestExpandedRow_TintsByTaskState(t *testing.T) {
 	// inventory. They must not differ in colour.
 	require.Equal(t, fgSeq(lipgloss.Color("7")), rowTint(t, out, "node-done"))
 	require.Equal(t, fgSeq(lipgloss.Color("7")), rowTint(t, out, "node-old"))
+
+	// The task under the cursor keeps its tint as the bar (issue #711).
+	plain := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("24")).Bold(true)
+	for i, bar := range []lipgloss.Style{plain, ui.TintedCursor(lipgloss.NewStyle().Foreground(lipgloss.Color("3"))),
+		ui.TintedCursor(lipgloss.NewStyle().Foreground(lipgloss.Color("9")))} {
+		m.selectedTaskIndex = i
+		node := m.serviceTasks["id-web"][i].NodeName
+		require.Equal(t, sgrPrefix.FindString(bar.Render("x")), rowTint(t, m.List.RenderItem(m.List.Filtered[0], true, 0), node), node)
+	}
 }
 
 // Once a task is over, CURRENT STATE has already said so and the container's
@@ -514,7 +523,7 @@ func convergingSnapshot() *docker.SwarmSnapshot {
 }
 
 // A converging service reads amber, a failing one red whether or not it is also
-// short, and the cursor's highlight still wins over both.
+// short, and the cursor on either keeps the tint as its bar (issue #711).
 func TestRowStyle_ConvergingServiceIsAmber(t *testing.T) {
 	trueColour(t)
 	snap := convergingSnapshot()
@@ -527,7 +536,11 @@ func TestRowStyle_ConvergingServiceIsAmber(t *testing.T) {
 		out := m.List.RenderItem(e, false, 0)
 		want := map[string]lipgloss.Color{"web": "117", "api": "3", "bad": "9"}[e.ServiceName]
 		require.Equal(t, fgSeq(want), rowTint(t, out, e.ServiceName), e.ServiceName)
-		require.Equal(t, sgrPrefix.FindString(ui.ListSelectedStyle.Render("x")),
+		bar := ui.ListSelectedStyle
+		if want != "117" {
+			bar = ui.TintedCursor(lipgloss.NewStyle().Foreground(want))
+		}
+		require.Equal(t, sgrPrefix.FindString(bar.Render("x")),
 			rowTint(t, m.List.RenderItem(e, true, 0), e.ServiceName), "under cursor: %s", e.ServiceName)
 	}
 	require.True(t, m.HasWarnings())

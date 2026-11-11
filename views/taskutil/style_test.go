@@ -60,9 +60,17 @@ func TestTaskRowStyle(t *testing.T) {
 		{"nothing known", docker.TaskEntry{}, base.GetForeground()},
 	}
 
+	// Under the cursor a tinted row keeps its tint as the bar (issue #711) and
+	// any other row gets the caller's cursor.
+	cursor := lipgloss.NewStyle().Background(lipgloss.Color("24"))
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			require.Equal(t, c.want, TaskRowStyle(c.task, base).GetForeground())
+			wantBar := cursor.GetBackground()
+			if c.want != base.GetForeground() {
+				wantBar = c.want
+			}
+			require.Equal(t, wantBar, TaskCursorStyle(c.task, cursor).GetBackground())
 		})
 	}
 }
