@@ -45,9 +45,9 @@ and logs, and says what an admin can do.
    so nobody in the middle can hand the phone a different certificate authority.
 
 The code works once and expires after 24 hours by default
-(`PROXY_ONBOARDING_TOKEN_TTL`); SwarmCLI shows when. If the phone has the app
-installed, its camera can open the code too; without the app, the camera cannot,
-so get the app first (the popup's **Get the app** tab).
+(`PROXY_ONBOARDING_TOKEN_TTL`); SwarmCLI shows when. Scan it with the app's own
+**Scan QR code** rather than the phone's camera app, and get the app first if the
+phone does not have it yet (the popup's **Get the app** tab).
 
 Users created in `:users` work as well: after creating one, press `m` for its QR
 code. If the terminal is too small for a code, SwarmCLI says so rather than draw
