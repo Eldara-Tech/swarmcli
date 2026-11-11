@@ -5,6 +5,9 @@ Copyright © 2026 Eldara Tech
 
 # The SwarmCLI app
 
+> The app is on the [App Store](https://apps.apple.com/app/id6819033008). It is coming
+> to Google Play; until then `c` leads Android phones to its page.
+
 The SwarmCLI app for iPhone and Android shows a swarm's health, its services and
 their logs, and restarts, scales and rolls back services. It is free. More about it,
 with screenshots, is at <https://swarmcli.io/app>.
