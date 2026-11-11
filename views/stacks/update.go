@@ -431,10 +431,14 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		if msg.String() == "enter" {
 			if m.List.Cursor < len(m.List.Filtered) {
 				selected := m.List.Filtered[m.List.Cursor]
+				payload := map[string]interface{}{"stackName": selected.Name}
+				if selected.Name == "" {
+					payload = map[string]interface{}{"noStack": true}
+				}
 				return func() tea.Msg {
 					return view.NavigateToMsg{
 						ViewName: servicesview.ViewName,
-						Payload:  map[string]interface{}{"stackName": selected.Name},
+						Payload:  payload,
 					}
 				}
 			}
@@ -467,6 +471,9 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		// is the app's phone-app key.
 		if msg.String() == "g" {
 			if m.List.Cursor < len(m.List.Filtered) {
+				if m.refuseNoStack(m.List.Filtered[m.List.Cursor]) {
+					return nil
+				}
 				return m.chartJumpCmd(m.List.Filtered[m.List.Cursor].Name)
 			}
 		}
@@ -475,6 +482,9 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		if msg.String() == "i" {
 			if m.List.Cursor < len(m.List.Filtered) {
 				selected := m.List.Filtered[m.List.Cursor]
+				if m.refuseNoStack(selected) {
+					return nil
+				}
 				stackName := selected.Name
 				stackOps := m.deps.Stacks
 				return func() tea.Msg {
@@ -509,6 +519,9 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		if msg.String() == "e" {
 			if m.List.Cursor < len(m.List.Filtered) {
 				selected := m.List.Filtered[m.List.Cursor]
+				if m.refuseNoStack(selected) {
+					return nil
+				}
 				stackName := selected.Name
 				l().Infof("Opening editor for stack: %s", stackName)
 
@@ -530,6 +543,9 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		if msg.String() == "s" {
 			if m.List.Cursor < len(m.List.Filtered) {
 				selected := m.List.Filtered[m.List.Cursor]
+				if m.refuseNoStack(selected) {
+					return nil
+				}
 				m.saveStackName = selected.Name
 				m.saveDialogActive = true
 				m.saveDialogError = ""
@@ -559,6 +575,9 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		if msg.String() == "ctrl+d" {
 			if m.List.Cursor < len(m.List.Filtered) {
 				selected := m.List.Filtered[m.List.Cursor]
+				if m.refuseNoStack(selected) {
+					return nil
+				}
 				return m.stackDeleteIntentCmd(selected.Name)
 			}
 		}
@@ -1308,14 +1327,11 @@ func (m *Model) setStacks(stacks []docker.StackEntry) {
 
 	snap := m.deps.Snapshot.GetSnapshot()
 	if snap != nil {
-		// map service ID -> stack name
+		// map service ID -> stack name; "" is the row of services without a
+		// stack, so it is tinted by them like any stack by its own.
 		svcToStack := make(map[string]string)
 		for _, svc := range snap.Services {
-			if svc.Spec.Labels != nil {
-				if stackName, ok := svc.Spec.Labels["com.docker.stack.namespace"]; ok {
-					svcToStack[svc.ID] = stackName
-				}
-			}
+			svcToStack[svc.ID] = svc.Spec.Labels["com.docker.stack.namespace"]
 		}
 
 		// The same rule the services view's ERROR column uses, so a stack and
@@ -1326,7 +1342,7 @@ func (m *Model) setStacks(stacks []docker.StackEntry) {
 		svcErrs := taskutil.ActiveDeploymentErrorsByService(snap.Tasks)
 		for _, svc := range snap.Services {
 			stackName := svcToStack[svc.ID]
-			if stackName == "" || m.stackHasError[stackName] {
+			if m.stackHasError[stackName] {
 				continue
 			}
 			errMsg, failing := svcErrs[svc.ID]
@@ -1339,7 +1355,7 @@ func (m *Model) setStacks(stacks []docker.StackEntry) {
 
 		// A stack is converging when one of its services is and none fails.
 		for _, r := range taskutil.AssessSwarm(snap).Converging {
-			if stackName := svcToStack[r.ID]; stackName != "" && !m.stackHasError[stackName] {
+			if stackName, ok := svcToStack[r.ID]; ok && !m.stackHasError[stackName] {
 				m.stackConverging[stackName] = true
 			}
 		}
@@ -1411,7 +1427,7 @@ func (m *Model) setRenderItem() {
 		if nameMax < 0 {
 			nameMax = 0
 		}
-		name := s.Name
+		name := displayName(s)
 		if len(name) > nameMax {
 			if nameMax > 3 {
 				name = name[:nameMax-3] + "..."
