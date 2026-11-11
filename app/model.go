@@ -79,6 +79,10 @@ type Model struct {
 	// Its own Visible() is the "active" flag the other dialogs keep separately.
 	connectApp *connectapp.Model
 
+	// connectNoticeActive shows the one-time "press c" line on the stack bar,
+	// cleared by the first keystroke the way the first-run disclosure is.
+	connectNoticeActive bool
+
 	// App-level "the Docker context changed outside swarmcli" prompt. The
 	// session is pinned to one context (docker.SessionContext), so a
 	// `docker context use` elsewhere moves nothing until this is answered.
@@ -181,6 +185,11 @@ func (m *Model) Init() tea.Cmd {
 	// worst kind. Answering it here, synchronously, makes the ordering a fact
 	// rather than a hope.
 	m.telemetryNoticeActive = telemetry.ShouldNotice()
+	// The phone-app line waits for a session without the disclosure: the
+	// disclosure has to be read, and two notices in one bar read as neither.
+	if !m.telemetryNoticeActive {
+		m.connectNoticeActive = connectNoticeDueFn()
+	}
 
 	// "" loads all stacks on all nodes
 	cmds := []tea.Cmd{
@@ -339,6 +348,8 @@ func (m *Model) stackBarNotice() (line, short string) {
 	switch {
 	case m.telemetryNoticeActive:
 		return telemetry.NoticeLine, telemetry.NoticeLineShort
+	case m.connectNoticeActive:
+		return connectNotice, connectNoticeShort
 	case m.mouseNoticeActive && m.mouseOn:
 		return mouseOnNotice, mouseOnNoticeShort
 	case m.mouseNoticeActive:

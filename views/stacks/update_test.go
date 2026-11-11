@@ -491,8 +491,7 @@ func TestConfirmResult_Remove(t *testing.T) {
 	}
 	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
 	loadStacks(m, fakeStacks("target"))
-	m.pendingAction = "remove"
-	m.confirmDialog.Visible = true
+	m.Update(StackDeleteIntentMsg{StackName: "target"})
 	cmd := m.Update(confirmdialog.ResultMsg{Confirmed: true})
 	require.False(t, m.confirmDialog.Visible)
 	runCmd(cmd)
@@ -509,11 +508,33 @@ func TestConfirmResult_RemoveWithNetworks(t *testing.T) {
 	}
 	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
 	loadStacks(m, fakeStacks("target"))
-	m.pendingAction = "remove"
-	m.confirmDialog.Visible = true
+	m.Update(StackDeleteIntentMsg{StackName: "target"})
 	cmd := m.Update(confirmdialog.ResultMsg{Confirmed: true, CheckboxChecked: true})
 	runCmd(cmd)
 	require.Equal(t, "target", removedNetworks)
+}
+
+// Confirming removes the stack the dialog named, even when a reload while it
+// was open moved another stack under the cursor (here the (no stack) row
+// disappearing shifts every row up).
+func TestConfirmResult_RemovesTheStackTheDialogNamed(t *testing.T) {
+	removed := ""
+	stackMock := noopStackOps()
+	stackMock.removeStackFn = func(_ context.Context, name string) error {
+		removed = name
+		return nil
+	}
+	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
+	loadStacks(m, fakeStacks("", "app", "web"))
+	m.Update(key("down"))
+	require.NotNil(t, m.Update(key("ctrl+d")))
+	m.Update(StackDeleteIntentMsg{StackName: "app"}) // what that lookup returns
+
+	loadStacks(m, fakeStacks("app", "web"))
+	require.Equal(t, "web", m.List.Filtered[m.List.Cursor].Name, "the reload kept the position")
+
+	runCmd(m.Update(confirmdialog.ResultMsg{Confirmed: true}))
+	require.Equal(t, "app", removed)
 }
 
 func TestConfirmResult_Cancelled(t *testing.T) {
@@ -844,8 +865,7 @@ func TestRemoveStack_Timeout_ReturnsRemoveError(t *testing.T) {
 	}
 	m := testModel(func(m *Model) { m.deps.Stacks = stackMock })
 	loadStacks(m, fakeStacks("target"))
-	m.pendingAction = "remove"
-	m.confirmDialog.Visible = true
+	m.Update(StackDeleteIntentMsg{StackName: "target"})
 	cmd := m.Update(confirmdialog.ResultMsg{Confirmed: true})
 	require.NotNil(t, cmd)
 	msg := runCmd(cmd)

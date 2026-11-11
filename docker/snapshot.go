@@ -294,41 +294,32 @@ func (s SwarmSnapshot) ToNodeEntries() []NodeEntry {
 }
 
 // ToStackEntries aggregates services by stack name and produces StackEntry slices.
+// Services that belong to no stack are grouped under the entry whose Name is
+// empty, a name docker refuses for a real stack, so a list built from this one
+// can reach every service in the swarm.
 func (s SwarmSnapshot) ToStackEntries() []StackEntry {
 	stackMap := make(map[string]*StackEntry)
+	svcStack := make(map[string]string, len(s.Services))
 
 	for _, svc := range s.Services {
 		// Docker stacks mark services with com.docker.stack.namespace
-		if stackName, ok := svc.Spec.Labels["com.docker.stack.namespace"]; ok {
-			entry, exists := stackMap[stackName]
-			if !exists {
-				stackMap[stackName] = &StackEntry{Name: stackName, ServiceCount: 1}
-			} else {
-				entry.ServiceCount++
-			}
+		stackName := svc.Spec.Labels["com.docker.stack.namespace"]
+		svcStack[svc.ID] = stackName
+		entry, exists := stackMap[stackName]
+		if !exists {
+			stackMap[stackName] = &StackEntry{Name: stackName, ServiceCount: 1}
+		} else {
+			entry.ServiceCount++
 		}
 	}
 
 	// Optionally count how many nodes run tasks of that stack
 	for _, task := range s.Tasks {
-		if task.ServiceID == "" {
+		stackName, ok := svcStack[task.ServiceID]
+		if !ok {
 			continue
 		}
-		// Find stack name from the service
-		var stackName string
-		for _, svc := range s.Services {
-			if svc.ID == task.ServiceID {
-				stackName = svc.Spec.Labels["com.docker.stack.namespace"]
-				break
-			}
-		}
-		if stackName == "" {
-			continue
-		}
-		entry := stackMap[stackName]
-		if entry != nil {
-			entry.NodeCount++ // Each task counts as one node slot, could refine if needed
-		}
+		stackMap[stackName].NodeCount++ // Each task counts as one node slot, could refine if needed
 	}
 
 	stacks := make([]StackEntry, 0, len(stackMap))

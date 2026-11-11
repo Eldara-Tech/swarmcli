@@ -36,6 +36,28 @@ networks:
   # Define custom networks if needed
 `
 
+// noStackLabel names the row of services that belong to no stack, the entry
+// docker.ToStackEntries gives an empty Name.
+const noStackLabel = "(no stack)"
+
+// displayName is the name a stack row shows and is filtered by.
+func displayName(s docker.StackEntry) string {
+	if s.Name == "" {
+		return noStackLabel
+	}
+	return s.Name
+}
+
+// refuseNoStack reports whether s is the row of services without a stack, which
+// the stack-level actions do not apply to, and says so in the footer.
+func (m *Model) refuseNoStack(s docker.StackEntry) bool {
+	if s.Name != "" {
+		return false
+	}
+	m.showToast(noStackLabel + " is not a stack — enter lists its services")
+	return true
+}
+
 type SortField int
 
 const (
@@ -78,6 +100,8 @@ type Model struct {
 	confirmDialog *confirmdialog.Model
 	// pendingAction tracks what action is awaiting confirmation
 	pendingAction string
+	// removeStackName is the stack the open remove confirmation names
+	removeStackName string
 
 	// Create stack dialog
 	createDialogActive  bool
@@ -136,7 +160,7 @@ func New(width, height int) *Model {
 		Viewport: vp,
 		// Render item will be initialized later after the column with is set
 		Match: func(s docker.StackEntry, query string) bool {
-			return strings.Contains(strings.ToLower(s.Name), strings.ToLower(query))
+			return strings.Contains(strings.ToLower(displayName(s)), strings.ToLower(query))
 		},
 		Header: &filterlist.HeaderConfig{
 			Columns: []filterlist.ColumnDef{

@@ -115,7 +115,7 @@ prompt and still runs `docker context use`, so your shell follows along.
 | `~/.local/state/swarmcli/charts/repos.json` | both | `0644` | Chart repositories configured with `swarmcli charts repo add`; seeded with `swarmcli-charts` when absent. |
 | `~/.local/state/swarmcli/charts/cache/index-<repo>.yaml` | both | `0644` | Cached repository index per configured repository. |
 | `~/.local/state/swarmcli/charts/cache/charts/<sha256>.tgz` | both | `0644` | Chart archives already downloaded, kept under the sha256 their repository index publishes. Re-verified on every read, and swept 30 days after the last one. |
-| `~/.config/swarmcli/update-notice.json` | both | `0644` | The release version at which the startup update notice was dismissed. |
+| `~/.config/swarmcli/update-notice.json` | both | `0644` | The release version at which the startup update notice was dismissed, and whether the one-time phone-app notice has been shown. |
 | `~/.config/swarmcli/license.key` | BE | `0600` | A license key to install *from*, if you put one there. Nothing in swarmcli writes this file and nothing loads it automatically; when it exists, the `:license` view offers `<m>` to install it into the connected swarm. The active key lives in the swarm, as the Docker config `swarmcli-license`. |
 | `~/.config/swarmcli/certs/<stack>/ca.pem` | BE | `0600` | CA cert from `:bootstrap`. |
 | `~/.config/swarmcli/certs/<stack>/cert.pem` | BE | `0600` | Admin client cert (CN = seed username). |
