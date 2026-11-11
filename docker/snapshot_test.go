@@ -138,6 +138,31 @@ func TestToStackEntries_NodeCountFromTasks(t *testing.T) {
 	require.Equal(t, 2, entries[0].NodeCount)
 }
 
+func TestToStackEntries_GroupsServicesWithoutAStack(t *testing.T) {
+	snap := SwarmSnapshot{
+		Services: []swarm.Service{
+			{ID: "svc1", Spec: swarm.ServiceSpec{Annotations: swarm.Annotations{Labels: map[string]string{"com.docker.stack.namespace": "mystack"}}}},
+			{ID: "loose1"},
+			{ID: "loose2", Spec: swarm.ServiceSpec{Annotations: swarm.Annotations{Labels: map[string]string{"app": "x"}}}},
+		},
+		Tasks: []swarm.Task{
+			{ServiceID: "svc1"},
+			{ServiceID: "loose1"},
+			{ServiceID: "loose2"},
+			{ServiceID: "loose2"},
+			// A task whose service is gone belongs to no entry, not to the
+			// services without a stack.
+			{ServiceID: "removed"},
+			{},
+		},
+	}
+	entries := snap.ToStackEntries()
+	require.Equal(t, []StackEntry{
+		{Name: "", ServiceCount: 2, NodeCount: 3},
+		{Name: "mystack", ServiceCount: 1, NodeCount: 1},
+	}, entries)
+}
+
 func TestFindService_Found(t *testing.T) {
 	snap := &SwarmSnapshot{
 		Services: []swarm.Service{
