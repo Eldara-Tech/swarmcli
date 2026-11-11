@@ -6,6 +6,8 @@ package app
 import (
 	"testing"
 
+	"github.com/Eldara-Tech/swarmcli/v2/settings"
+	"github.com/Eldara-Tech/swarmcli/v2/views/confirmdialog"
 	"github.com/Eldara-Tech/swarmcli/v2/views/connectapp"
 	"github.com/Eldara-Tech/swarmcli/v2/views/helpbar"
 	"github.com/Eldara-Tech/swarmcli/v2/views/view"
@@ -114,4 +116,37 @@ func TestGlobalHelp_AdvertisesConnectUnlessTheViewOwnsC(t *testing.T) {
 	for _, e := range m.globalHelpEntries() {
 		require.NotEqual(t, "c", e.Key, "one key, one meaning on one bar")
 	}
+}
+
+func TestConnectNotice_RidesTheStackBarUntilTheFirstKey(t *testing.T) {
+	m := newTestAppModel(&keyedStubView{})
+	m.connectNoticeActive = true
+	line, short := m.stackBarNotice()
+	require.Equal(t, connectNotice, line)
+	require.Equal(t, connectNoticeShort, short)
+
+	m.Update(runeKey('x'))
+	require.False(t, m.connectNoticeActive)
+}
+
+func TestConnectNoticeDue_OnceAndRemembered(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	require.NoError(t, settings.Settings{DismissedUpdateVersion: "v1.0.0"}.Save())
+
+	require.True(t, connectNoticeDueFn())
+	require.False(t, connectNoticeDueFn())
+	require.Equal(t, "v1.0.0", settings.Load().DismissedUpdateVersion, "recording it keeps the other setting")
+}
+
+func TestUpdateDialogDismiss_KeepsTheOtherSettings(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	require.NoError(t, settings.Settings{ConnectAppNoticeShown: true}.Save())
+
+	m := newTestAppModel(&stubView{name: "test"})
+	m.showUpdateNotice("v1.9.0")
+	m.Update(confirmdialog.ResultMsg{CheckboxChecked: true})
+
+	s := settings.Load()
+	require.Equal(t, "v1.9.0", s.DismissedUpdateVersion)
+	require.True(t, s.ConnectAppNoticeShown, "a dismissal used to save a fresh Settings{} over the file")
 }
