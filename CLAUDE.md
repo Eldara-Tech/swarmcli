@@ -152,7 +152,7 @@ When a PR fixes a GitHub issue, copy the issue's labels to the PR and add any mi
 
 ## CI Workflows (.github/workflows/)
 
-All seven:
+All eight:
 
 - `ci.yml`: go fmt, golangci-lint, go build, Docker image build
 - `integration-tests.yml`: Full E2E
@@ -160,6 +160,7 @@ All seven:
 - `check_labels.yml`: PR label validation — it reads labels from the `pull_request` **event payload**, not the API, so a run queued from `opened` sees none; only a new event fixes that, never a job re-run
 - `licence.yml`: License header check
 - `govulncheck.yml`: scheduled vulnerability scan
+- `install-channels.yml`: daily, installs the latest release through Homebrew, install.sh, Docker, Scoop and the release archives, and fails on a wrong build, a stale version or a package-manager warning
 - `dependabot-tidy.yml`: keeps `go.sum` tidy on Dependabot PRs (which carry `D0-dependency`)
 
 ## Go Version & Build
