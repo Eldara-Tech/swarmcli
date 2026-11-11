@@ -104,8 +104,8 @@ func TestNoStackRow_PExpandsItsTasks(t *testing.T) {
 	require.Equal(t, "", asked)
 }
 
-// The stack-level actions have no stack to act on, and delete would take every
-// loose service with it, so each says why instead of running.
+// The stack-level actions have no stack to act on, so each says why instead of
+// running against an empty stack name.
 func TestNoStackRow_RefusesStackActions(t *testing.T) {
 	for _, k := range []string{"i", "e", "s", "ctrl+d", "g"} {
 		t.Run(k, func(t *testing.T) {
@@ -128,4 +128,15 @@ func TestNoStackRow_FilterMatchesItsLabel(t *testing.T) {
 	loadStacks(m, fakeStacks("", "web"))
 	m.ApplySearchQuery("no stack")
 	require.Equal(t, []docker.StackEntry{{Name: "", ServiceCount: 1, NodeCount: 1}}, m.List.Filtered)
+}
+
+// The cursor stays on the row through a re-sort: its empty name is a real
+// row, not "no cursor".
+func TestNoStackRow_KeepsTheCursorThroughASort(t *testing.T) {
+	m := testModel()
+	loadStacks(m, fakeStacks("", "a", "b"))
+	require.Equal(t, "", m.List.Filtered[m.List.Cursor].Name)
+
+	m.Update(key("S")) // name, descending: b, a, ""
+	require.Equal(t, "", m.List.Filtered[m.List.Cursor].Name)
 }

@@ -1660,10 +1660,10 @@ func (m *Model) applySorting() {
 		return
 	}
 
-	// Remember cursor position
-	cursorStack := ""
+	// Remember cursor position; "" is a row too, the one without a stack
+	cursorStack, hadCursor := "", false
 	if m.List.Cursor < len(m.List.Filtered) {
-		cursorStack = m.List.Filtered[m.List.Cursor].Name
+		cursorStack, hadCursor = m.List.Filtered[m.List.Cursor].Name, true
 	}
 
 	// Sort the filtered list
@@ -1717,7 +1717,7 @@ func (m *Model) applySorting() {
 	}
 
 	// Restore cursor position to previously selected item
-	if cursorStack != "" {
+	if hadCursor {
 		for i, s := range m.List.Filtered {
 			if s.Name == cursorStack {
 				m.List.Cursor = i
