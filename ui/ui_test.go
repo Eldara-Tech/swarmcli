@@ -254,11 +254,13 @@ func stripSGR(s string) string {
 }
 
 // The cursor on a tinted row is a bar in the tint, so a failing row under the
-// cursor still reads red (issue #711).
+// cursor still reads red (issue #711). The text is white, black on amber, and
+// never ANSI black, which a terminal brightening bold text draws in grey.
 func TestTintedCursor_PaintsTheBarInTheTint(t *testing.T) {
-	red := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	got := TintedCursor(red)
-	require.Equal(t, lipgloss.Color("9"), got.GetBackground())
-	require.Equal(t, lipgloss.Color("0"), got.GetForeground())
-	require.True(t, got.GetBold())
+	for tint, text := range map[lipgloss.Color]lipgloss.Color{"9": "231", "3": "16"} {
+		got := TintedCursor(lipgloss.NewStyle().Foreground(tint))
+		require.Equal(t, tint, got.GetBackground())
+		require.Equal(t, text, got.GetForeground(), "text on %s", tint)
+		require.True(t, got.GetBold())
+	}
 }

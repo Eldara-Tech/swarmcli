@@ -39,9 +39,17 @@ var (
 // the tint becomes the bar's background, so moving onto the row does not hide
 // what it says, as ListSelectedStyle's fixed colours would (issue #711). A row
 // with no tint keeps its view's usual cursor.
+//
+// The text is white, or black on amber, where white washes out. Both are
+// 256-colour indices because terminals that brighten bold text turn ANSI black
+// into grey.
 func TintedCursor(tint lipgloss.Style) lipgloss.Style {
+	text := lipgloss.Color("231")
+	if tint.GetForeground() == lipgloss.Color("3") {
+		text = lipgloss.Color("16")
+	}
 	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("0")).
+		Foreground(text).
 		Background(tint.GetForeground()).
 		Bold(true)
 }
