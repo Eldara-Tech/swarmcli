@@ -199,13 +199,15 @@ homebrew_casks:
       - cask: swarmcli
     # GoReleaser binaries are not Apple-notarized; strip the Gatekeeper
     # quarantine xattr on install so the CLI runs without a security prompt.
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr",
-                           args: ["-dr", "com.apple.quarantine", "#{staged_path}/swarmcli"]
-          end
+    # A custom_block rather than `hooks.post.install`, which goreleaser renders
+    # as a `postflight` block — deprecated since Homebrew 6.0.16. Install steps
+    # (Homebrew >= 5.1.14) have no staged_path token; `chdir: "."` is it.
+    custom_block: |
+      on_macos do
+        postflight_steps do
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "swarmcli"], chdir: "."
+        end
+      end
 
 # Scoop bucket for Windows
 scoops:

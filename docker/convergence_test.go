@@ -81,3 +81,27 @@ func TestStackConvergenceSkipsDrainedNodes(t *testing.T) {
 	require.Equal(t, 1, conv[0].Running, "a drained node's task is not waited for")
 	require.Equal(t, 1, conv[0].Desired)
 }
+
+// A task waiting on its healthcheck is Starting, not down, and is not counted as
+// running either. A Pending one is neither, even with a node named, as swarm leaves
+// a global task on a node that lacks the resources: a sequential rollout treats
+// that service as down.
+func TestStackConvergenceCountsATaskOnItsWayUp(t *testing.T) {
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{svcInStack("peer", "mystack"), svcInStack("lost", "mystack")},
+		Tasks: []swarm.Task{
+			taskInState("peer", "n1", swarm.TaskStateRunning, swarm.TaskStateStarting),
+			taskInState("lost", "n1", swarm.TaskStateRunning, swarm.TaskStatePending),
+		},
+	}
+
+	conv := map[string]ServiceConvergence{}
+	for _, c := range snap.StackConvergence("mystack") {
+		conv[c.Name] = c
+	}
+	require.Equal(t, 0, conv["peer"].Running)
+	require.Equal(t, 1, conv["peer"].Starting)
+	require.Equal(t, 0, conv["lost"].Running)
+	require.Equal(t, 0, conv["lost"].Starting, "a Pending task is not on its way up")
+}

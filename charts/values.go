@@ -268,6 +268,15 @@ func inferScalar(s string) any {
 	return s
 }
 
+// ReuseValues returns a previous release's values layered over a chart's
+// defaults: the base `upgrade --reuse-values` merges its overrides onto. The
+// defaults stay underneath rather than being replaced, so a key the new chart
+// version adds keeps its default (#687), and previous wins wherever both have a
+// key. Neither argument is mutated.
+func ReuseValues(defaults, previous map[string]any) map[string]any {
+	return deepMerge(deepCopyMap(defaults), deepCopyMap(previous))
+}
+
 // deepMerge recursively merges src into dst and returns dst. Nested maps merge;
 // every other type (scalars, sequences) replaces the destination value.
 func deepMerge(dst, src map[string]any) map[string]any {

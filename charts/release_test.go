@@ -939,6 +939,25 @@ func TestConvergenceIgnoresThePauseAJobCannotAvoid(t *testing.T) {
 	require.Equal(t, PhaseWedged, phaseOf(ServiceState{Running: 1, Desired: 1, UpdateState: "paused", NewestTaskAge: stableAge}))
 }
 
+// Swarm keeps a paused UpdateStatus until the next update, while every task it
+// creates meanwhile, restarts included, runs the new spec. A pause whose slots
+// have all been recreated that way read wedged until the next deploy, which for
+// a release nothing redeploys is for ever (Eldara-Tech/swarmcli-cd#336).
+func TestConvergenceSettlesAPauseEverySlotHasOutgrown(t *testing.T) {
+	outgrown := ServiceState{Running: 2, UpToDate: 2, Desired: 2, UpdateState: "paused", NewestTaskAge: stableAge}
+	require.Equal(t, PhaseConverged, phaseOf(outgrown))
+
+	// The checks a service with no pause takes still apply.
+	c := ServiceState{Running: 1, UpToDate: 1, Desired: 1, UpdateState: "paused", Monitor: 90 * time.Second, NewestTaskAge: 60 * time.Second}.Convergence()
+	require.Equal(t, PhaseProgressing, c.Phase)
+	require.Equal(t, "30s of the stability window remains", c.Reason)
+
+	// One slot still on the old spec is the pause swarm will not finish.
+	require.Equal(t, PhaseWedged, phaseOf(ServiceState{Running: 2, UpToDate: 1, Desired: 2, UpdateState: "paused", NewestTaskAge: stableAge}))
+	// A rollback keeps the update's StartedAt, so its count settles nothing.
+	require.Equal(t, PhaseWedged, phaseOf(ServiceState{Running: 1, UpToDate: 1, Desired: 1, UpdateState: "rollback_paused", NewestTaskAge: stableAge}))
+}
+
 // The other half: a job whose task did NOT complete leaves the service paused
 // in exactly the same way, so the two cases must be told apart by the task. The
 // message names the count, since "update paused after a task failure" is the one
@@ -1028,7 +1047,7 @@ func TestConvergenceWedged(t *testing.T) {
 	require.Equal(t, PhaseProgressing, phaseOf(ServiceState{Name: "api", UpdateState: "updating"}))
 	require.Equal(t, PhaseProgressing, phaseOf(ServiceState{Name: "api", UpdateState: ""}))
 
-	c := Rollup([]ServiceState{{Name: "api", UpdateState: "paused"}})
+	c := Rollup([]ServiceState{{Name: "api", Running: 1, Desired: 1, UpdateState: "paused"}})
 	require.Equal(t, PhaseWedged, c.Phase)
 	require.Contains(t, c.Reason, "api")
 
@@ -1067,7 +1086,7 @@ func TestRollupTakesTheWorstPhase(t *testing.T) {
 	states := []ServiceState{
 		{Name: "web", Running: 1, Desired: 1, NewestTaskAge: stableAge},
 		{Name: "api", Running: 0, Desired: 1, NewestTaskAge: stableAge},
-		{Name: "db", UpdateState: "paused"},
+		{Name: "db", Running: 1, Desired: 1, UpdateState: "paused"},
 	}
 	c := Rollup(states)
 	require.Equal(t, PhaseWedged, c.Phase)

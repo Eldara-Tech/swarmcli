@@ -109,6 +109,23 @@ func TestServiceStatesFromCarriesBothHalves(t *testing.T) {
 	require.Equal(t, 2, states[0].Desired)
 }
 
+// A task waiting on its healthcheck reaches the caller as Starting: a sequential
+// rollout holds such a service rather than treat it as down.
+func TestServiceStatesFromCarriesTasksOnTheirWayUp(t *testing.T) {
+	task := runningTask("peer", "n1", 1)
+	task.Status.State = swarm.TaskStateStarting
+	snap := &docker.SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{stackService("peer", "mystack", 1)},
+		Tasks:    []swarm.Task{task},
+	}
+
+	states := ServiceStatesFrom(snap, "mystack")
+	require.Len(t, states, 1)
+	require.Equal(t, 0, states[0].Running)
+	require.Equal(t, 1, states[0].Starting)
+}
+
 // The rule this function exists to keep one copy of. A one-shot step ends with
 // its task Complete and nothing running, which is its success state — without
 // this the release reads 0/1 forever and looks degraded when it is done (#443).
@@ -138,6 +155,80 @@ func TestServiceStatesFromReportsAFinishedJobAsCompleted(t *testing.T) {
 	require.Equal(t, "1/1", states[0].Replicas, "a completed task counts toward the target")
 	require.Equal(t, "completed", states[0].Status)
 	require.Equal(t, PhaseConverged, Rollup(states).Phase, "and the release is converged, not degraded")
+}
+
+// A service run on a schedule by its restart delay rests with nothing running
+// between runs, which is its success state as much as a finished job's: the
+// ratio counts the run that ended, and the release is converged
+// (Eldara-Tech/swarmcli-cd#322).
+func TestServiceStatesFromReportsARestingServiceAsCompleted(t *testing.T) {
+	svc := stackService("renovate", "mystack", 1)
+	delay := 4 * time.Hour
+	svc.Spec.TaskTemplate.RestartPolicy = &swarm.RestartPolicy{Condition: swarm.RestartPolicyConditionAny, Delay: &delay}
+	start := time.Now().Add(-time.Hour)
+
+	snap := &docker.SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{svc},
+		Tasks: []swarm.Task{{
+			ID: "run", ServiceID: "renovate", NodeID: "n1", Slot: 1,
+			Meta:         swarm.Meta{CreatedAt: start},
+			DesiredState: swarm.TaskStateShutdown,
+			Status:       swarm.TaskStatus{State: swarm.TaskStateComplete},
+		}, {
+			ID: "next", ServiceID: "renovate", NodeID: "n1", Slot: 1,
+			Meta:         swarm.Meta{CreatedAt: start.Add(10 * time.Minute)},
+			DesiredState: swarm.TaskStateReady,
+			Status:       swarm.TaskStatus{State: swarm.TaskStateReady},
+		}},
+	}
+
+	states := ServiceStatesFrom(snap, "mystack")
+	require.Len(t, states, 1)
+	require.False(t, states[0].Job)
+	require.Equal(t, "1/1", states[0].Replicas)
+	require.Equal(t, "completed", states[0].Status)
+	require.Equal(t, PhaseConverged, Rollup(states).Phase)
+}
+
+// The keycloak service in Eldara-Tech/swarmcli-cd#336: its update paused on a
+// failed task, a restart then brought the new spec up, and the service read
+// wedged although nothing was left on the old one. A second slot the rollout
+// never reached keeps the same pause wedged.
+func TestServiceStatesFromSettlesAPauseEverySlotHasOutgrown(t *testing.T) {
+	svc := stackService("keycloak", "mystack", 1)
+	started := time.Now().Add(-24 * time.Hour)
+	svc.UpdateStatus = &swarm.UpdateStatus{State: swarm.UpdateStatePaused, StartedAt: &started}
+	task := func(slot int, created time.Time, desired, state swarm.TaskState) swarm.Task {
+		return swarm.Task{
+			ServiceID: "keycloak", NodeID: "n1", Slot: slot,
+			Meta:         swarm.Meta{CreatedAt: created},
+			DesiredState: desired,
+			Status:       swarm.TaskStatus{State: state},
+		}
+	}
+	snap := &docker.SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{svc},
+		Tasks: []swarm.Task{
+			task(1, started.Add(-time.Hour), swarm.TaskStateShutdown, swarm.TaskStateShutdown),
+			task(1, started.Add(time.Minute), swarm.TaskStateShutdown, swarm.TaskStateFailed),
+			task(1, started.Add(2*time.Minute), swarm.TaskStateRunning, swarm.TaskStateRunning),
+		},
+	}
+
+	states := ServiceStatesFrom(snap, "mystack")
+	require.Len(t, states, 1)
+	require.Equal(t, "paused", states[0].UpdateState)
+	require.Equal(t, 1, states[0].UpToDate)
+	require.Equal(t, PhaseConverged, Rollup(states).Phase)
+
+	replicas := uint64(2)
+	snap.Services[0].Spec.Mode.Replicated.Replicas = &replicas
+	snap.Tasks = append(snap.Tasks, task(2, started.Add(-time.Hour), swarm.TaskStateRunning, swarm.TaskStateRunning))
+	states = ServiceStatesFrom(snap, "mystack")
+	require.Equal(t, 1, states[0].UpToDate)
+	require.Equal(t, PhaseWedged, Rollup(states).Phase)
 }
 
 // A native job's ratio is its progress, completions against TotalCompletions,

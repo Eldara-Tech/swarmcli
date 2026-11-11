@@ -11,11 +11,11 @@ superset of CE: the OSS feature set is included unchanged. Aliases, scripts,
 and CI invocations from a CE installation continue to work without
 modification when you switch to BE.
 
-The package/formula/image names are `swarmcli` for this build and
+The package/cask/image names are `swarmcli` for this build and
 `swarmcli-oss` for the wholly Apache-2.0 one, so the package manager can offer
 both artefacts side by side. They install the same binary name, so **you can
 have either at any time, but not both**. See [CE and BE are one
-download](#ce-and-be-are-one-download) below. The older `swarmcli-be` formula,
+download](#ce-and-be-are-one-download) below. The older `swarmcli-be` cask,
 manifest and image were renamed on 2026-08-07 and retired on 2026-09-11 — see
 [The retired `swarmcli-be` names](#the-retired-swarmcli-be-names).
 
@@ -27,7 +27,7 @@ manifest and image were renamed on 2026-08-07 and retired on 2026-09-11 — see
 brew install Eldara-Tech/tap/swarmcli
 ```
 
-The formula is hosted at
+The cask is hosted at
 [Eldara-Tech/homebrew-tap](https://github.com/Eldara-Tech/homebrew-tap).
 It conflicts with the `swarmcli-oss` cask and with the retired `swarmcli-be`
 one; brew will refuse to install two at once and will offer to remove the
@@ -36,7 +36,7 @@ other.
 ### Scoop (Windows)
 
 ```powershell
-scoop bucket add eldara https://github.com/Eldara-Tech/scoop-bucket
+scoop bucket add eldara-tech https://github.com/Eldara-Tech/scoop-bucket
 scoop install swarmcli
 ```
 
@@ -60,7 +60,8 @@ config `swarmcli-license`, so it is already persistent and follows the context
 rather than the container (see
 [License — Per-swarm storage](license.md#per-swarm-storage)).
 
-Available tags: `latest`, `vX.Y.Z`. Multi-arch images cover `linux/amd64`
+Available tags: `latest`, `vX.Y.Z`, and `vX.Y.Z-oss` for the
+[Apache-2.0 build](editions.md). Multi-arch images cover `linux/amd64`
 and `linux/arm64`.
 
 ### Raw binary
@@ -155,7 +156,7 @@ publishes two artefacts under one tag, and the plain name is the full product:
 | License | this repository's code is Apache 2.0; the licensed code is commercial | wholly Apache 2.0 |
 | Contains | everything, with Business Edition features **inert** until a license verifies | the Community Edition, and nothing else |
 | Binary on disk | `swarmcli` | `swarmcli` (same name) |
-| Get it | `brew install swarmcli`, `scoop install swarmcli`, `eldaratech/swarmcli:<tag>` | `swarmcli-oss` on either, or `eldaratech/swarmcli:<tag>-oss` |
+| Get it | `brew install Eldara-Tech/tap/swarmcli`, `scoop install swarmcli`, `eldaratech/swarmcli:<tag>` | `swarmcli-oss` on either, or `eldaratech/swarmcli:<tag>-oss` |
 
 So **activating Business Edition is installing a license, not installing a
 different program.** If you already run `swarmcli` from the Homebrew tap, the
@@ -194,6 +195,10 @@ docker pull eldaratech/swarmcli:latest      # Docker
 
 The `swarmcli-be` forms of these commands no longer work — see [The retired
 `swarmcli-be` names](#the-retired-swarmcli-be-names) for the one-line switch.
+
+If `brew upgrade` reports nothing while a newer release exists, the tap was
+added before Homebrew 6 began requiring trust, and Homebrew skips it without a
+word. Run `brew trust eldara-tech/tap` once.
 
 For binary installs, replace the file on disk with the new archive's
 contents.

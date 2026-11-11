@@ -118,6 +118,11 @@ func TestRenderErrors(t *testing.T) {
 		{"parse error", "{{ if .Values.x }}", "parse error"},
 		{"invalid yaml", "foo: [unclosed", "invalid YAML"},
 		{"empty manifest", "{{ if false }}a: b{{ end }}", "empty manifest"},
+		// #687: each of these deployed, as an image, a network and a secret
+		// named after a value nobody set.
+		{"unset value", "services:\n  web:\n    image: \"nginx:{{ .Values.tag }}\"\n", "services.web.image holds '<no value>'"},
+		{"unset key", "services:\n  web:\n    image: nginx\nnetworks:\n  {{ .Values.net }}:\n    external: true\n", "networks.<no value> holds '<no value>'"},
+		{"unset list entry", "services:\n  web:\n    image: nginx\n    secrets:\n      - {{ .Values.secret }}\n", "services.web.secrets[0] holds '<no value>'"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

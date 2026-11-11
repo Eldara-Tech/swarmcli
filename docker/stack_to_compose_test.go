@@ -4,12 +4,16 @@
 package docker
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/docker/cli/cli/compose/interpolation"
+	"github.com/docker/docker/client"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -749,4 +753,29 @@ func TestReconstruct_KeepsLiteralDollars(t *testing.T) {
 	require.Equal(t, "cost: $5 ${X:-y}", web["labels"].(map[string]any)["note"])
 	require.Equal(t, "Host(${HOST})", web["deploy"].(map[string]any)["labels"].(map[string]any)["route"])
 	require.Equal(t, []any{"sh", "-c", "echo ${FOO} $BAR $$ $"}, web["command"])
+}
+
+// The stored spec, not the one `docker service inspect` prints: the CLI asks the
+// daemon to insert swarmkit's defaults, and every reconstructed stack then
+// carried a restart_policy, update/rollback configs and a stop_grace_period that
+// were never deployed (#694).
+func TestInspectServiceWith_ReadsTheStoredSpec(t *testing.T) {
+	var path, insertDefaults string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path, insertDefaults = r.URL.Path, r.URL.Query().Get("insertDefaults")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ID":"s1","Spec":{"Name":"web_api","TaskTemplate":{"ContainerSpec":{"Image":"nginx:1.27"}}}}`))
+	}))
+	defer ts.Close()
+
+	cli, err := client.NewClientWithOpts(client.WithHost(ts.URL), client.WithVersion("1.44"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cli.Close() })
+
+	si, err := inspectServiceWith(context.Background(), cli, "web_api")
+	require.NoError(t, err)
+	require.Equal(t, "/v1.44/services/web_api", path)
+	require.Equal(t, "false", insertDefaults, "the daemon must return the spec as stored")
+	require.Equal(t, "web_api", si.Spec.Name)
+	require.Equal(t, "nginx:1.27", si.Spec.TaskTemplate.ContainerSpec.Image)
 }

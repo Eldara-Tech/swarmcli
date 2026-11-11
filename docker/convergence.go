@@ -22,6 +22,11 @@ type ServiceConvergence struct {
 	Mode string
 	// Running counts tasks that are actually running, on an active node.
 	Running int
+	// Starting counts tasks on their way to running, on an active node: assigned
+	// through starting. A task with a healthcheck stays Starting until its first
+	// probe passes, so a service that has just restarted reads Running 0 and
+	// Starting 1, not down. A Pending task is not counted, even with a node named.
+	Starting int
 	// UpToDate counts the tasks in Running that belong to the current
 	// generation: during an update, those created after it started, because
 	// swarm replaces a slot's task, restarts included, from the spec it now
@@ -33,9 +38,12 @@ type ServiceConvergence struct {
 	Desired int
 	// Completed counts tasks that ran to completion on an active node, or for a
 	// replicated one-shot on any node: swarm never moves a finished task, so
-	// draining or losing its node afterwards does not undo the run. Only
-	// meaningful together with Job: for a long-running service a completed task
-	// is one swarm is about to replace, not one that finished its work.
+	// draining or losing its node afterwards does not undo the run. For a
+	// service that is not a Job a completed task is one swarm is about to
+	// replace, so it counts only while swarm holds that replacement out a
+	// restart delay longer than the stability window: a service run on a
+	// schedule that way rests at no running task between runs
+	// (Eldara-Tech/swarmcli-cd#322).
 	Completed int
 	// Job reports a service swarm will not restart after a clean exit — a
 	// restart policy of "none" or "on-failure". Such a service is *supposed* to
@@ -167,12 +175,18 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 		// any other node is outside it, finished or not.
 		perNode := svc.Spec.Mode.Global != nil || svc.Spec.Mode.GlobalJob != nil
 
-		running, upToDate, completed, dead := 0, 0, 0, 0
+		running, starting, upToDate, completed, dead := 0, 0, 0, 0, 0
 		since := rolloutStart(svc)
 		deadReason := ""
 		// Only a restart condition of "none" makes a failed task terminal;
 		// "on-failure" is a job too, but swarm replaces the task.
 		terminal := job && neverRestarts(svc)
+		// Only a restart delay longer than the stability window is a rest between
+		// runs: that is a schedule (renovate's interval mode: any, 4h), while
+		// swarm's default 5s is the pause a crash loop takes, and a server exiting
+		// 0 in one must keep reading as not up. How long the run lasted would be
+		// the better test, but swarm records no task's start.
+		rests := !job && restartDelay(svc) > max(monitorWindow(svc), DefaultMonitor)
 		var newest time.Time
 		// Only the newest task in each slot is judged. Swarm keeps terminal
 		// tasks in the list up to --task-history-limit, so a one-shot that has
@@ -182,6 +196,10 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 		// tasks running". An unassigned task has no slot to be the newest of and
 		// is dropped here rather than by the NodeID guard this replaces.
 		for _, t := range newestTaskPerSlot(svc.ID, snap.Tasks) {
+			resting := false
+			if rests {
+				t, resting = restingRun(t, snap.Tasks)
+			}
 			// A replicated one-shot's finished task is a fact about its slot,
 			// not its node: swarm never reschedules it, so once that node is
 			// drained or down, skipping the task would leave the run "0/1"
@@ -207,9 +225,14 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 				if t.CreatedAt.After(since) {
 					upToDate++
 				}
-			case job && t.Status.State == swarm.TaskStateComplete:
+			case t.DesiredState == swarm.TaskStateRunning && comingUp(t.Status.State):
+				// Not running yet, so not part of the window below either.
+				starting++
+				continue
+			case resting || (job && t.Status.State == swarm.TaskStateComplete):
 				// Swarm sets DesiredState=shutdown once a job's task exits, so
-				// this is not reachable through the running arm above.
+				// this is not reachable through the running arm above. A resting
+				// slot arrives here as the run that ended it.
 				completed++
 			case terminal && isDeadTaskState(t.Status.State):
 				// A one-shot swarm will not retry, whose task did not complete:
@@ -237,6 +260,7 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 			Name:           svc.Spec.Name,
 			Mode:           getServiceMode(svc),
 			Running:        running,
+			Starting:       starting,
 			UpToDate:       upToDate,
 			Completed:      completed,
 			Job:            job,
@@ -254,6 +278,17 @@ func (snap *SwarmSnapshot) convergence(keep func(swarm.Service) bool) []ServiceC
 		})
 	}
 	return out
+}
+
+// comingUp reports the task states between a node taking a task and the task
+// running.
+func comingUp(s swarm.TaskState) bool {
+	switch s {
+	case swarm.TaskStateAssigned, swarm.TaskStateAccepted, swarm.TaskStatePreparing,
+		swarm.TaskStateReady, swarm.TaskStateStarting:
+		return true
+	}
+	return false
 }
 
 // ageSince is how long ago t was, clamped at zero. CreatedAt comes off the
@@ -310,6 +345,43 @@ func inCurrentJobIteration(svc swarm.Service, t swarm.Task) bool {
 func neverRestarts(svc swarm.Service) bool {
 	rp := svc.Spec.TaskTemplate.RestartPolicy
 	return rp != nil && rp.Condition == swarm.RestartPolicyConditionNone
+}
+
+// restingRun reports a slot swarm is holding between runs, and returns the task
+// to judge it by.
+//
+// Under a restart policy that restarts a clean exit, swarm creates the
+// replacement the moment a task ends and holds it at desired state "ready" until
+// restart_policy.delay has passed. For that whole delay the slot's newest task
+// has done nothing yet; what the slot has done is the run before it, and only a
+// run that completed counts. A rolling update's replacement waits at "ready"
+// too, but behind a task that was running, never one that completed.
+func restingRun(newest swarm.Task, tasks []swarm.Task) (swarm.Task, bool) {
+	if newest.DesiredState != swarm.TaskStateReady {
+		return newest, false
+	}
+	slot := taskSlotKey(newest)
+	var prev swarm.Task
+	for _, t := range tasks {
+		if t.ServiceID == newest.ServiceID && taskSlotKey(t) == slot &&
+			t.CreatedAt.Before(newest.CreatedAt) && t.CreatedAt.After(prev.CreatedAt) {
+			prev = t
+		}
+	}
+	if prev.Status.State != swarm.TaskStateComplete {
+		return newest, false
+	}
+	return prev, true
+}
+
+// restartDelay is restart_policy.delay, zero when unset: swarm's 5s default then,
+// which no stability window is shorter than.
+func restartDelay(svc swarm.Service) time.Duration {
+	rp := svc.Spec.TaskTemplate.RestartPolicy
+	if rp == nil || rp.Delay == nil {
+		return 0
+	}
+	return *rp.Delay
 }
 
 // isDeadTaskState reports the terminal states a task reaches without having done
@@ -372,6 +444,11 @@ func updateStartedAt(svc swarm.Service) time.Time {
 	}
 	return *svc.UpdateStatus.StartedAt
 }
+
+// DefaultMonitor is UpdateConfig.Monitor when a service sets none, swarm's
+// default and the Docker CLI's: the window after a task's creation in which its
+// exit still counts against a rollout.
+const DefaultMonitor = 5 * time.Second
 
 func monitorWindow(svc swarm.Service) time.Duration {
 	if svc.Spec.UpdateConfig == nil {

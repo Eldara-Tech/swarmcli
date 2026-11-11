@@ -35,37 +35,6 @@ categories:
         - 'D0-dependency'
 change-template: '- $TITLE (#$NUMBER) @$AUTHOR '
 change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
-# The artefact legend, above the changelog because the assets list is where the
-# question gets asked. It lives here rather than in a release.yml step for two
-# reasons: the drafter re-renders this body on every run, so a legend written
-# here cannot be duplicated by a re-pushed tag, and it needs no version — it
-# names the shapes the assets take, not this release's URLs. release.yml
-# prepends any Upgrade Notes above it, and the private wrapper appends its own
-# delimited region below all of this.
-#
-# It describes the naming scheme rather than asserting both halves are present:
-# if the private tag has not run, or failed, the assets list is what says so.
-#
-# The rows are in the order the assets themselves appear. GitHub renders them
-# sorted by lower(name) in codepoint order, which is why the qualifier sits at
-# the end of the Apache-2.0 archive names — see .goreleaser.yml.
 template: |
-  ## Which download is which
-
-  One tag, two builds of the same command:
-
-  | | Contains | Licence |
-  |---|---|---|
-  | `swarmcli_<OS>_<ARCH>.tar.gz`, `eldaratech/swarmcli:<version>`, `:latest`, the `swarmcli` cask and Scoop manifest | this repository, plus licensed code that is inert until a licence verifies | this repository's code is Apache-2.0; the licensed code is proprietary |
-  | `swarmcli_<OS>_<ARCH>_oss.tar.gz`, `eldaratech/swarmcli:<version>-oss`, the `swarmcli-oss` cask and manifest | this repository, and nothing else | wholly Apache-2.0 |
-
-  The command inside both is `swarmcli`, and they differ in what the build
-  contains rather than in how it is driven — `swarmcli version` names which one
-  you are running. `checksums-merged.txt` verifies the first set and
-  `checksums-oss.txt` the second; neither is named plain `checksums.txt`, because
-  one manifest could not say which set it covered.
-
-  Full picture: [docs/editions.md](https://github.com/Eldara-Tech/swarmcli/blob/main/docs/editions.md).
-
   ## What's Changed since $PREVIOUS_TAG
   $CHANGES

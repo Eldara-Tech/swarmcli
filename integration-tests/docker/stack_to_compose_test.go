@@ -154,6 +154,16 @@ func TestReconstructStackCompose(t *testing.T) {
 		t.Error("Issue #662: reconstructed YAML pins the default 'endpoint_mode: vip'")
 	}
 
+	// Issue #694: no demo service declares a stop grace period, a restart
+	// policy or an update/rollback strategy, so none may be reconstructed. The
+	// ones that were came from `docker service inspect`, which has the daemon
+	// insert swarmkit's defaults; the stored spec holds none of them.
+	for _, key := range []string{"stop_grace_period:", "restart_policy:", "update_config:", "rollback_config:"} {
+		if strings.Contains(yaml, key) {
+			t.Errorf("Issue #694: reconstructed YAML carries %q, which no demo service declares", key)
+		}
+	}
+
 	t.Logf("Successfully reconstructed stack YAML (%d bytes)", len(yaml))
 }
 

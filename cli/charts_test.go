@@ -358,6 +358,32 @@ func TestChartsTemplateSetFileRefusals(t *testing.T) {
 	}
 }
 
+// --reuse-values layers the previous release's values over the new chart
+// version's defaults, not in place of them, so a key the new version adds
+// renders its default instead of '<no value>' (#687).
+func TestPrepareReuseKeepsTheNewChartsDefaults(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "templates"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Chart.yaml"), []byte("name: demo\nversion: 1.1.0\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "values.yaml"),
+		[]byte("image: nginx\nreplicas: 1\nmetrics:\n  enabled: false\n  image: exporter\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "templates", "stack.yaml"), []byte(
+		"services:\n  web:\n    image: {{ .Values.image }}\n    deploy:\n      replicas: {{ .Values.replicas }}\n"+
+			"{{- if .Values.metrics.enabled }}\n  metrics:\n    image: {{ .Values.metrics.image }}\n{{- end }}\n"), 0o644))
+
+	// What the release stored from 1.0.0, a version with no metrics block.
+	previous := map[string]any{"image": "nginx", "replicas": 3}
+	var manifest string
+	var values map[string]any
+	var code int
+	_, errOut := capture(t, func() {
+		manifest, values, _, _, _, code = prepare("site", dir, flags{sets: []string{"metrics.enabled=true"}}, previous, compatWarn)
+	})
+	require.Equal(t, -1, code, errOut)
+	require.Contains(t, manifest, "image: exporter")
+	require.Equal(t, 3, values["replicas"], "a value the release ran with must survive the upgrade")
+}
+
 func TestParseArgs(t *testing.T) {
 	pos, f, err := parseArgs([]string{"rel", "repo/chart", "-f", "a.yaml", "--values", "b.yaml", "--set", "x=1", "--dry-run", "--timeout", "10m"})
 	require.NoError(t, err)

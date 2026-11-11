@@ -48,8 +48,7 @@ Get up and running in seconds:
 
 ```bash
 # macOS/Linux via Homebrew
-brew tap eldara-tech/tap
-brew install swarmcli
+brew install Eldara-Tech/tap/swarmcli
 
 # Run it
 swarmcli

@@ -100,6 +100,183 @@ func TestStackConvergenceIgnoresCompletedTasksOnNonJobServices(t *testing.T) {
 	require.Equal(t, 0, conv[0].Completed)
 }
 
+// restingSvc restarts a clean exit only after delay, the shape renovate's
+// interval mode gives a service to run it on a schedule.
+func restingSvc(id, stack string, delay time.Duration) swarm.Service {
+	svc := jobSvc(id, stack, swarm.RestartPolicyConditionAny)
+	svc.Spec.TaskTemplate.RestartPolicy.Delay = &delay
+	return svc
+}
+
+// runThenRest is one slot's history under a restart delay: a run created at
+// start that ended in state ended, and the replacement swarm created when it
+// did, ran later, and holds at desired state "ready" until the delay is over.
+func runThenRest(svcID string, start time.Time, ran time.Duration, ended swarm.TaskState) []swarm.Task {
+	run := taskInState(svcID, "n1", swarm.TaskStateShutdown, ended)
+	run.ID, run.Slot, run.CreatedAt = svcID+".run", 1, start
+	next := taskInState(svcID, "n1", swarm.TaskStateReady, swarm.TaskStateReady)
+	next.ID, next.Slot, next.CreatedAt = svcID+".next", 1, start.Add(ran)
+	return []swarm.Task{run, next}
+}
+
+// The bug in Eldara-Tech/swarmcli-cd#322: renovate's interval mode (restart
+// any, delay 4h) exits 0 and swarm holds the replacement at "ready" for hours.
+// Nothing runs meanwhile, so the slot read 0/1 and the release progressing for
+// as long as it rested.
+func TestStackConvergenceCountsASlotRestingAfterACleanRun(t *testing.T) {
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{restingSvc("renovate", "mystack", 4*time.Hour)},
+		Tasks:    runThenRest("renovate", time.Now().Add(-time.Hour), 59*time.Minute, swarm.TaskStateComplete),
+	}
+
+	conv := snap.StackConvergence("mystack")
+	require.Len(t, conv, 1)
+	require.False(t, conv[0].Job, "swarm restarts it, so it is not a job")
+	require.Equal(t, 0, conv[0].Running)
+	require.Equal(t, 1, conv[0].Completed, "the slot is judged by the run that ended it")
+	require.Greater(t, conv[0].NewestTaskAge, 30*time.Minute, "and aged from that run, not from the replacement")
+
+	// The delay is over: the replacement runs, and is judged as itself.
+	snap.Tasks[1].DesiredState, snap.Tasks[1].Status.State = swarm.TaskStateRunning, swarm.TaskStateRunning
+	conv = snap.StackConvergence("mystack")
+	require.Equal(t, 1, conv[0].Running)
+	require.Equal(t, 0, conv[0].Completed)
+	require.Less(t, conv[0].NewestTaskAge, 30*time.Minute)
+}
+
+// Swarm restarts a failed run after the same delay. The slot resting behind it
+// has not done its work.
+func TestStackConvergenceDoesNotCountARestAfterAFailedRun(t *testing.T) {
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{restingSvc("renovate", "mystack", 4*time.Hour)},
+		Tasks:    runThenRest("renovate", time.Now().Add(-time.Hour), 10*time.Minute, swarm.TaskStateFailed),
+	}
+
+	conv := snap.StackConvergence("mystack")
+	require.Len(t, conv, 1)
+	require.Equal(t, 0, conv[0].Completed)
+	require.Equal(t, 0, conv[0].Running)
+}
+
+// A restart delay no longer than the stability window is the pause a crash loop
+// takes, not a schedule, and swarm's default delay is exactly the default
+// window. Counting the rest behind it would have a server that exits 0 in a
+// loop read up between restarts. The window is the declared monitor where that
+// is longer.
+func TestStackConvergenceDoesNotCountARestBehindADelayInsideTheWindow(t *testing.T) {
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{jobSvc("api", "mystack", swarm.RestartPolicyConditionAny)},
+		Tasks:    runThenRest("api", time.Now().Add(-time.Hour), 59*time.Minute, swarm.TaskStateComplete),
+	}
+	require.Equal(t, 0, snap.StackConvergence("mystack")[0].Completed, "no delay set: swarm's 5s default")
+
+	snap.Services = []swarm.Service{restingSvc("api", "mystack", DefaultMonitor)}
+	require.Equal(t, 0, snap.StackConvergence("mystack")[0].Completed, "the default window, set explicitly")
+
+	svc := restingSvc("api", "mystack", 30*time.Second)
+	svc.Spec.UpdateConfig = &swarm.UpdateConfig{Monitor: time.Minute}
+	snap.Services = []swarm.Service{svc}
+	require.Equal(t, 0, snap.StackConvergence("mystack")[0].Completed, "inside a declared monitor")
+
+	*svc.Spec.TaskTemplate.RestartPolicy.Delay = 2 * time.Minute
+	require.Equal(t, 1, snap.StackConvergence("mystack")[0].Completed, "past it")
+}
+
+// A rolling update's replacement also waits at "ready", until the task it
+// replaces has stopped. That task was running, not completed, so the slot is
+// mid-update rather than resting.
+func TestStackConvergenceDoesNotMistakeAnUpdateForARest(t *testing.T) {
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{restingSvc("api", "mystack", 4*time.Hour)},
+		Tasks:    runThenRest("api", time.Now().Add(-time.Hour), 59*time.Minute, swarm.TaskStateRunning),
+	}
+
+	conv := snap.StackConvergence("mystack")
+	require.Len(t, conv, 1)
+	require.Equal(t, 0, conv[0].Completed)
+	require.Equal(t, 0, conv[0].Running, "the outgoing task is not counted either")
+}
+
+// Only the run just before the replacement decides. Swarm keeps earlier runs in
+// the slot's history, and an old success must not vouch for the failure the
+// slot is resting after now.
+func TestStackConvergenceJudgesARestByTheLatestRun(t *testing.T) {
+	start := time.Now().Add(-3 * time.Hour)
+	old := taskInState("renovate", "n1", swarm.TaskStateShutdown, swarm.TaskStateComplete)
+	old.ID, old.Slot, old.CreatedAt = "renovate.old", 1, start
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{restingSvc("renovate", "mystack", 4*time.Hour)},
+		Tasks:    append(runThenRest("renovate", start.Add(time.Hour), 10*time.Minute, swarm.TaskStateFailed), old),
+	}
+
+	conv := snap.StackConvergence("mystack")
+	require.Len(t, conv, 1)
+	require.Equal(t, 0, conv[0].Completed)
+}
+
+// Each slot rests behind its own run. Slot 2's clean run is older than slot 1's
+// failure and its replacement, and neither may stand in for it.
+func TestStackConvergenceJudgesEachSlotsRestByItsOwnRun(t *testing.T) {
+	start := time.Now().Add(-time.Hour)
+	failed := runThenRest("renovate", start.Add(5*time.Minute), 15*time.Minute, swarm.TaskStateFailed)
+	clean := runThenRest("renovate", start, 30*time.Minute, swarm.TaskStateComplete)
+	for i := range clean {
+		clean[i].ID, clean[i].Slot = clean[i].ID+"2", 2
+	}
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{restingSvc("renovate", "mystack", 4*time.Hour)},
+		Tasks:    append(failed, clean...),
+	}
+
+	conv := snap.StackConvergence("mystack")
+	require.Len(t, conv, 1)
+	require.Equal(t, 1, conv[0].Completed)
+}
+
+// An update re-running a one-shot also creates its task at "ready", behind the
+// last run's Complete one. That run is not this one, and a job never rests,
+// whatever delay its restart policy carries.
+func TestStackConvergenceDoesNotCreditAJobsRerunWithTheLastRun(t *testing.T) {
+	job := jobSvc("init", "mystack", swarm.RestartPolicyConditionNone)
+	delay := 4 * time.Hour
+	job.Spec.TaskTemplate.RestartPolicy.Delay = &delay
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{job},
+		Tasks:    runThenRest("init", time.Now().Add(-time.Hour), 59*time.Minute, swarm.TaskStateComplete),
+	}
+
+	conv := snap.StackConvergence("mystack")
+	require.Len(t, conv, 1)
+	require.Equal(t, 0, conv[0].Completed)
+}
+
+// A global service's tasks carry no slot, so its rest is found by node.
+func TestStackConvergenceCountsARestingGlobalTask(t *testing.T) {
+	svc := restingSvc("agent", "mystack", 4*time.Hour)
+	svc.Spec.Mode = swarm.ServiceMode{Global: &swarm.GlobalService{}}
+	tasks := runThenRest("agent", time.Now().Add(-time.Hour), 10*time.Minute, swarm.TaskStateComplete)
+	for i := range tasks {
+		tasks[i].Slot = 0
+	}
+	snap := &SwarmSnapshot{
+		Nodes:    []swarm.Node{readyNode("n1")},
+		Services: []swarm.Service{svc},
+		Tasks:    tasks,
+	}
+
+	conv := snap.StackConvergence("mystack")
+	require.Len(t, conv, 1)
+	require.Equal(t, 1, conv[0].Desired)
+	require.Equal(t, 1, conv[0].Completed)
+}
+
 // The monitor window is measured from task creation. A finished job has no
 // running task, so without counting the completed one the newest timestamp
 // stays zero, NewestTaskAge reads zero, and --wait sits out a full monitor
