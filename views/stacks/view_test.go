@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
+	"github.com/Eldara-Tech/swarmcli/v2/ui"
 	"github.com/Eldara-Tech/swarmcli/v2/ui/dialog"
 
 	"github.com/charmbracelet/lipgloss"
@@ -148,6 +149,15 @@ func TestView_ExpandedStackTintsTasksByState(t *testing.T) {
 		require.Equal(t, fgSeq(lipgloss.Color("7")), rowTint(t, out, "node-up"), "under cursor: %v", underCursor)
 		require.Equal(t, fgSeq(lipgloss.Color("3")), rowTint(t, out, "node-gone"), "under cursor: %v", underCursor)
 		require.Equal(t, fgSeq(lipgloss.Color("9")), rowTint(t, out, "node-bad"), "under cursor: %v", underCursor)
+	}
+
+	// The task under the cursor keeps its tint as the bar (issue #711).
+	plain := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("24")).Bold(true)
+	for i, bar := range []lipgloss.Style{plain, ui.TintedCursor(lipgloss.NewStyle().Foreground(lipgloss.Color("3"))),
+		ui.TintedCursor(lipgloss.NewStyle().Foreground(lipgloss.Color("9")))} {
+		m.selectedTaskIndex = i
+		node := m.stackTasks["mystack"][i].NodeName
+		require.Equal(t, sgrPrefix.FindString(bar.Render("x")), rowTint(t, m.List.RenderItem(m.List.Filtered[0], true, 0), node), node)
 	}
 }
 
@@ -335,6 +345,12 @@ func TestView_ConvergingStackIsAmber(t *testing.T) {
 	want := map[string]lipgloss.Color{"calm": "117", "rolling": "3", "broken": "9"}
 	for _, s := range m.List.Filtered {
 		require.Equal(t, fgSeq(want[s.Name]), rowTint(t, m.List.RenderItem(s, false, 0), s.Name), s.Name)
+		// Under the cursor a tinted stack keeps its tint as the bar (issue #711).
+		bar := ui.ListSelectedStyle
+		if want[s.Name] != "117" {
+			bar = ui.TintedCursor(lipgloss.NewStyle().Foreground(want[s.Name]))
+		}
+		require.Equal(t, sgrPrefix.FindString(bar.Render("x")), rowTint(t, m.List.RenderItem(s, true, 0), s.Name), "under cursor: %s", s.Name)
 	}
 	require.True(t, m.stackConverging["rolling"])
 	require.False(t, m.stackConverging["broken"], "failing wins over converging")

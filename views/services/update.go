@@ -711,10 +711,24 @@ func (m *Model) setRenderItem() {
 
 		itemStyle := ui.ListItemStyle
 
+		rowStyle, tinted := itemStyle, true
+		switch {
+		case m.serviceHasError[e.ServiceID]:
+			// Color error rows red
+			rowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+		case m.serviceConverging[e.ServiceID]:
+			rowStyle = taskutil.ConvergingStyle
+		default:
+			tinted = false
+		}
+
 		var lineStr string
 		if selected && m.selectedTaskIndex == -1 {
 			// Only highlight service row if no task is selected
 			selBase := ui.ListSelectedStyle
+			if tinted {
+				selBase = ui.TintedCursor(rowStyle)
+			}
 			lineStr = selBase.Render(rowText)
 
 			// Ensure highlight background fills the full viewport width
@@ -725,15 +739,8 @@ func (m *Model) setRenderItem() {
 					lineStr += selBase.Render(strings.Repeat(" ", pad))
 				}
 			}
-		} else if m.serviceHasError[e.ServiceID] {
-			// Color non-selected error rows red
-			errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-			lineStr = errStyle.Render(rowText)
-		} else if m.serviceConverging[e.ServiceID] {
-			lineStr = taskutil.ConvergingStyle.Render(rowText)
 		} else {
-			// Normal rendering
-			lineStr = itemStyle.Render(rowText)
+			lineStr = rowStyle.Render(rowText)
 		}
 
 		// Check if service is expanded and add task rows
@@ -791,7 +798,7 @@ func (m *Model) setRenderItem() {
 					var taskLine string
 					if taskSelected {
 						// Lighter highlight for task rows
-						taskSelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("24")).Bold(true)
+						taskSelStyle := taskutil.TaskCursorStyle(task, lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("24")).Bold(true))
 						taskLine = taskSelStyle.Render(rowText)
 						// Pad task highlight to full width
 						if m.List.Viewport.Width > 0 {

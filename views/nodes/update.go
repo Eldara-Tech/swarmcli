@@ -560,12 +560,16 @@ func (m *Model) buildColumns() []filterlist.Column[docker.NodeEntry] {
 func (m *Model) setRenderItem() {
 	m.List.RenderItem = func(n docker.NodeEntry, selected bool, _ int) string {
 		row := m.List.RenderRow(n, selected)
+		if nodeIsUnhealthy(n) {
+			// Color unhealthy rows red, like the services view
+			unhealthy := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+			if selected {
+				return ui.TintedCursor(unhealthy).Render(row)
+			}
+			return unhealthy.Render(row)
+		}
 		if selected {
 			return ui.ListSelectedStyle.Render(row)
-		}
-		if nodeIsUnhealthy(n) {
-			// Color non-selected unhealthy rows red, like the services view
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render(row)
 		}
 		return ui.ListItemStyle.Render(row)
 	}

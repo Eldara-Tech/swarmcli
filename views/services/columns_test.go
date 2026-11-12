@@ -195,7 +195,35 @@ func TestExpandedRow_TintsByTaskState(t *testing.T) {
 	// inventory. They must not differ in colour.
 	require.Equal(t, fgSeq(lipgloss.Color("7")), rowTint(t, out, "node-done"))
 	require.Equal(t, fgSeq(lipgloss.Color("7")), rowTint(t, out, "node-old"))
+
+	// The task under the cursor keeps its tint as the bar (issue #711).
+	m.List.Viewport.Width = 300 // wider than a row, so the bar is padded
+	plain := lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("24")).Bold(true)
+	for i, bar := range []lipgloss.Style{plain, ui.TintedCursor(lipgloss.NewStyle().Foreground(lipgloss.Color("3"))),
+		ui.TintedCursor(lipgloss.NewStyle().Foreground(lipgloss.Color("9")))} {
+		m.selectedTaskIndex = i
+		node := m.serviceTasks["id-web"][i].NodeName
+		requireOneStyle(t, rowFor(t, m.List.RenderItem(m.List.Filtered[0], true, 0), node), bar, true, node)
+	}
 }
+
+// requireOneStyle fails unless every styled run on line opens with style's
+// sequence, so any full-width padding is the same bar as the row it extends.
+// padded asks for that padding to be there: a service row's columns already
+// fill the viewport, a task row's do not.
+func requireOneStyle(t *testing.T, line string, style lipgloss.Style, padded bool, msgAndArgs ...any) {
+	t.Helper()
+	want := sgrPrefix.FindString(style.Render("x"))
+	runs := sgrOpen.FindAllString(line, -1)
+	if padded {
+		require.Greater(t, len(runs), 1, "the row is not padded: widen the viewport")
+	}
+	for _, seq := range runs {
+		require.Equal(t, want, seq, msgAndArgs...)
+	}
+}
+
+var sgrOpen = regexp.MustCompile(`\x1b\[[0-9;]*[1-9][0-9;]*m`)
 
 // Once a task is over, CURRENT STATE has already said so and the container's
 // "exited" adds nothing — worse, whether the cell can say it at all turns on
@@ -514,7 +542,7 @@ func convergingSnapshot() *docker.SwarmSnapshot {
 }
 
 // A converging service reads amber, a failing one red whether or not it is also
-// short, and the cursor's highlight still wins over both.
+// short, and the cursor on either keeps the tint as its bar (issue #711).
 func TestRowStyle_ConvergingServiceIsAmber(t *testing.T) {
 	trueColour(t)
 	snap := convergingSnapshot()
@@ -527,8 +555,11 @@ func TestRowStyle_ConvergingServiceIsAmber(t *testing.T) {
 		out := m.List.RenderItem(e, false, 0)
 		want := map[string]lipgloss.Color{"web": "117", "api": "3", "bad": "9"}[e.ServiceName]
 		require.Equal(t, fgSeq(want), rowTint(t, out, e.ServiceName), e.ServiceName)
-		require.Equal(t, sgrPrefix.FindString(ui.ListSelectedStyle.Render("x")),
-			rowTint(t, m.List.RenderItem(e, true, 0), e.ServiceName), "under cursor: %s", e.ServiceName)
+		bar := ui.ListSelectedStyle
+		if want != "117" {
+			bar = ui.TintedCursor(lipgloss.NewStyle().Foreground(want))
+		}
+		requireOneStyle(t, rowFor(t, m.List.RenderItem(e, true, 0), e.ServiceName), bar, false, "under cursor: %s", e.ServiceName)
 	}
 	require.True(t, m.HasWarnings())
 	require.True(t, m.HasErrors())

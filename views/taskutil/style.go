@@ -5,6 +5,7 @@ package taskutil
 
 import (
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
+	"github.com/Eldara-Tech/swarmcli/v2/ui"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/docker/docker/api/types/swarm"
@@ -32,22 +33,40 @@ var (
 // views showing tasks each render an ordinary row in their own colour, and only
 // the two exceptional tints are shared.
 func TaskRowStyle(t docker.TaskEntry, base lipgloss.Style) lipgloss.Style {
+	if tint, ok := taskTint(t); ok {
+		return tint
+	}
+	return base
+}
+
+// TaskCursorStyle is TaskRowStyle for the task row under the cursor: a tinted
+// row keeps its tint as the bar's background (ui.TintedCursor), and any other
+// row gets the caller's cursor.
+func TaskCursorStyle(t docker.TaskEntry, cursor lipgloss.Style) lipgloss.Style {
+	if tint, ok := taskTint(t); ok {
+		return ui.TintedCursor(tint)
+	}
+	return cursor
+}
+
+// taskTint is the tint TaskRowStyle describes, and whether the task has one.
+func taskTint(t docker.TaskEntry) (lipgloss.Style, bool) {
 	switch {
 	case isFailedState(t.State), t.Error != "",
 		t.Health == "unhealthy", t.ContainerState == "dead":
-		return taskFailedStyle
+		return taskFailedStyle, true
 	// A task that ran to completion is the outcome that was wanted, not
 	// something to flag: swarm reaches "complete" only when the container
 	// exited 0, and anything else is "failed". It needs an arm of its own ahead
 	// of the stopped case because the container's docker-ps state is "exited"
 	// here too, exactly as it is for a replica swarm retired (issue #613).
 	case swarm.TaskState(t.State) == swarm.TaskStateComplete:
-		return base
+		return lipgloss.Style{}, false
 	case isStoppedState(t.State), t.Health == "starting",
 		t.ContainerState == "restarting", t.ContainerState == "exited":
-		return taskStoppedStyle
+		return taskStoppedStyle, true
 	default:
-		return base
+		return lipgloss.Style{}, false
 	}
 }
 
