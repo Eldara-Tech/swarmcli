@@ -40,14 +40,18 @@ and logs, and says what an admin can do.
    shows the address the phone must reach.
 2. Press Enter. SwarmCLI adds a user for the phone on the proxy and shows a one-time
    QR code. Nothing is created until you press Enter.
-3. In the app, tap **Scan QR code**. The code carries the onboarding URL and a pin of
-   the proxy's server key; the app accepts the proxy only if its key matches the pin,
-   so nobody in the middle can hand the phone a different certificate authority.
+3. Scan the code with the phone's camera. It opens in the SwarmCLI app, version 1.1
+   or later, which asks **Add this swarm?** before adding it; the app's own
+   **Scan QR code** works too. The code carries the onboarding URL and a pin of the
+   proxy's server key; the app accepts the proxy only if its key matches the pin, so
+   nobody in the middle can hand the phone a different certificate authority.
 
 The code works once and expires after 24 hours by default
-(`PROXY_ONBOARDING_TOKEN_TTL`); SwarmCLI shows when. Scan it with the app's own
-**Scan QR code** rather than the phone's camera app, and get the app first if the
-phone does not have it yet (the popup's **Get the app** tab).
+(`PROXY_ONBOARDING_TOKEN_TTL`); SwarmCLI shows when. On a phone without the app, the
+camera opens a page that leads to the App Store: install the app, then scan the code
+again or tap **Scan QR code** in the app. An older app cannot read the code; update
+it first. The code is a swarmcli.io address, but what it carries is never sent to
+swarmcli.io.
 
 Users created in `:users` work as well: after creating one, press `m` for its QR
 code. If the terminal is too small for a code, SwarmCLI says so rather than draw
