@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -267,7 +268,19 @@ func TestReconstructStackCompose_RoundTrip(t *testing.T) {
 		}
 	}
 
-	// 7. Compare: service volume mounts
+	// 7. Compare: service volume mounts. An entry is a string or, in the long
+	// syntax, a map, which == cannot compare.
+	hasVolume := func(vols []any, want any) bool {
+		return slices.ContainsFunc(vols, func(v any) bool { return reflect.DeepEqual(v, want) })
+	}
+	// Issue #722: explicitly assert whoami_single's anonymous volumes survived
+	// the source reconstruction — the loop below would pass vacuously if both
+	// reconstructions dropped them.
+	for _, want := range []any{"/scratch", map[string]any{"type": "volume", "target": "/cache", "read_only": true}} {
+		if vols := srcCF.Services["whoami_single"].Volumes; !hasVolume(vols, want) {
+			t.Errorf("Issue #722: source reconstruction dropped whoami_single's volume %v, got: %v", want, vols)
+		}
+	}
 	for svcName, srcSvc := range srcCF.Services {
 		rtSvc, ok := rtCF.Services[svcName]
 		if !ok {
@@ -275,15 +288,8 @@ func TestReconstructStackCompose_RoundTrip(t *testing.T) {
 			continue
 		}
 		for _, srcVol := range srcSvc.Volumes {
-			found := false
-			for _, rtVol := range rtSvc.Volumes {
-				if rtVol == srcVol {
-					found = true
-					break
-				}
-			}
-			if !found {
-				t.Errorf("Service %q: volume mount %q missing from round-trip, got: %v",
+			if !hasVolume(rtSvc.Volumes, srcVol) {
+				t.Errorf("Service %q: volume mount %v missing from round-trip, got: %v",
 					svcName, srcVol, rtSvc.Volumes)
 			}
 		}

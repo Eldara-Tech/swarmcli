@@ -40,7 +40,7 @@ type ComposeService struct {
 	Labels      map[string]string `yaml:"labels,omitempty"`
 	Ports       []string          `yaml:"ports,omitempty"`
 	Networks    any               `yaml:"networks,omitempty"` // []string or map
-	Volumes     []string          `yaml:"volumes,omitempty"`
+	Volumes     []any             `yaml:"volumes,omitempty"`  // short-syntax strings, or a long-form map
 	Secrets     []map[string]any  `yaml:"secrets,omitempty"`
 	Configs     []map[string]any  `yaml:"configs,omitempty"`
 	// Container runtime / security settings that round-trip through
@@ -514,7 +514,14 @@ func (cf *ComposeFile) buildService(si *ServiceInspect, stackName string, netID2
 			case "volume":
 				src := m.Source
 				if src == "" {
-					continue // anonymous volume, cannot round-trip
+					// Anonymous. The short syntax has no read-only form for one:
+					// "/data:ro" reads as a bind of /data onto "ro".
+					if m.ReadOnly {
+						cs.Volumes = append(cs.Volumes, map[string]any{"type": "volume", "target": m.Target, "read_only": true})
+					} else {
+						cs.Volumes = append(cs.Volumes, m.Target)
+					}
+					continue
 				}
 				stripped := stripStackPrefix(stackName, src)
 				isExternal := stripped == src // no prefix removed → external

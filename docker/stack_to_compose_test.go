@@ -69,7 +69,7 @@ func TestComposeFile_VolumesExternalTrue(t *testing.T) {
 func TestComposeFile_VolumeWithDriver(t *testing.T) {
 	cf := ComposeFile{
 		Version:  "3.8",
-		Services: map[string]ComposeService{"web": {Image: "nginx", Volumes: []string{"nfs_data:/data"}}},
+		Services: map[string]ComposeService{"web": {Image: "nginx", Volumes: []any{"nfs_data:/data"}}},
 		Volumes: map[string]map[string]any{
 			"nfs_data": {
 				"driver":      "local",
@@ -177,7 +177,7 @@ func TestStripStackPrefix(t *testing.T) {
 func TestComposeFile_VolumeManagedNotExternal(t *testing.T) {
 	cf := ComposeFile{
 		Version:  "3.8",
-		Services: map[string]ComposeService{"web": {Image: "nginx", Volumes: []string{"mydata:/data"}}},
+		Services: map[string]ComposeService{"web": {Image: "nginx", Volumes: []any{"mydata:/data"}}},
 		Volumes:  map[string]map[string]any{"mydata": {}},
 	}
 	out, err := yaml.Marshal(&cf)
@@ -753,6 +753,45 @@ func TestReconstruct_KeepsLiteralDollars(t *testing.T) {
 	require.Equal(t, "cost: $5 ${X:-y}", web["labels"].(map[string]any)["note"])
 	require.Equal(t, "Host(${HOST})", web["deploy"].(map[string]any)["labels"].(map[string]any)["route"])
 	require.Equal(t, []any{"sh", "-c", "echo ${FOO} $BAR $$ $"}, web["command"])
+}
+
+// A volume mount with no source is an anonymous volume, which a target alone
+// recreates (#722). A read-only one is written long: "/cache:ro" would read as a
+// bind of /cache onto "ro".
+func TestReconstruct_KeepsAnonymousVolumes(t *testing.T) {
+	const raw = `{
+	  "Spec": {
+	    "Name": "demo_db",
+	    "Labels": {"com.docker.stack.namespace": "demo"},
+	    "TaskTemplate": {
+	      "ContainerSpec": {
+	        "Image": "postgres:17",
+	        "Mounts": [
+	          {"Type": "volume", "Target": "/scratch"},
+	          {"Type": "volume", "Target": "/cache", "ReadOnly": true},
+	          {"Type": "volume", "Source": "demo_data", "Target": "/data"}
+	        ]
+	      }
+	    },
+	    "Mode": {"Replicated": {"Replicas": 1}}
+	  }
+	}`
+	var si ServiceInspect
+	require.NoError(t, json.Unmarshal([]byte(raw), &si))
+	cf := assembleCompose([]ServiceInspect{si}, "demo", nil)
+
+	out, err := marshalCompose(&cf)
+	require.NoError(t, err)
+	var doc struct {
+		Services map[string]struct{ Volumes []any }
+	}
+	require.NoError(t, yaml.Unmarshal([]byte(out), &doc))
+	require.Equal(t, []any{
+		"/scratch",
+		map[string]any{"type": "volume", "target": "/cache", "read_only": true},
+		"data:/data",
+	}, doc.Services["db"].Volumes)
+	require.Len(t, cf.Volumes, 1, "an anonymous volume declares no top-level volume")
 }
 
 // The stored spec, not the one `docker service inspect` prints: the CLI asks the
