@@ -130,6 +130,9 @@ func (m *Model) FrameContent() string {
 
 	// The viewport is already sized to the rows the frame will draw.
 	viewportContent := m.viewport.View()
+	if waiting := m.waitingContent(width, m.viewport.Height); waiting != "" {
+		viewportContent = waiting
+	}
 
 	if m.getNodeSelectVisible() && m.viewport.Height >= 5 {
 		availableHeight := m.viewport.Height
