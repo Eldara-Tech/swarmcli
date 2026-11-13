@@ -147,9 +147,10 @@ scoped to the target volume; they do not run on the agent host's filesystem.
 A service gets an anonymous volume wherever its tasks need a volume nobody
 named: a volume mount with no source (`- /data` in a stack file, or
 `type: volume` without `source:`), or a `VOLUME` its image declares at a path the
-service does not mount. Docker creates a fresh, empty one for every task it
-starts, so whatever the container writes there is gone after an update, a
-restart or a reschedule — the next task starts from what the image ships.
+service does not mount. Docker creates a fresh one for every task it starts,
+seeded from what the image has at that path, so whatever the container writes
+there is gone after an update, a restart or a reschedule — the next task starts
+from what the image ships.
 
 The old one stays on its node with the stopped task it belonged to until Swarm
 drops that task from its history (five per replica by default).
@@ -167,7 +168,7 @@ a service has one:
 The base TUI reads only the service spec, so it shows the first kind. A
 `VOLUME` in the image is not part of the spec, so seeing one — and confirming
 the spec's — needs Business Edition with the `service-health` entitlement on a
-managed context, and shows once a task of the service is running.
+managed context, and shows while one of the service's replicas is running.
 
 To keep the data, mount a named volume (or a bind) at that path:
 

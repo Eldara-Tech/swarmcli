@@ -383,9 +383,9 @@ type ServiceEntry struct {
 	// whose image is still downloading otherwise reads as a bare "active".
 	PullProgress string
 	// AnonVolumes are the paths, sorted, at which this service's tasks get an
-	// anonymous volume. Every task Docker starts gets a fresh, empty one, so
-	// what is written there does not survive an update, a restart or a
-	// reschedule. The default loaders list the volume mounts the spec declares
+	// anonymous volume. Every task Docker starts gets a fresh one, seeded from
+	// the image, so what is written there does not survive an update, a
+	// restart or a reschedule. The default loaders list the volume mounts the spec declares
 	// with no source, unconfirmed. A VOLUME in the image that no mount covers
 	// creates one too, but the image config lives on the nodes and the Swarm
 	// API never reports it; this is an extension point a ServiceOps decorator
