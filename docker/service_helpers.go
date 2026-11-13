@@ -5,8 +5,11 @@ package docker
 
 import (
 	"fmt"
+	"path"
+	"sort"
 	"strings"
 
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/swarm"
 )
 
@@ -23,6 +26,25 @@ func getServiceMode(svc swarm.Service) string {
 		return "global job"
 	}
 	return "-"
+}
+
+// getServiceAnonVolumes returns the paths at which svc's spec mounts a volume
+// with no source — the long form's `type: volume` without one, or a short
+// `- /data` — which Docker meets with a new anonymous volume for every task.
+// Unconfirmed: the spec says so, no node has been asked.
+func getServiceAnonVolumes(svc swarm.Service) []AnonVolume {
+	cs := svc.Spec.TaskTemplate.ContainerSpec
+	if cs == nil {
+		return nil
+	}
+	var out []AnonVolume
+	for _, m := range cs.Mounts {
+		if m.Type == mount.TypeVolume && m.Source == "" {
+			out = append(out, AnonVolume{Path: path.Clean(m.Target)})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
 }
 
 // getServiceImage returns the image name without the digest
