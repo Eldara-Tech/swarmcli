@@ -38,6 +38,16 @@ type Model struct {
 	// was built. Cached there rather than counted in FrameTitle, which runs on
 	// every render over a buffer of up to MaxLines.
 	visibleCount int
+	// onScreen is whether a log line or a notice passed the filters at that
+	// same build, and hiddenStopped how many log lines hide-stopped alone kept
+	// off a screen that came out empty. waiting is the service's tasks that are
+	// coming up, as last read. Together they decide waitingContent.
+	// stoppedAtBuild is how many of the service's tasks were stopped at that
+	// build, so a tick can tell when one has stopped since.
+	onScreen       bool
+	hiddenStopped  int
+	stoppedAtBuild int
+	waiting        []docker.TaskEntry
 
 	ServiceEntry docker.ServiceEntry
 

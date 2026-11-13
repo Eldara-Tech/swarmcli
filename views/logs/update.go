@@ -154,6 +154,15 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		}
 		return m.fadeTickCmd()
 
+	case waitingTickMsg:
+		return m.handleWaitingTick(msg)
+
+	case waitingTasksMsg:
+		return m.handleWaitingTasks(msg)
+
+	case stoppedCheckedMsg:
+		return m.handleStoppedChecked(msg)
+
 	case tea.WindowSizeMsg:
 		// Safety check: ensure dimensions are positive
 		if msg.Width < 1 {
@@ -413,13 +422,17 @@ func (m *Model) renderRows(now time.Time) (rows []string, isMark, isFresh []bool
 	if m.hideStopped {
 		stopped = m.stoppedTaskIDs()
 	}
+	m.stoppedAtBuild = len(stopped)
 	lower := strings.ToLower(m.searchTerm)
 	m.searchMatches = nil
-	visible := 0
+	visible, notices := 0, 0
 
 	for i, line := range m.lines {
 		if !m.lineVisible(i, stopped) {
 			continue
+		}
+		if m.kindAt(i) == lineNotice {
+			notices++
 		}
 		// A separator is drawn, not stored: rendering it here is what lets it
 		// follow the viewport across a resize. It is not a log line, so it is
@@ -447,6 +460,17 @@ func (m *Model) renderRows(now time.Time) (rows []string, isMark, isFresh []bool
 		}
 	}
 	m.visibleCount = visible
+	m.onScreen = visible > 0 || notices > 0
+	// Counted only for an empty screen, the one place it is shown: the second
+	// walk is then over lines the first one already found hidden.
+	m.hiddenStopped = 0
+	if !m.onScreen && stopped != nil {
+		for i := range m.lines {
+			if m.kindAt(i) == lineLog && i < len(m.lineTasks) && stopped[m.lineTasks[i]] && m.lineVisible(i, nil) {
+				m.hiddenStopped++
+			}
+		}
+	}
 	return rows, isMark, isFresh
 }
 
