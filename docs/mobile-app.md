@@ -107,6 +107,10 @@ Give every phone its own proxy user rather than reusing someone's laptop user:
 [RBAC](rbac.md#roles)); on an older proxy the Connect tab offers `viewer` only. The app reads its permissions from the
 proxy and hides what it may not do, and the proxy enforces them regardless.
 
+Only an admin can restart, scale or roll back the services of the SwarmCLI
+infrastructure stack that [`:bootstrap`](bootstrap.md) deploys; for any other role,
+`responder` included, the app says **Not allowed**.
+
 ## Removing a phone
 
 Disable or delete its user in `:users`. Removing the swarm in the app deletes the
