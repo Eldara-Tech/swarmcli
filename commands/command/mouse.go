@@ -18,18 +18,20 @@ type Mouse struct{}
 func (Mouse) Name() string { return "mouse" }
 
 func (Mouse) Description() string {
-	return "Turn mouse support on or off for this session"
+	return "Turn mouse support on or off, and remember it"
 }
 
 func (Mouse) Spec() registry.CommandSpec {
 	return registry.CommandSpec{
-		Detail: "Switches mouse support off, or back on, until swarmcli exits. " +
+		Detail: "Switches mouse support off, or back on, and saves the choice as " +
+			"'mouse' in config.yaml, so the next start keeps it. " +
 			"With it on, the lists take the mouse: the wheel moves the selection, " +
 			"a click selects a row, a double click opens it, a right click is Esc " +
 			"and a click on a breadcrumb goes back to that view; hold Shift " +
 			"(Option in iTerm2) to select text there. Views that show text, such " +
 			"as inspect, logs and help, leave the mouse to the terminal. It " +
-			"starts on unless SWARMCLI_MOUSE=off.",
+			"starts on unless config.yaml says otherwise; SWARMCLI_MOUSE, when " +
+			"set, beats the file.",
 		Examples: []string{":mouse"},
 	}
 }

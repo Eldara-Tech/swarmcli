@@ -240,7 +240,7 @@ above among them.
 
 On startup, SwarmCLI makes one request. It checks whether a newer release is available, and reports that swarmcli was started — a random install id, the version and edition, your OS and architecture, how swarmcli was installed, and the shape of your swarm as counts (nodes, managers, services, Docker version). It does not send the *names* of anything: no services, images, stacks, nodes, hostnames, command arguments or IP address. Your country is derived from the connection and the address is never stored. The first run says so on screen before anything is sent — one line on the status bar, naming `:telemetry`, which prints all of the above on any run.
 
-`SWARMCLI_TELEMETRY=off` stops the usage report and keeps the update check. `SWARMCLI_TELEMETRY=none` makes no outbound request at all. Full detail in [docs/license.md](docs/license.md#usage-reporting).
+`SWARMCLI_TELEMETRY=off` stops the usage report and keeps the update check. `SWARMCLI_TELEMETRY=none` makes no outbound request at all. `telemetry: off` or `telemetry: none` in [`~/.config/swarmcli/config.yaml`](docs/configuration.md#configyaml) does the same without the variable. Full detail in [docs/license.md](docs/license.md#usage-reporting).
 
 Colorize log tails. Not perfect but simple:
 
@@ -282,8 +282,9 @@ click on a breadcrumb goes back to that view. In a list, hold Shift (Option in
 iTerm2) to select text in the terminal. Views that show text — inspect, logs,
 help — leave the mouse to the terminal, so text selects and copies as usual; see
 [Mouse and text selection](docs/configuration.md#mouse-and-text-selection) for
-what each terminal does with the wheel there. `:mouse` switches it off for the
-session, and `SWARMCLI_MOUSE=off` starts without it.
+what each terminal does with the wheel there. `:mouse` switches it off and
+remembers that in [`config.yaml`](docs/configuration.md#configyaml), and
+`SWARMCLI_MOUSE=off` starts without it whatever the file says.
 
 ## Project Hygiene
 

@@ -36,7 +36,8 @@ func (Telemetry) Spec() registry.CommandSpec {
 			"short form on the stack bar.\n\n" +
 			"Reporting is governed by " + telemetry.Env + ": unset reports, " +
 			"'off' stops the report and keeps the update check, 'none' makes " +
-			"no outbound request at all.",
+			"no outbound request at all. The 'telemetry' key of config.yaml " +
+			"takes the same values and applies when the variable is unset.",
 		Examples: []string{":telemetry"},
 	}
 }
