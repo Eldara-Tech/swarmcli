@@ -63,17 +63,24 @@ type Model struct {
 	// first keystroke the app handles; see renderStackBar and Update.
 	telemetryNoticeActive bool
 
-	// Mouse capture, on unless MouseEnv switches it off and toggled by
-	// `:mouse`; see mouse.go. mouseCaptured is whether the terminal reports the
+	// Mouse capture, on unless MouseEnv or config.yaml switches it off, and
+	// toggled by `:mouse`; see mouse.go. mouseCaptured is whether the terminal reports the
 	// mouse right now, which syncMouse keeps in step with the view.
 	// mouseNoticeActive shows the toggle's result on the stack bar until the
-	// next keystroke, the way the disclosure above is shown. lastClickAt and
-	// lastClickLine time a double click.
+	// next keystroke, the way the disclosure above is shown, and mouseSaved is
+	// what saving it to config.yaml came to, nil until the save answers.
+	// lastClickAt and lastClickLine time a double click.
 	mouseOn           bool
 	mouseCaptured     bool
 	mouseNoticeActive bool
+	mouseSaved        *mouseSavedMsg
 	lastClickAt       time.Time
 	lastClickLine     int
+
+	// configErr is why config.yaml went unused this session, which then runs
+	// on defaults; configNoticeActive says so once on the stack bar.
+	configErr          error
+	configNoticeActive bool
 
 	// App-level popup that connects the SwarmCLI phone app ("c", :connect).
 	// Its own Visible() is the "active" flag the other dialogs keep separately.
@@ -153,6 +160,7 @@ func InitialModel() *Model {
 	})
 
 	deps := buildDeps()
+	config, configErr := startupConfigFn()
 
 	return &Model{
 		deps:               deps,
@@ -169,7 +177,8 @@ func InitialModel() *Model {
 		connectApp:         connectapp.New(),
 		terminalWidth:      terminalWidth,
 		terminalHeight:     terminalHeight,
-		mouseOn:            mouseFromEnv(),
+		mouseOn:            mouseSetting(config.Mouse),
+		configErr:          configErr,
 	}
 }
 
@@ -185,9 +194,11 @@ func (m *Model) Init() tea.Cmd {
 	// worst kind. Answering it here, synchronously, makes the ordering a fact
 	// rather than a hope.
 	m.telemetryNoticeActive = telemetry.ShouldNotice()
-	// The phone-app line waits for a session without the disclosure: the
-	// disclosure has to be read, and two notices in one bar read as neither.
-	if !m.telemetryNoticeActive {
+	m.configNoticeActive = m.configErr != nil
+	// The phone-app line waits for a session without the disclosure or a
+	// config.yaml problem: both have to be read, and two notices in one bar
+	// read as neither.
+	if !m.telemetryNoticeActive && !m.configNoticeActive {
 		m.connectNoticeActive = connectNoticeDueFn()
 	}
 
@@ -342,18 +353,18 @@ func (m *Model) stackBarRight() []string {
 }
 
 // stackBarNotice is the one-line notice the stack bar is carrying, in its full
-// and short forms, or two empty strings. The first-run disclosure outranks the
-// result of a `:mouse` toggle while both are pending.
+// and short forms, or two empty strings. The first-run disclosure outranks a
+// config.yaml that could not be used, which outranks the rest.
 func (m *Model) stackBarNotice() (line, short string) {
 	switch {
 	case m.telemetryNoticeActive:
 		return telemetry.NoticeLine, telemetry.NoticeLineShort
+	case m.configNoticeActive:
+		return configNotice(m.configErr)
 	case m.connectNoticeActive:
 		return connectNotice, connectNoticeShort
-	case m.mouseNoticeActive && m.mouseOn:
-		return mouseOnNotice, mouseOnNoticeShort
 	case m.mouseNoticeActive:
-		return mouseOffNotice, mouseOffNoticeShort
+		return m.mouseNotice()
 	}
 	return "", ""
 }

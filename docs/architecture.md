@@ -76,6 +76,8 @@ args/
   args.go                  Argument parsing shared by the CLI dispatch path
 settings/
   settings.go              Persists small single-purpose CLI preferences to the user config dir. Writers load, set their own field and save: Save writes the whole file
+userconfig/
+  userconfig.go            config.yaml: the hand-editable preferences. Startup() reads it once per process; Set() writes one key back by editing the yaml.v3 node tree of the file as it is on disk, so comments and unknown keys survive, and refuses a file that does not parse
 ui/
   columns.go, dialog/, components/, framebox
                            Shared widgets nearly every view under views/ builds on — the filterable list, dialog styling, the frame box

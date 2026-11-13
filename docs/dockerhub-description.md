@@ -118,6 +118,9 @@ command, which lists exactly the above on any run.
 | `SWARMCLI_TELEMETRY=off` | no | yes |
 | `SWARMCLI_TELEMETRY=none` | no | no |
 
+The same values work as `telemetry:` in `~/.config/swarmcli/config.yaml`; the
+variable wins when both are set.
+
 Full account, field by field: https://github.com/Eldara-Tech/swarmcli/blob/main/docs/license.md#usage-reporting
 
 ### Environment variables

@@ -35,7 +35,8 @@ hostnames, your command arguments, or your IP address. Your country is derived
 from the connection and the address itself is never stored.
 
 Turn it off with SWARMCLI_TELEMETRY=off — the update check still works.
-SWARMCLI_TELEMETRY=none sends nothing at all.`
+SWARMCLI_TELEMETRY=none sends nothing at all. To make either permanent, put
+telemetry: off or telemetry: none in ~/.config/swarmcli/config.yaml.`
 )
 
 // NoticeLine and NoticeLineShort are the same disclosure as one line, for the
@@ -63,12 +64,20 @@ const (
 // and an unconditional "usage reporting is on" above the enumeration would be a
 // lie in two of the three states.
 func StatusText() string {
+	current, fromFile := resolve()
+	setting := func(value string) string {
+		if fromFile {
+			return "telemetry: " + value + " in config.yaml"
+		}
+		return Env + "=" + value
+	}
+
 	var state string
-	switch Reporting() {
+	switch current {
 	case StateUpdateOnly:
-		state = "Usage reporting is OFF (" + Env + "=off). The update check still runs."
+		state = "Usage reporting is OFF (" + setting("off") + "). The update check still runs."
 	case StateSilent:
-		state = "Usage reporting is OFF and no request is made at all (" + Env + "=none)."
+		state = "Usage reporting is OFF and no request is made at all (" + setting("none") + ")."
 	default:
 		state = NoticeTitle + "."
 	}

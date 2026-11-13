@@ -60,8 +60,11 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// handles — not the first key of the session. While a startup overlay is up
 	// it covers the screen and takes every keystroke, so retiring the notice
 	// there would retire something nobody could have read.
-	if m.telemetryNoticeActive || m.mouseNoticeActive || m.connectNoticeActive {
+	if m.telemetryNoticeActive || m.configNoticeActive || m.mouseNoticeActive || m.connectNoticeActive {
 		if _, isKey := msg.(tea.KeyMsg); isKey {
+			// The config.yaml line waits out the disclosure rather than being
+			// retired unseen beneath it.
+			m.configNoticeActive = m.configNoticeActive && m.telemetryNoticeActive
 			m.telemetryNoticeActive = false
 			m.mouseNoticeActive = false
 			m.connectNoticeActive = false
@@ -317,6 +320,17 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case view.ToggleMouseMsg:
 		m.mouseOn = !m.mouseOn
 		m.mouseNoticeActive = true
+		m.mouseSaved = nil
+		return m, saveMouse(m.mouseOn)
+
+	case mouseSavedMsg:
+		if msg.err != nil {
+			swarmlog.L().Warnw("could not save the mouse setting to config.yaml", "error", msg.err)
+		}
+		// A reply to an earlier toggle says nothing about the current state.
+		if msg.on == m.mouseOn {
+			m.mouseSaved = &msg
+		}
 		return m, nil
 
 	case view.RestoreMouseMsg:

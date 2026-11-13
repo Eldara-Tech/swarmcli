@@ -4,11 +4,14 @@
 package app
 
 import (
+	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Eldara-Tech/swarmcli/v2/ui"
+	"github.com/Eldara-Tech/swarmcli/v2/userconfig"
 	systeminfoview "github.com/Eldara-Tech/swarmcli/v2/views/systeminfo"
 	"github.com/Eldara-Tech/swarmcli/v2/views/view"
 
@@ -18,7 +21,8 @@ import (
 
 // MouseEnv switches mouse capture off. It is on unless the variable says off in
 // one of the spellings SWARMCLI_TELEMETRY accepts for off, so a value this does
-// not recognise leaves the default alone. `:mouse` toggles it for a session.
+// not recognise leaves the default alone. Set to anything, it beats the `mouse`
+// key of config.yaml, which `:mouse` writes.
 const MouseEnv = "SWARMCLI_MOUSE"
 
 // doubleClickWindow is how soon a second click on the same line counts as a
@@ -28,20 +32,73 @@ const doubleClickWindow = 500 * time.Millisecond
 // now is the clock double clicks are timed against. Overridden in tests.
 var now = time.Now
 
-// Mouse notices for the stack bar, shown after `:mouse` until the next key.
-const (
-	mouseOnNotice       = "Mouse on in lists · text views select as usual · :mouse"
-	mouseOnNoticeShort  = "Mouse on · :mouse"
-	mouseOffNotice      = "Mouse off · text selection works as usual · :mouse to turn it back on"
-	mouseOffNoticeShort = "Mouse off · :mouse"
-)
-
 func mouseFromEnv() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(MouseEnv))) {
 	case "off", "false", "0", "no":
 		return false
 	}
 	return true
+}
+
+// mouseSetting is where the session's mouse starts: MouseEnv when it says
+// anything at all, then config.yaml, then on.
+func mouseSetting(file *bool) bool {
+	if strings.TrimSpace(os.Getenv(MouseEnv)) != "" {
+		return mouseFromEnv()
+	}
+	if file != nil {
+		return *file
+	}
+	return true
+}
+
+// saveMouseFn writes the session's mouse choice to config.yaml. Overridable for
+// tests.
+var saveMouseFn = func(on bool) error {
+	return userconfig.Set(userconfig.KeyMouse, strconv.FormatBool(on))
+}
+
+// mouseSavedMsg is what saving a `:mouse` toggle came to.
+type mouseSavedMsg struct {
+	on  bool
+	err error
+	// env is MouseEnv when it says the opposite of on, so the next start will
+	// not use what was saved.
+	env string
+}
+
+// saveMouse writes on to config.yaml off the update loop.
+func saveMouse(on bool) tea.Cmd {
+	return func() tea.Msg {
+		msg := mouseSavedMsg{on: on, err: saveMouseFn(on)}
+		if env := strings.TrimSpace(os.Getenv(MouseEnv)); env != "" && mouseFromEnv() != on {
+			msg.env = env
+		}
+		return msg
+	}
+}
+
+// mouseNotice is the stack-bar line after `:mouse`, until the next key: the
+// new state, and once the save has answered, what became of it.
+func (m *Model) mouseNotice() (line, short string) {
+	state, short, hint := "Mouse off", "Mouse off", "text selection works as usual · :mouse to turn it back on"
+	if m.mouseOn {
+		state, short, hint = "Mouse on in lists", "Mouse on", "text views select as usual · :mouse"
+	}
+	switch saved := m.mouseSaved; {
+	case saved == nil:
+		return state + " · " + hint, short + " · :mouse"
+	case saved.err != nil:
+		reason := "could not write config.yaml"
+		if errors.Is(saved.err, userconfig.ErrUnparseable) {
+			reason = "config.yaml does not parse"
+		}
+		return state + " for this session · not saved: " + reason, short + " · not saved"
+	case saved.env != "":
+		return state + " · saved, but " + MouseEnv + "=" + saved.env + " overrides it at the next start",
+			short + " · " + MouseEnv + " overrides it"
+	}
+	return state + " · saved · " + hint, short + " · saved · :mouse"
 }
 
 // ProgramOptions are the tea.Program options a TUI entry point starts with:

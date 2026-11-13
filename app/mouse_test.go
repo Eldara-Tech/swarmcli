@@ -4,7 +4,9 @@
 package app
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	"github.com/Eldara-Tech/swarmcli/v2/telemetry"
 	"github.com/Eldara-Tech/swarmcli/v2/ui"
+	"github.com/Eldara-Tech/swarmcli/v2/userconfig"
 	helpview "github.com/Eldara-Tech/swarmcli/v2/views/help"
 	inspectview "github.com/Eldara-Tech/swarmcli/v2/views/inspect"
 	logsview "github.com/Eldara-Tech/swarmcli/v2/views/logs"
@@ -443,24 +446,170 @@ func (v *keyRecordingView) Update(msg tea.Msg) tea.Cmd {
 	return v.frameStubView.Update(msg)
 }
 
+// stubSaveMouse replaces the config.yaml write with one that records what it
+// was asked to save and answers err.
+func stubSaveMouse(t *testing.T, err error) *[]bool {
+	t.Helper()
+	var saved []bool
+	orig := saveMouseFn
+	t.Cleanup(func() { saveMouseFn = orig })
+	saveMouseFn = func(on bool) error {
+		saved = append(saved, on)
+		return err
+	}
+	return &saved
+}
+
+// deliverSave runs cmd once, hands the save's answer back to the model as the
+// program would, and returns the mouse switches among its messages.
+func deliverSave(m *Model, cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	var switches []tea.Msg
+	switch msg := cmd().(type) {
+	case tea.BatchMsg:
+		for _, c := range msg {
+			switches = append(switches, deliverSave(m, c)...)
+		}
+	case mouseSavedMsg:
+		m.Update(msg)
+	default:
+		if msg == tea.EnableMouseCellMotion() || msg == tea.DisableMouse() {
+			switches = append(switches, msg)
+		}
+	}
+	return switches
+}
+
 func TestToggleMouse(t *testing.T) {
 	setStackBarSuffix(t, "")
+	saved := stubSaveMouse(t, nil)
 	m := newTestAppModel(&rowView{rows: 5})
 	m.mouseOn = true
 	m.syncMouse()
 
 	_, cmd := m.Update(view.ToggleMouseMsg{})
 	require.False(t, m.mouseOn)
-	require.Equal(t, tea.DisableMouse(), cmd())
-	require.Contains(t, ansi.Strip(m.renderStackBar()), mouseOffNotice)
+	require.Contains(t, ansi.Strip(m.renderStackBar()), "Mouse off · text selection works as usual")
+	require.Equal(t, []tea.Msg{tea.DisableMouse()}, deliverSave(m, cmd))
+	require.Contains(t, ansi.Strip(m.renderStackBar()), "Mouse off · saved · text selection works as usual")
 
 	_, cmd = m.Update(view.ToggleMouseMsg{})
 	require.True(t, m.mouseOn)
-	require.Equal(t, tea.EnableMouseCellMotion(), cmd())
-	require.Contains(t, ansi.Strip(m.renderStackBar()), mouseOnNotice)
+	require.Equal(t, []tea.Msg{tea.EnableMouseCellMotion()}, deliverSave(m, cmd))
+	require.Contains(t, ansi.Strip(m.renderStackBar()), "Mouse on in lists · saved · text views select as usual")
+	require.Equal(t, []bool{false, true}, *saved)
 
 	m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	require.NotContains(t, ansi.Strip(m.renderStackBar()), "Mouse", "the next key clears it")
+}
+
+// The real write: the toggle lands in config.yaml as the mouse key.
+func TestToggleMouse_WritesConfigYAML(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	m := newTestAppModel(&rowView{rows: 5})
+	m.mouseOn = true
+
+	_, cmd := m.Update(view.ToggleMouseMsg{})
+	deliverSave(m, cmd)
+
+	p, err := userconfig.Path()
+	require.NoError(t, err)
+	data, err := os.ReadFile(p)
+	require.NoError(t, err)
+	require.Contains(t, string(data), "\nmouse: false\n")
+	require.NoError(t, m.mouseSaved.err)
+}
+
+func TestToggleMouse_SaysWhenItCouldNotSave(t *testing.T) {
+	setStackBarSuffix(t, "")
+	for err, want := range map[error]string{
+		fmt.Errorf("%w: line 3", userconfig.ErrUnparseable): "Mouse off for this session · not saved: config.yaml does not parse",
+		errors.New("read-only file system"):                 "Mouse off for this session · not saved: could not write config.yaml",
+	} {
+		stubSaveMouse(t, err)
+		m := newTestAppModel(&rowView{rows: 5})
+		m.mouseOn = true
+
+		_, cmd := m.Update(view.ToggleMouseMsg{})
+		deliverSave(m, cmd)
+
+		require.Contains(t, ansi.Strip(m.renderStackBar()), want)
+		require.False(t, m.mouseOn, "the session still switches")
+	}
+}
+
+// The environment beats the file, so a save it overrides says so; one it
+// agrees with is just saved.
+func TestToggleMouse_SaysWhenTheEnvironmentOverridesTheSave(t *testing.T) {
+	setStackBarSuffix(t, "")
+	stubSaveMouse(t, nil)
+	m := newTestAppModel(&rowView{rows: 5})
+	m.mouseOn = true
+
+	t.Setenv(MouseEnv, "on")
+	_, cmd := m.Update(view.ToggleMouseMsg{})
+	deliverSave(m, cmd)
+	require.Contains(t, ansi.Strip(m.renderStackBar()),
+		"Mouse off · saved, but SWARMCLI_MOUSE=on overrides it at the next start")
+
+	t.Setenv(MouseEnv, "off")
+	_, cmd = m.Update(view.ToggleMouseMsg{})
+	deliverSave(m, cmd)
+	_, cmd = m.Update(view.ToggleMouseMsg{})
+	deliverSave(m, cmd)
+	require.Contains(t, ansi.Strip(m.renderStackBar()), "Mouse off · saved · text selection works as usual")
+}
+
+// A save answering an earlier toggle says nothing about the state now.
+func TestToggleMouse_IgnoresAnAnswerToAnEarlierToggle(t *testing.T) {
+	stubSaveMouse(t, nil)
+	m := newTestAppModel(&rowView{rows: 5})
+	m.mouseOn = true
+
+	_, first := m.Update(view.ToggleMouseMsg{})
+	m.Update(view.ToggleMouseMsg{})
+	deliverSave(m, first)
+
+	require.True(t, m.mouseOn)
+	require.Nil(t, m.mouseSaved)
+}
+
+// The short forms are what a narrow bar keeps.
+func TestMouseNotice_ShortForms(t *testing.T) {
+	m := &Model{mouseOn: false}
+	for saved, want := range map[*mouseSavedMsg]string{
+		nil:                    "Mouse off · :mouse",
+		{}:                     "Mouse off · saved · :mouse",
+		{err: errors.New("x")}: "Mouse off · not saved",
+		{env: "on"}:            "Mouse off · SWARMCLI_MOUSE overrides it",
+	} {
+		m.mouseSaved = saved
+		_, short := m.mouseNotice()
+		require.Equal(t, want, short)
+	}
+}
+
+// SWARMCLI_MOUSE, when it says anything, beats config.yaml, which beats the
+// default.
+func TestMouseSetting(t *testing.T) {
+	on, off := true, false
+	for _, tc := range []struct {
+		env  string
+		file *bool
+		want bool
+	}{
+		{"", nil, true},
+		{"", &off, false},
+		{"", &on, true},
+		{"off", &on, false},
+		{"on", &off, true},
+		{"bogus", &off, true},
+	} {
+		t.Setenv(MouseEnv, tc.env)
+		require.Equal(t, tc.want, mouseSetting(tc.file), "%s=%q, file %v", MouseEnv, tc.env, tc.file)
+	}
 }
 
 // The first-run disclosure keeps the bar when a toggle happens on the same run.
