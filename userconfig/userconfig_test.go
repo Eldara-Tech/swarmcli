@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // useDir points XDG_CONFIG_HOME at a fresh directory and returns the
@@ -337,6 +338,67 @@ func TestSet_WritesThroughADanglingSymlink(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fs.ModeSymlink, info.Mode().Type(), "still a link")
 	require.Contains(t, read(t, filepath.Join(filepath.Dir(p), "managed", "config.yaml")), "\nmouse: false\n")
+}
+
+// A link to a link whose file does not exist yet: both links stay links.
+func TestSet_WritesThroughADanglingChain(t *testing.T) {
+	p := useDir(t)
+	dir := filepath.Dir(p)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "managed"), 0o755))
+	require.NoError(t, os.Symlink(filepath.Join("managed", "config.yaml"), filepath.Join(dir, "middle.yaml")))
+	require.NoError(t, os.Symlink("middle.yaml", p))
+
+	require.NoError(t, Set(KeyMouse, "false"))
+
+	for _, link := range []string{p, filepath.Join(dir, "middle.yaml")} {
+		info, err := os.Lstat(link)
+		require.NoError(t, err)
+		require.Equal(t, fs.ModeSymlink, info.Mode().Type(), "%s is still a link", link)
+	}
+	require.Contains(t, read(t, filepath.Join(dir, "managed", "config.yaml")), "\nmouse: false\n")
+}
+
+func TestSet_SymlinkLoopIsAnError(t *testing.T) {
+	p := useDir(t)
+	dir := filepath.Dir(p)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.Symlink("other.yaml", p))
+	require.NoError(t, os.Symlink("config.yaml", filepath.Join(dir, "other.yaml")))
+
+	require.Error(t, Set(KeyMouse, "false"))
+}
+
+// An anchor on the value stays on it, so an alias elsewhere still resolves.
+func TestSet_KeepsAnAnchor(t *testing.T) {
+	p := useDir(t)
+	writeConfig(t, p, "mouse: &m true\nother: *m\n")
+
+	require.NoError(t, Set(KeyMouse, "false"))
+
+	require.Equal(t, "mouse: &m false\nother: *m\n", read(t, p))
+}
+
+// Writing back only the first document would delete the rest.
+func TestSet_RefusesASecondDocument(t *testing.T) {
+	p := useDir(t)
+	const two = "mouse: true\n---\nfoo: 1\n"
+	writeConfig(t, p, two)
+
+	require.ErrorIs(t, Set(KeyMouse, "false"), ErrUnparseable)
+	require.Equal(t, two, read(t, p), "untouched")
+}
+
+// Output that would not read back is refused, and not as ErrUnparseable: the
+// file on disk is fine.
+func TestEncode_RefusesOutputThatWouldNotReadBack(t *testing.T) {
+	dangling := &yaml.Node{Kind: yaml.AliasNode, Value: "gone", Alias: &yaml.Node{Kind: yaml.ScalarNode, Anchor: "gone", Value: "x"}}
+	doc := &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "mouse"}, dangling,
+	}}}}
+
+	_, err := encode(doc)
+	require.ErrorContains(t, err, "would not read back")
+	require.NotErrorIs(t, err, ErrUnparseable)
 }
 
 func TestSet_UnknownKey(t *testing.T) {

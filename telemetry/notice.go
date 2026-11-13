@@ -36,7 +36,8 @@ from the connection and the address itself is never stored.
 
 Turn it off with SWARMCLI_TELEMETRY=off — the update check still works.
 SWARMCLI_TELEMETRY=none sends nothing at all. To make either permanent, put
-telemetry: off or telemetry: none in ~/.config/swarmcli/config.yaml.`
+telemetry: off or telemetry: none in swarmcli's config.yaml, under
+~/.config/swarmcli or $XDG_CONFIG_HOME/swarmcli.`
 )
 
 // NoticeLine and NoticeLineShort are the same disclosure as one line, for the

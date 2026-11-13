@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -166,11 +167,17 @@ func parseBool(n *yaml.Node) (value, ok bool) {
 
 // parse returns the document and its top-level mapping. A file that is empty or
 // holds only comments has no document node to hang a key on, so both are nil;
-// an explicit null document becomes an empty mapping.
+// an explicit null document becomes an empty mapping. A second document is
+// refused: a write would re-encode the first alone and drop it.
 func parse(data []byte) (doc, root *yaml.Node, err error) {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
 	var d yaml.Node
-	if err := yaml.Unmarshal(data, &d); err != nil {
+	if err := dec.Decode(&d); err != nil && !errors.Is(err, io.EOF) {
 		return nil, nil, fmt.Errorf("%w: %v", ErrUnparseable, err)
+	}
+	var next yaml.Node
+	if err := dec.Decode(&next); !errors.Is(err, io.EOF) {
+		return nil, nil, fmt.Errorf("%w: more than one YAML document", ErrUnparseable)
 	}
 	if d.Kind == 0 {
 		return nil, &yaml.Node{Kind: yaml.MappingNode}, nil
@@ -236,20 +243,26 @@ func known(key string) bool {
 }
 
 // linkTarget is the file a write has to replace: the end of p's symlink chain,
-// or what a dangling link names, or p itself.
+// followed link by link when it dangles so no link in it is replaced, or p
+// itself. maxLinkHops bounds a loop.
 func linkTarget(p string) string {
 	if t, err := filepath.EvalSymlinks(p); err == nil {
 		return t
 	}
-	dest, err := os.Readlink(p)
-	if err != nil {
-		return p
+	for range maxLinkHops {
+		dest, err := os.Readlink(p)
+		if err != nil {
+			return p
+		}
+		if !filepath.IsAbs(dest) {
+			dest = filepath.Join(filepath.Dir(p), dest)
+		}
+		p = dest
 	}
-	if !filepath.IsAbs(dest) {
-		dest = filepath.Join(filepath.Dir(p), dest)
-	}
-	return dest
+	return p
 }
+
+const maxLinkHops = 40
 
 func setKey(data []byte, key, value string) ([]byte, error) {
 	doc, root, err := parse(data)
@@ -270,7 +283,7 @@ func setKey(data []byte, key, value string) ([]byte, error) {
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		if root.Content[i].Value == key {
 			v := root.Content[i+1]
-			*v = yaml.Node{Kind: yaml.ScalarNode, Value: value,
+			*v = yaml.Node{Kind: yaml.ScalarNode, Value: value, Anchor: v.Anchor,
 				HeadComment: v.HeadComment, LineComment: v.LineComment, FootComment: v.FootComment}
 			found = true
 		}
@@ -281,14 +294,28 @@ func setKey(data []byte, key, value string) ([]byte, error) {
 			&yaml.Node{Kind: yaml.ScalarNode, Value: value})
 	}
 
+	return encode(doc)
+}
+
+// encode writes doc out and reads the result back, so that whatever an edit
+// meets that setKey did not foresee, a file that would not parse is never the
+// one written. The parse error is not wrapped: the file on disk is fine, and
+// ErrUnparseable would say otherwise.
+func encode(doc *yaml.Node) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
-	err = enc.Encode(doc)
+	err := enc.Encode(doc)
 	if cerr := enc.Close(); err == nil {
 		err = cerr
 	}
-	return buf.Bytes(), err
+	if err == nil {
+		_, _, err = parse(buf.Bytes())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("config.yaml left as it was, the edit would not read back: %v", err)
+	}
+	return buf.Bytes(), nil
 }
 
 // render is the first write: every key, commented out at its default, except
