@@ -13,6 +13,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestMain points config.yaml at an empty directory, so no test reads the
+// developer's own telemetry preference.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "swarmcli-telemetry-test")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("XDG_CONFIG_HOME", dir)
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 // captured is a superset of both request bodies, so one struct can tell which
 // of the two the client sent.
 type captured struct {
@@ -231,6 +244,69 @@ func TestReporting_RetiredVariableFalseIsNotSilent(t *testing.T) {
 	require.Equal(t, StateFull, Reporting())
 }
 
+// setFile stands in for the telemetry key of config.yaml.
+func setFile(t *testing.T, value string) {
+	t.Helper()
+	orig := fileValueFn
+	t.Cleanup(func() { fileValueFn = orig })
+	fileValueFn = func() string { return value }
+}
+
+// With the environment silent, config.yaml decides, with the variable's
+// spellings and its rule that anything unrecognised leaves reporting on.
+func TestReporting_ConfigFileWhenTheEnvironmentSaysNothing(t *testing.T) {
+	t.Setenv(Env, "")
+	t.Setenv(legacyDisableEnv, "")
+	for value, want := range map[string]State{
+		"":       StateFull,
+		"on":     StateFull,
+		"banana": StateFull,
+		"off":    StateUpdateOnly,
+		"no":     StateUpdateOnly,
+		"none":   StateSilent,
+		"silent": StateSilent,
+	} {
+		setFile(t, value)
+		require.Equal(t, want, Reporting(), "telemetry: %s", value)
+	}
+}
+
+// A variable is a decision about this process, which a file in the home
+// directory cannot know about — the retired one included.
+func TestReporting_EnvironmentBeatsTheConfigFile(t *testing.T) {
+	setFile(t, "none")
+	t.Setenv(Env, "on")
+	require.Equal(t, StateFull, Reporting())
+
+	setFile(t, "on")
+	t.Setenv(Env, "")
+	t.Setenv(legacyDisableEnv, "true")
+	require.Equal(t, StateSilent, Reporting())
+}
+
+// The real wiring: the key as config.yaml holds it.
+func TestReporting_ReadsConfigYAML(t *testing.T) {
+	t.Setenv(Env, "")
+	t.Setenv(legacyDisableEnv, "")
+	value := fileValueFn() // userconfig.Startup, against TestMain's empty directory
+	require.Empty(t, value)
+	require.Equal(t, StateFull, Reporting())
+}
+
+func TestStatusText_NamesConfigYAMLWhenThatIsWhatSwitchedItOff(t *testing.T) {
+	t.Setenv(Env, "")
+	t.Setenv(legacyDisableEnv, "")
+
+	setFile(t, "off")
+	require.Contains(t, StatusText(), "Usage reporting is OFF (telemetry: off in config.yaml)")
+
+	setFile(t, "none")
+	require.Contains(t, StatusText(), "(telemetry: none in config.yaml)")
+
+	t.Setenv(Env, "none")
+	require.Contains(t, StatusText(), "("+Env+"=none)")
+}
+
 func TestInstallID_IsStableAcrossCalls(t *testing.T) {
 	// The entire value of the identifier is that it is the same tomorrow. A
 	// regression here would not fail anything else — it would just quietly turn
@@ -278,7 +354,7 @@ func TestNotice_EnumeratesWhatIsSentAndNamesTheOffSwitch(t *testing.T) {
 	// The notice is what makes opt-out legitimate, so its content is a contract
 	// rather than copy. If a field is added to the report and not to this list,
 	// the notice becomes untrue.
-	for _, want := range []string{"install id", "version", "OS", "nodes, managers and services", Env} {
+	for _, want := range []string{"install id", "version", "OS", "nodes, managers and services", Env, "telemetry: off", "config.yaml"} {
 		require.Contains(t, NoticeBody, want)
 	}
 

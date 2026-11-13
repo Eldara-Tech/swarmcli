@@ -1060,6 +1060,11 @@ That is the whole switch. `SWARMCLI_DISABLE_VERSION_CHECK=true` was the earlier
 spelling of it and still works, so nothing already setting it breaks. See
 [Configuration](configuration.md#environment-variables).
 
+Either value can live in [`config.yaml`](configuration.md#configyaml) instead of
+the environment, as `telemetry: off` or `telemetry: none`. A variable that is set
+wins over the file, and `:telemetry` names whichever of the two switched
+reporting off.
+
 **A session left open reports again once a day**, and only then. It is the same
 report with a different event name, and it exists so a machine that opens the
 TUI and leaves it running is not counted only on the day it started.

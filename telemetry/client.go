@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Eldara-Tech/swarmcli/v2/userconfig"
 )
 
 const (
@@ -89,37 +91,63 @@ const (
 	StateSilent
 )
 
-// Reporting reads the state from the environment.
+// fileValueFn is the `telemetry` key of config.yaml as this process read it,
+// "" when the file does not set it. Overridable for tests.
+var fileValueFn = func() string {
+	c, _ := userconfig.Startup()
+	return c.Telemetry
+}
+
+// Reporting reads the state from the environment, then from config.yaml.
 //
 // Anything unrecognised leaves reporting **on**. That is the deliberate
 // direction for a value whose absence also means on: a typo in a chart cannot
 // silently disable it, which would be a failure nobody notices until the
-// numbers are already wrong.
+// numbers are already wrong. The file follows the same rule.
 func Reporting() State {
-	set := strings.ToLower(strings.TrimSpace(os.Getenv(Env)))
+	state, _ := resolve()
+	return state
+}
 
-	switch set {
-	case "none", "silent":
-		return StateSilent
-	case "off", "false", "0", "no":
-		return StateUpdateOnly
+// resolve is Reporting, plus whether config.yaml is what decided it, so
+// StatusText can say where an "off" came from.
+//
+// The environment comes first, the retired variable included: a variable set
+// for one run, or by a chart, is a decision about this process that a file in
+// the home directory cannot know about.
+func resolve() (state State, fromFile bool) {
+	set := strings.ToLower(strings.TrimSpace(os.Getenv(Env)))
+	if set != "" {
+		return stateOf(set), false
 	}
 
 	// The retired variable, honoured for the reason given at its declaration —
 	// but only when the current one says nothing at all.
 	//
-	// The guard is `set == ""`, not "the switch above did not match". Somebody
-	// who has written SWARMCLI_TELEMETRY has made a decision, and a stale
+	// The guard is `set == ""`, not "the switch did not match". Somebody who has
+	// written SWARMCLI_TELEMETRY has made a decision, and a stale
 	// SWARMCLI_DISABLE_VERSION_CHECK left in the same chart must not quietly
 	// overrule it — including when what they wrote is a spelling this does not
 	// recognise, which lands on StateFull and is still their decision. Getting
 	// this backwards silenced `SWARMCLI_TELEMETRY=on`, and a test caught it.
-	if set == "" {
-		if disabled, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(legacyDisableEnv))); err == nil && disabled {
-			return StateSilent
-		}
+	if disabled, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(legacyDisableEnv))); err == nil && disabled {
+		return StateSilent, false
 	}
 
+	if v := fileValueFn(); v != "" {
+		return stateOf(v), true
+	}
+	return StateFull, false
+}
+
+// stateOf maps a trimmed, lower-cased value to its state.
+func stateOf(value string) State {
+	switch value {
+	case "none", "silent":
+		return StateSilent
+	case "off", "false", "0", "no":
+		return StateUpdateOnly
+	}
 	return StateFull
 }
 

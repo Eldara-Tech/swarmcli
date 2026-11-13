@@ -382,8 +382,26 @@ type ServiceEntry struct {
 	// services view shows it in place of Status while it is set, since a service
 	// whose image is still downloading otherwise reads as a bare "active".
 	PullProgress string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// AnonVolumes are the paths, sorted, at which this service's tasks get an
+	// anonymous volume. Every task Docker starts gets a fresh one, seeded from
+	// the image, so what is written there does not survive an update, a
+	// restart or a reschedule. The default loaders list the volume mounts the spec declares
+	// with no source, unconfirmed. A VOLUME in the image that no mount covers
+	// creates one too, but the image config lives on the nodes and the Swarm
+	// API never reports it; this is an extension point a ServiceOps decorator
+	// that can see a node's running containers completes, marking a path
+	// Confirmed and adding the ones the image created.
+	AnonVolumes []AnonVolume
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// AnonVolume is one path at which a service's tasks get an anonymous volume.
+type AnonVolume struct {
+	Path string
+	// Confirmed reports that a running task's container was seen with an
+	// anonymous volume at Path, rather than only the spec declaring one.
+	Confirmed bool
 }
 
 func LoadNodeServices(nodeID string) []ServiceEntry {
@@ -422,6 +440,7 @@ func LoadNodeServices(nodeID string) []ServiceEntry {
 			Mode:           getServiceMode(svc),
 			Image:          getServiceImage(svc),
 			Ports:          getServicePorts(svc),
+			AnonVolumes:    getServiceAnonVolumes(svc),
 			CreatedAt:      svc.CreatedAt,
 			UpdatedAt:      svc.UpdatedAt,
 		})
@@ -468,6 +487,7 @@ func (snap *SwarmSnapshot) StackServices(stackName string) []ServiceEntry {
 			Mode:           getServiceMode(svc),
 			Image:          getServiceImage(svc),
 			Ports:          getServicePorts(svc),
+			AnonVolumes:    getServiceAnonVolumes(svc),
 			CreatedAt:      svc.CreatedAt,
 			UpdatedAt:      svc.UpdatedAt,
 		})
@@ -507,6 +527,7 @@ func LoadAllServices() []ServiceEntry {
 			Mode:           getServiceMode(svc),
 			Image:          getServiceImage(svc),
 			Ports:          getServicePorts(svc),
+			AnonVolumes:    getServiceAnonVolumes(svc),
 			CreatedAt:      svc.CreatedAt,
 			UpdatedAt:      svc.UpdatedAt,
 		})

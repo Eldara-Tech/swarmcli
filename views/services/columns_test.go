@@ -106,6 +106,26 @@ func TestColumns_HealthColumnAndFootnote(t *testing.T) {
 		"HEALTH should sit immediately after STATUS")
 }
 
+// ANON VOL costs a column only on a swarm that has an anonymous volume, and
+// marks a path nothing has confirmed on a running container with "?".
+func TestColumns_AnonVolColumnOnlyWhenARowHasOne(t *testing.T) {
+	m := testModel()
+	loadWithFilter(m, AllFilter, fakeEntries("web", "api"))
+	require.False(t, hasColumn(m, "ANON VOL"), "no anonymous volume, no column")
+
+	entries := fakeEntries("web", "db")
+	entries[1].AnonVolumes = []docker.AnonVolume{{Path: "/cache"}, {Path: "/data", Confirmed: true}}
+	m2 := testModel()
+	loadWithFilter(m2, AllFilter, entries)
+	require.True(t, hasColumn(m2, "ANON VOL"))
+	require.Equal(t, colLabelIndex(m2, "ERROR")-1, colLabelIndex(m2, "ANON VOL"),
+		"ANON VOL sits just before ERROR")
+	require.Equal(t, "/cache?, /data", anonVolumesCell(docker.ServiceEntry{
+		AnonVolumes: []docker.AnonVolume{{Path: "/cache"}, {Path: "/data", Confirmed: true}},
+	}))
+	require.Equal(t, "", anonVolumesCell(docker.ServiceEntry{}))
+}
+
 // statusCell returns the rendered STATUS cell for e.
 func statusCell(m *Model, e docker.ServiceEntry) string {
 	for _, c := range m.serviceColumns() {
