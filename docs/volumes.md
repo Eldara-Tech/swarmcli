@@ -142,6 +142,45 @@ and redeploy — see [Configuration](configuration.md).
 File operations run inside a short-lived, network-isolated helper container
 scoped to the target volume; they do not run on the agent host's filesystem.
 
+## Anonymous volumes
+
+A service gets an anonymous volume wherever its tasks need a volume nobody
+named: a volume mount with no source (`- /data` in a stack file, or
+`type: volume` without `source:`), or a `VOLUME` its image declares at a path the
+service does not mount. Docker creates a fresh, empty one for every task it
+starts, so whatever the container writes there is gone after an update, a
+restart or a reschedule — the next task starts from what the image ships.
+
+The old one stays on its node with the stopped task it belonged to until Swarm
+drops that task from its history (five per replica by default).
+`docker container prune` and `docker system prune` remove such containers but
+not their volumes, which is how an anonymous volume ends up orphaned.
+
+The Services view shows them in an **ANON VOL** column, which appears only when
+a service has one:
+
+| Cell | Meaning |
+|---|---|
+| `/data?` | The service mounts a volume with no source at `/data`. |
+| `/data` | A running task of the service has an anonymous volume at `/data`. |
+
+The base TUI reads only the service spec, so it shows the first kind. A
+`VOLUME` in the image is not part of the spec, so seeing one — and confirming
+the spec's — needs Business Edition with the `service-health` entitlement on a
+managed context, and shows once a task of the service is running.
+
+To keep the data, mount a named volume (or a bind) at that path:
+
+```yaml
+services:
+  db:
+    image: postgres:17
+    volumes:
+      - db-data:/var/lib/postgresql/data
+volumes:
+  db-data:
+```
+
 ## How cross-node access works
 
 Volume operations travel over the same authenticated, authorized path as the

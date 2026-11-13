@@ -5,6 +5,7 @@ package servicesview
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Eldara-Tech/swarmcli/v2/docker"
 	filterlist "github.com/Eldara-Tech/swarmcli/v2/ui/components/filterable/list"
@@ -13,11 +14,12 @@ import (
 // serviceColumn pairs a shared-layout column with its sort metadata. The set is
 // the single source of truth for the header, widths, sort indices, and rows.
 type serviceColumn struct {
-	col      filterlist.Column[docker.ServiceEntry]
-	sort     SortField
-	hasSort  bool
-	isStack  bool
-	isHealth bool
+	col       filterlist.Column[docker.ServiceEntry]
+	sort      SortField
+	hasSort   bool
+	isStack   bool
+	isHealth  bool
+	isAnonVol bool
 }
 
 // serviceColumns returns the columns for the current scope. The STACK column is
@@ -27,7 +29,8 @@ type serviceColumn struct {
 // ServiceEntry.Health; when there is none but a footer note explains why (CE
 // upsell, or a non-managed context — see healthFooterHint) it stays visible with
 // a "*" placeholder tying rows to that footnote, and is dropped only when there
-// is neither. Cell closures capture the model so the ERROR column can read the
+// is neither. ANON VOL appears only while some row has an anonymous volume.
+// Cell closures capture the model so the ERROR column can read the
 // per-service error text.
 func (m *Model) serviceColumns() []serviceColumn {
 	// footnoted: HEALTH carries no live data but a footer note explains it, so
@@ -92,13 +95,17 @@ func (m *Model) serviceColumns() []serviceColumn {
 		{sort: SortByUpdated, hasSort: true, col: filterlist.Column[docker.ServiceEntry]{
 			Label: "UPDATED", MinWidth: 7,
 			Cell: func(e docker.ServiceEntry) string { return formatRelativeTime(e.UpdatedAt) }}},
+		{isAnonVol: true, col: filterlist.Column[docker.ServiceEntry]{
+			Label: "ANON VOL", MinWidth: 8, Flex: true,
+			Cell: anonVolumesCell}},
 		{sort: SortByError, hasSort: true, col: filterlist.Column[docker.ServiceEntry]{
 			Label: "ERROR", MinWidth: 6, Flex: true,
 			Cell: func(e docker.ServiceEntry) string { return m.serviceErrorText[e.ServiceID] }}},
 	}
 	dropStack := m.filterType != AllFilter
 	dropHealth := !m.anyServiceHealth() && !footnoted
-	if !dropStack && !dropHealth {
+	dropAnonVol := !m.anyAnonVolumes()
+	if !dropStack && !dropHealth && !dropAnonVol {
 		return all
 	}
 	out := make([]serviceColumn, 0, len(all))
@@ -107,6 +114,9 @@ func (m *Model) serviceColumns() []serviceColumn {
 			continue
 		}
 		if c.isHealth && dropHealth {
+			continue
+		}
+		if c.isAnonVol && dropAnonVol {
 			continue
 		}
 		out = append(out, c)
@@ -124,6 +134,31 @@ func (m *Model) anyServiceHealth() bool {
 		}
 	}
 	return false
+}
+
+// anyAnonVolumes reports whether any loaded service row has an anonymous
+// volume, the only thing that shows the ANON VOL column: a swarm without one
+// should not spend a column on saying so.
+func (m *Model) anyAnonVolumes() bool {
+	for _, e := range m.List.Items {
+		if len(e.AnonVolumes) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// anonVolumesCell lists a service's anonymous-volume paths. A "?" marks one
+// only the spec declares: nothing has seen it on a running container yet.
+func anonVolumesCell(e docker.ServiceEntry) string {
+	paths := make([]string, len(e.AnonVolumes))
+	for i, v := range e.AnonVolumes {
+		paths[i] = v.Path
+		if !v.Confirmed {
+			paths[i] += "?"
+		}
+	}
+	return strings.Join(paths, ", ")
 }
 
 // layoutColumns extracts the shared-layout column set for the current scope.
