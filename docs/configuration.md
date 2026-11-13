@@ -85,7 +85,8 @@ write changes the one key and nothing else: comments, key order and keys swarmcl
 does not know are kept, and an edit you made while swarmcli was running survives,
 because the file is read again before every write. A symlinked file stays a
 symlink — the write goes to the file it points at — and keeps its permissions.
-The first write creates the file with every key listed and commented out.
+The first write creates the file with every key listed, the ones not set
+commented out.
 
 A file that does not parse is never overwritten. swarmcli runs on the defaults,
 says so once on the status bar, and `:mouse` still switches the session but says

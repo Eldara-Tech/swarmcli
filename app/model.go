@@ -64,8 +64,8 @@ type Model struct {
 	telemetryNoticeActive bool
 
 	// Mouse capture, on unless MouseEnv or config.yaml switches it off, and
-	// toggled by `:mouse`; see mouse.go. mouseCaptured is whether the terminal reports the
-	// mouse right now, which syncMouse keeps in step with the view.
+	// toggled by `:mouse`; see mouse.go. mouseCaptured is whether the terminal
+	// reports the mouse right now, which syncMouse keeps in step with the view.
 	// mouseNoticeActive shows the toggle's result on the stack bar until the
 	// next keystroke, the way the disclosure above is shown, and mouseSaved is
 	// what saving it to config.yaml came to, nil until the save answers.
