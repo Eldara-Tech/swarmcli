@@ -39,14 +39,16 @@ type Model struct {
 	// every render over a buffer of up to MaxLines.
 	visibleCount int
 	// onScreen is whether a log line or a notice passed the filters at that
-	// same build, and hiddenStopped how many log lines hide-stopped alone kept
-	// off a screen that came out empty. waiting is the service's tasks that are
-	// coming up, as last read. Together they decide waitingContent.
-	// stoppedAtBuild is how many of the service's tasks were stopped at that
-	// build, so a tick can tell when one has stopped since.
+	// same build. On a screen that came out empty, anyLogLine is whether the
+	// buffer holds a log line at all and hiddenStopped how many hide-stopped
+	// alone kept off it. waiting is the service's tasks that are coming up, as
+	// last read. Together they decide waitingContent. stoppedAtBuild is the
+	// service's stopped tasks at that build, so a tick can tell when one has
+	// stopped since.
 	onScreen       bool
+	anyLogLine     bool
 	hiddenStopped  int
-	stoppedAtBuild int
+	stoppedAtBuild map[string]bool
 	waiting        []docker.TaskEntry
 
 	ServiceEntry docker.ServiceEntry

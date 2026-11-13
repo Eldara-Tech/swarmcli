@@ -422,7 +422,7 @@ func (m *Model) renderRows(now time.Time) (rows []string, isMark, isFresh []bool
 	if m.hideStopped {
 		stopped = m.stoppedTaskIDs()
 	}
-	m.stoppedAtBuild = len(stopped)
+	m.stoppedAtBuild = stopped
 	lower := strings.ToLower(m.searchTerm)
 	m.searchMatches = nil
 	visible, notices := 0, 0
@@ -461,12 +461,16 @@ func (m *Model) renderRows(now time.Time) (rows []string, isMark, isFresh []bool
 	}
 	m.visibleCount = visible
 	m.onScreen = visible > 0 || notices > 0
-	// Counted only for an empty screen, the one place it is shown: the second
-	// walk is then over lines the first one already found hidden.
-	m.hiddenStopped = 0
-	if !m.onScreen && stopped != nil {
+	// Counted only for an empty screen, the one place they are used: the
+	// second walk is then over lines the first one already found hidden.
+	m.anyLogLine, m.hiddenStopped = false, 0
+	if !m.onScreen {
 		for i := range m.lines {
-			if m.kindAt(i) == lineLog && i < len(m.lineTasks) && stopped[m.lineTasks[i]] && m.lineVisible(i, nil) {
+			if m.kindAt(i) != lineLog {
+				continue
+			}
+			m.anyLogLine = true
+			if stopped != nil && i < len(m.lineTasks) && stopped[m.lineTasks[i]] && m.lineVisible(i, nil) {
 				m.hiddenStopped++
 			}
 		}

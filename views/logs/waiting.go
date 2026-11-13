@@ -143,7 +143,18 @@ func (m *Model) handleStoppedChecked(msg stoppedCheckedMsg) tea.Cmd {
 		return nil
 	}
 	m.mu.Lock()
-	changed := m.hideStopped && len(m.stoppedTaskIDs()) != m.stoppedAtBuild
+	changed := false
+	if m.hideStopped {
+		// By identity, not by count: Swarm deletes a slot's oldest stopped
+		// task when it creates a new one, so one stopping as another is
+		// deleted leaves the count where it was.
+		for id := range m.stoppedTaskIDs() {
+			if !m.stoppedAtBuild[id] {
+				changed = true
+				break
+			}
+		}
+	}
 	m.mu.Unlock()
 	if !changed {
 		return m.waitingTickCmd()
@@ -173,13 +184,23 @@ func (m *Model) handleWaitingTasks(msg waitingTasksMsg) tea.Cmd {
 
 // waitingContent is what the frame draws in place of the viewport while nothing
 // is on screen and a task is coming up, or "" when the viewport is drawn as
-// usual. A TaskOps decorator that knows how far a pull has got shows through
-// StatusText; without one a pulling task reads "preparing".
+// usual. It speaks only when nothing has been logged or hide-stopped is what
+// emptied the screen: a "/" or node filter that hides everything is the
+// reader's own answer, not something to wait out. A task on another node than
+// the node filter's is not listed. A TaskOps decorator that knows how far a
+// pull has got shows through StatusText; without one a pulling task reads
+// "preparing".
 func (m *Model) waitingContent(width, height int) string {
 	m.mu.Lock()
-	onScreen, waiting, hidden := m.onScreen, m.waiting, m.hiddenStopped
+	onScreen, anyLog, hidden, node := m.onScreen, m.anyLogLine, m.hiddenStopped, m.nodeFilter
+	var waiting []docker.TaskEntry
+	for _, t := range m.waiting {
+		if node == "" || t.NodeName == node {
+			waiting = append(waiting, t)
+		}
+	}
 	m.mu.Unlock()
-	if onScreen || len(waiting) == 0 {
+	if onScreen || len(waiting) == 0 || (anyLog && hidden == 0) {
 		return ""
 	}
 

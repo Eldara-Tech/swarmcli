@@ -187,9 +187,46 @@ func TestWaitingContent_HiddenCountRespectsTheOtherFilters(t *testing.T) {
 	m.lineNodes = []string{"a", "b"}
 	m.nodeFilter = "a"
 	m.mu.Unlock()
-	m.Update(waitingTasksMsg{owner: m, tasks: []docker.TaskEntry{pullingTask()}})
+	onA := pullingTask()
+	onA.NodeName = "a"
+	m.Update(waitingTasksMsg{owner: m, tasks: []docker.TaskEntry{onA}})
 
 	require.Contains(t, frame(m), "1 line from stopped tasks hidden")
+}
+
+// A filter that hides every line is the reader's choice, not something to wait
+// out: the message would promise lines the filter will go on hiding.
+func TestWaitingContent_NotWhenAFilterEmptiedTheScreen(t *testing.T) {
+	m := hideStoppedModel()
+	m.mu.Lock()
+	m.lines = []string{"running task line"}
+	m.lineTasks = []string{"task-run"}
+	m.lineNodes = []string{"n"}
+	m.filterQuery = "nothing matches this"
+	m.mu.Unlock()
+	m.Update(waitingTasksMsg{owner: m, tasks: []docker.TaskEntry{pullingTask()}})
+
+	require.NotContains(t, frame(m), "Waiting for web")
+}
+
+func TestWaitingContent_ListsOnlyTheFilteredNodesTasks(t *testing.T) {
+	m := hideStoppedModel()
+	onA, onB := pullingTask(), pullingTask()
+	onA.Name, onA.NodeName = "web.1", "a"
+	onB.Name, onB.NodeName = "web.2", "b"
+	m.mu.Lock()
+	m.nodeFilter = "a"
+	m.mu.Unlock()
+	m.Update(waitingTasksMsg{owner: m, tasks: []docker.TaskEntry{onA, onB}})
+
+	out := frame(m)
+	require.Contains(t, out, "web.1@a")
+	require.NotContains(t, out, "web.2@b")
+
+	m.mu.Lock()
+	m.nodeFilter = "c"
+	m.mu.Unlock()
+	require.NotContains(t, frame(m), "Waiting for web", "nothing coming up on the filtered node")
 }
 
 func TestWaitingContent_NoHintWhenNothingIsHidden(t *testing.T) {
@@ -341,6 +378,29 @@ func TestStoppedChecked_HidesATaskThatStoppedSinceTheBuild(t *testing.T) {
 	out := frame(m)
 	require.Contains(t, out, "Waiting for web")
 	require.Contains(t, out, "1 line from stopped tasks hidden")
+}
+
+// Swarm deletes a slot's oldest stopped task when it creates a new one, so the
+// count of stopped tasks can stand still while the one on screen stops.
+func TestStoppedChecked_ATaskStoppingAsAnotherIsDeletedStillCounts(t *testing.T) {
+	m := hideStoppedModel()
+	m.deps.Tasks = &mockTaskOps{tasks: []docker.TaskEntry{pullingTask()}}
+	m.mu.Lock()
+	m.lines = []string{"line from the old task"}
+	m.lineTasks = []string{"task-run"}
+	m.lineNodes = []string{"n"}
+	m.mu.Unlock()
+	m.syncViewport(0)
+	require.Contains(t, frame(m), "line from the old task")
+
+	snap := m.deps.Snapshot.(*mockSnapshotOps).snap
+	snap.Tasks = []swarm.Task{ // task-stop reaped, task-run stopped: still one stopped
+		{ID: "task-run", ServiceID: "svc-123", Status: swarm.TaskStatus{State: swarm.TaskStateShutdown}},
+		{ID: "task-start", ServiceID: "svc-123", Status: swarm.TaskStatus{State: swarm.TaskStateStarting}},
+	}
+	_, isRead := m.Update(stoppedCheckedMsg{owner: m})().(waitingTasksMsg)
+	require.True(t, isRead)
+	require.NotContains(t, frame(m), "line from the old task")
 }
 
 func TestStoppedChecked_IgnoresAnotherViewsReply(t *testing.T) {
