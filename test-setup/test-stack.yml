@@ -56,6 +56,13 @@ services:
     configs:
       - source: whoami_single_config
         target: /etc/whoami/config
+    # Issue #722 fixture: anonymous volumes, one read-only. Compose
+    # reconstruction must keep both through a redeploy.
+    volumes:
+      - /scratch
+      - type: volume
+        target: /cache
+        read_only: true
     # A literal '$' in a value: the service holds ${NOT_EXPANDED}, and compose
     # reconstruction must keep it literal through a redeploy.
     environment:
