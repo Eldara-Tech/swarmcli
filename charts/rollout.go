@@ -91,25 +91,34 @@ func (e *Engine) heldForRollout(ctx context.Context, rel *Release) ([]string, er
 	return held, nil
 }
 
-// rollOneAtATime deploys each held service on its own, each deploy carrying the
-// manifest minus the held services still to come, and waits for it before the
-// next. The first deploy, without any of them, has already happened.
+// rollOneAtATime deploys each held service on its own, each deploy carrying that
+// service and no other, and waits for it before the next. The first deploy,
+// without any of them, has already happened.
+//
+// No other, because `docker stack deploy` updates every service it is handed,
+// changed or not, and re-sending one an earlier deploy updated goes wrong two
+// ways. Swarm bumps a service's version again a few seconds into an update, when
+// it records the update complete, so a deploy that read the version before that
+// is refused: "update out of sequence" (#728). And a re-sent service that did not
+// change has its PreviousSpec overwritten with its current spec, which reads as an
+// update that changed nothing. What a deploy leaves out stays as it is, since it
+// never prunes (stackDeployArgs).
 //
 // It waits whether or not --wait was asked for: one at a time is the point, and
 // without a wait between them the deploys would overlap just as before.
 func (e *Engine) rollOneAtATime(ctx context.Context, rel *Release, opts InstallOptions, held []string) error {
-	pending := make(map[string]bool, len(held))
-	for _, key := range held {
-		pending[key] = true
+	keys, err := serviceKeys(rel.Manifest)
+	if err != nil {
+		return err
 	}
 	for _, key := range held {
-		delete(pending, key)
-		manifest := rel.Manifest
-		if len(pending) > 0 {
-			var err error
-			if manifest, _, err = withoutServices(rel.Manifest, pending); err != nil {
-				return err
-			}
+		others := make(map[string]bool, len(keys))
+		for _, k := range keys {
+			others[k] = k != key
+		}
+		manifest, _, err := withoutServices(rel.Manifest, others)
+		if err != nil {
+			return err
 		}
 		name := rel.Name + "_" + key
 		before, _ := e.serviceState(ctx, rel.Name, name)
@@ -240,6 +249,19 @@ func sequentialServices(manifest string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// serviceKeys returns the keys of the manifest's services, in manifest order.
+func serviceKeys(manifest string) ([]string, error) {
+	_, services, err := manifestServices(manifest)
+	if err != nil || services == nil || services.Kind != yaml.MappingNode {
+		return nil, err
+	}
+	keys := make([]string, 0, len(services.Content)/2)
+	for i := 0; i+1 < len(services.Content); i += 2 {
+		keys = append(keys, services.Content[i].Value)
+	}
+	return keys, nil
 }
 
 // withoutServices returns the manifest with the named services left out and

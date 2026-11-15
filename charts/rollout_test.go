@@ -226,14 +226,43 @@ func TestUpgradeRollsMarkedServicesOneAtATime(t *testing.T) {
 
 	require.Len(t, b.manifests, 5, "one deploy without the peers, then one per peer")
 	require.Equal(t, []string{"web"}, manifestKeys(t, b.manifests[1]))
-	require.Equal(t, []string{"peer-1", "web"}, manifestKeys(t, b.manifests[2]))
-	require.Equal(t, []string{"peer-1", "peer-2", "web"}, manifestKeys(t, b.manifests[3]))
-	require.Equal(t, []string{"peer-1", "peer-2", "peer-3", "web"}, manifestKeys(t, b.manifests[4]))
+	require.Equal(t, []string{"peer-1"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, []string{"peer-2"}, manifestKeys(t, b.manifests[3]))
+	require.Equal(t, []string{"peer-3"}, manifestKeys(t, b.manifests[4]))
 	// The next peer is deployed only after the previous one's update started and
 	// converged: the stale poll, the in-flight one and the converged one, plus the
 	// next step's own read of the state before its deploy.
 	require.Equal(t, 4, b.pollsAtDeploy[3], "peer-2 deployed before peer-1 had converged")
 	require.Equal(t, 4, b.pollsAtDeploy[4], "peer-3 deployed before peer-2 had converged")
+}
+
+// Every step deploys its peer alone: a service an earlier deploy updated is still
+// settling for a few seconds, and docker stack deploy re-sends every service it is
+// handed, which swarm refuses mid-update ("update out of sequence", #728) and which,
+// for a service that did not change, overwrites the PreviousSpec the next wait reads.
+// So across the whole rollout every service is deployed exactly once.
+func TestRolloutDeploysEveryServiceOnce(t *testing.T) {
+	fastPolls(t)
+	b := newRollBackend()
+	e := installRolling(t, b)
+	// Bounded: a step that re-sends a peer leaves this backend waiting on an update
+	// that never starts, so the regression shows as an error, not a hung test.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := e.Upgrade(ctx, "db", ReleaseChart{Name: "galera", Version: "2"}, nil, rolloutManifest, InstallOptions{})
+	require.NoError(t, err)
+
+	seen := map[string]int{}
+	for _, m := range b.manifests[b.upgradeFrom:] {
+		for _, k := range manifestKeys(t, m) {
+			seen[k]++
+		}
+	}
+	require.Equal(t, map[string]int{"web": 1, "peer-1": 1, "peer-2": 1, "peer-3": 1}, seen)
+	for i, m := range b.manifests[b.upgradeFrom:] {
+		require.Contains(t, m, "networks:", "deploy %d dropped the stack's top-level definitions", i)
+	}
 }
 
 func TestRolloutDoesNotWaitForAServiceThatDidNotChange(t *testing.T) {
@@ -342,7 +371,7 @@ func TestRolloutWhenEveryServiceIsMarked(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, b.manifests, 3, "the install, then one deploy per peer")
 	require.Equal(t, []string{"peer-1"}, manifestKeys(t, b.manifests[1]), "a first deploy must carry a service; the first held one goes in it")
-	require.Equal(t, []string{"peer-1", "peer-2"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, []string{"peer-2"}, manifestKeys(t, b.manifests[2]))
 	require.Equal(t, 4, b.pollsAtDeploy[2], "peer-2 deployed before peer-1 had converged")
 }
 
@@ -356,8 +385,8 @@ func TestRolloutDeploysADownServiceWithTheFirstStage(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, b.manifests, 4, "the first deploy, then one per peer that is up")
 	require.Equal(t, []string{"peer-2", "web"}, manifestKeys(t, b.manifests[1]), "a peer that is down has nothing to protect")
-	require.Equal(t, []string{"peer-1", "peer-2", "web"}, manifestKeys(t, b.manifests[2]))
-	require.Equal(t, []string{"peer-1", "peer-2", "peer-3", "web"}, manifestKeys(t, b.manifests[3]))
+	require.Equal(t, []string{"peer-1"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, []string{"peer-3"}, manifestKeys(t, b.manifests[3]))
 }
 
 // After a full stop every peer waits for its cluster. The upgrade that forces one
@@ -396,7 +425,7 @@ func TestRolloutHoldsAStartingServiceWhileOthersAreUp(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, b.manifests, 5, "one deploy without the peers, then one per peer")
 	require.Equal(t, []string{"web"}, manifestKeys(t, b.manifests[1]), "a starting peer is not down")
-	require.Equal(t, []string{"peer-1", "web"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, []string{"peer-1"}, manifestKeys(t, b.manifests[2]))
 	require.Equal(t, 4, b.pollsAtDeploy[3], "peer-2 deployed before peer-1 had converged")
 }
 
