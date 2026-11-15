@@ -63,6 +63,9 @@ type Model struct {
 	// read. Without one the LATEST column is empty for every release, which must
 	// not be mistaken for "everything is up to date".
 	haveIndexes bool
+	// indexesChecked is when the least recently verified of those indexes was
+	// last verified; see staleNote.
+	indexesChecked time.Time
 
 	state state
 	err   error

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Eldara-Tech/swarmcli/v2/charts"
-	"github.com/Eldara-Tech/swarmcli/v2/core/primitives/hash"
 	"github.com/Eldara-Tech/swarmcli/v2/ui"
 	filterlist "github.com/Eldara-Tech/swarmcli/v2/ui/components/filterable/list"
 	"github.com/Eldara-Tech/swarmcli/v2/views/confirmdialog"
@@ -264,8 +263,9 @@ func (m *Model) handleReleasesLoaded(msg ReleasesLoadedMsg) tea.Cmd {
 	}
 
 	m.haveIndexes = msg.HaveIndexes
+	m.indexesChecked = msg.IndexesChecked
 
-	if h, err := hash.Compute(stableReleases(msg.Releases)); err == nil {
+	if h, err := snapshotHash(msg); err == nil {
 		m.lastSnapshot = h
 	} else {
 		l().Errorf("ChartsView: Error computing hash: %v", err)

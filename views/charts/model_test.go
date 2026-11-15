@@ -29,6 +29,8 @@ type mockOps struct {
 	// version. Nil means no index at all, which is a different answer from an
 	// index in which nothing is newer.
 	indexes map[string]string
+	// checked is what Available reports as the indexes' verification time.
+	checked time.Time
 }
 
 func (m *mockOps) AllRevisions(ctx context.Context) (map[string][]charts.Release, error) {
@@ -45,16 +47,16 @@ func (m *mockOps) ServiceStates(ctx context.Context, release string) []charts.Se
 // Available answers through the real charts.Available, over an index built
 // from the fixture. Mirroring its rules by hand is how a fake comes to disagree
 // with production — version comparison in particular is not string equality.
-func (m *mockOps) Available(rels []charts.Release) (map[string]charts.Availability, bool) {
+func (m *mockOps) Available(rels []charts.Release) (map[string]charts.Availability, bool, time.Time) {
 	if m.indexes == nil {
-		return nil, false
+		return nil, false, time.Time{}
 	}
 	entries := make(map[string][]charts.IndexEntry, len(m.indexes))
 	for chart, version := range m.indexes {
 		entries[chart] = []charts.IndexEntry{{Name: chart, Version: version}}
 	}
 	index := map[string]*charts.Index{"fixture": {APIVersion: "v1", Entries: entries}}
-	return charts.Available(rels, nil, index), true
+	return charts.Available(rels, nil, index), true, m.checked
 }
 
 func noopOps() *mockOps {
@@ -465,6 +467,18 @@ func TestCheckReloadsWhenARevisionLands(t *testing.T) {
 	loaded, ok := msg.(ReleasesLoadedMsg)
 	require.True(t, ok, "expected a reload, got %T", msg)
 	require.Equal(t, 2, loaded.Releases[0].revision())
+}
+
+// Indexes appearing under a view whose charts are all local change no row's
+// fields, only what LATEST renders them as: "?" becomes "—".
+func TestCheckReloadsWhenIndexesAppear(t *testing.T) {
+	m := testModel()
+	loadReleases(t, m, map[string][]charts.Release{"app": deployed("app", "local", "0.1.0")}, nil)
+	require.Equal(t, "?", m.updCell(m.list.Filtered[0]))
+
+	m.ops.(*mockOps).indexes = map[string]string{"other": "1.0.0"}
+	m.Update(runCmd(m.checkReleasesCmd(m.lastSnapshot)))
+	require.Equal(t, "—", m.updCell(m.list.Filtered[0]))
 }
 
 // A malformed timestamp must degrade to a dash, not to a misleading date.

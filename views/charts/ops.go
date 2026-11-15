@@ -5,7 +5,10 @@ package chartsview
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"sync"
+	"time"
 
 	"github.com/Eldara-Tech/swarmcli/v2/charts"
 )
@@ -32,8 +35,9 @@ type releaseOps interface {
 	// whether there was anything to compare against, so the view can say "no
 	// indexes" rather than "up to date" — and a release missing from the map
 	// while haveIndexes is true is a chart in no index, which is a third answer
-	// again.
-	Available(rels []charts.Release) (avail map[string]charts.Availability, haveIndexes bool)
+	// again. checked is when the least recently verified index was last
+	// verified, so the view can say how old that comparison is.
+	Available(rels []charts.Release) (avail map[string]charts.Availability, haveIndexes bool, checked time.Time)
 }
 
 // engineOps binds releaseOps to the ambient release engine.
@@ -45,16 +49,21 @@ type releaseOps interface {
 type engineOps struct {
 	engine *charts.Engine
 
-	// indexes are the cached repository indexes, read once per view. Loading
-	// them is disk I/O and YAML parsing, and the poll runs every few seconds,
-	// so re-reading them on every tick would be pure waste. The cost is that a
-	// `charts repo update` in another terminal shows up the next time the view
-	// is opened, which is also what the column claims: it compares against
-	// what this machine has cached.
-	once        sync.Once
-	repos       []charts.RepoEntry
-	indexes     map[string]*charts.Index
-	haveIndexes bool
+	// The cached repository indexes, and the repository list and file times
+	// they were read under. Parsing every index on every poll would be waste,
+	// so Available re-parses only when the list or a time moved. Reading them
+	// once per view instead left an open view calling releases up to date that
+	// `charts outdated`, refreshing from another terminal, had just found
+	// outdated (#726).
+	//
+	// mu serialises Available, which runs in a tea.Cmd goroutine.
+	mu      sync.Mutex
+	store   *charts.RepoStore
+	repos   []charts.RepoEntry
+	times   map[string]time.Time
+	indexes map[string]*charts.Index
+	// warned keeps a persistent failure to one log line, not one per poll.
+	warned bool
 }
 
 func newEngineOps() releaseOps { return &engineOps{engine: charts.NewEngine()} }
@@ -67,40 +76,66 @@ func (o *engineOps) ServiceStates(ctx context.Context, release string) []charts.
 	return o.engine.Backend.StackServices(ctx, release)
 }
 
-func (o *engineOps) Available(rels []charts.Release) (map[string]charts.Availability, bool) {
-	o.once.Do(o.loadIndexes)
-	if !o.haveIndexes {
-		return nil, false
+func (o *engineOps) Available(rels []charts.Release) (map[string]charts.Availability, bool, time.Time) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.loadIndexes()
+	if len(o.indexes) == 0 {
+		return nil, false, time.Time{}
 	}
-	return charts.Available(rels, o.repos, o.indexes), true
+	var checked time.Time
+	for _, t := range o.times {
+		if checked.IsZero() || t.Before(checked) {
+			checked = t
+		}
+	}
+	return charts.Available(rels, o.repos, o.indexes), true, checked
 }
 
-// loadIndexes reads the configured repositories and their cached indexes, and
-// nothing else.
+// loadIndexes reads the configured repositories and their cached indexes when
+// either changed on disk since the last read, and nothing else. A failure keeps
+// whatever the last read found, and the next poll tries again.
 //
 // RefreshNever is the point: this is a browser, and a view that polls must not
 // reach the network behind the operator's back. The store's own timeouts would
 // not save it either — none of RepoStore's methods take a context, so a fetch
 // here could not be cancelled when the view is closed.
 func (o *engineOps) loadIndexes() {
-	store, err := newRepoStore()
+	if o.store == nil {
+		store, err := newRepoStore()
+		if err != nil {
+			o.warn("ChartsView: no chart repository state: %v", err)
+			return
+		}
+		o.store = store
+	}
+	repos, err := o.store.List()
 	if err != nil {
-		l().Warnf("ChartsView: no chart repository state: %v", err)
+		o.warn("ChartsView: could not read the configured repositories: %v", err)
 		return
 	}
-	indexes, err := store.Indexes()
+	times, err := o.store.IndexTimes()
 	if err != nil {
-		l().Warnf("ChartsView: could not read the cached repository indexes: %v", err)
+		o.warn("ChartsView: could not read the cached repository indexes: %v", err)
 		return
 	}
-	repos, err := store.List()
-	if err != nil {
-		l().Warnf("ChartsView: could not read the configured repositories: %v", err)
+	if o.times != nil && slices.Equal(repos, o.repos) && maps.EqualFunc(times, o.times, time.Time.Equal) {
 		return
 	}
-	o.repos = repos
-	o.indexes = indexes
-	o.haveIndexes = len(indexes) > 0
+	indexes, err := o.store.Indexes()
+	if err != nil {
+		o.warn("ChartsView: could not read the cached repository indexes: %v", err)
+		return
+	}
+	o.repos, o.times, o.indexes = repos, times, indexes
+}
+
+func (o *engineOps) warn(format string, a ...any) {
+	if o.warned {
+		return
+	}
+	o.warned = true
+	l().Warnf(format, a...)
 }
 
 // newRepoStore builds the offline-only repository store this view reads.

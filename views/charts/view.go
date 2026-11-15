@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Eldara-Tech/swarmcli/v2/charts"
 	"github.com/Eldara-Tech/swarmcli/v2/ui"
 	"github.com/Eldara-Tech/swarmcli/v2/ui/components/errordialog"
 )
@@ -204,7 +205,29 @@ func (m *Model) baseFooter() string {
 		return ui.StatusBarStyle.Render("No releases")
 	}
 	if m.HasActiveFilter() {
-		return ui.StatusBarStyle.Render(fmt.Sprintf("%d/%d (filtered from %d)", cursor, filtered, total))
+		return ui.StatusBarStyle.Render(fmt.Sprintf("%d/%d (filtered from %d)", cursor, filtered, total) + m.staleNote())
 	}
-	return ui.StatusBarStyle.Render(fmt.Sprintf("%d/%d", cursor, total))
+	return ui.StatusBarStyle.Render(fmt.Sprintf("%d/%d", cursor, total) + m.staleNote())
+}
+
+// staleNote qualifies the LATEST column once its indexes have gone unverified
+// for as long as the CLI tolerates before warning: the view never refreshes
+// them itself (see newRepoStore), so ✓ then means "nothing newer, as of N days
+// ago". It rides on the counts line because the footer must stay within three,
+// and is short enough to fit beside a filter's counts at 80 columns; the help
+// sheet carries the command, as it does for readOnlyHint.
+func (m *Model) staleNote() string {
+	if !m.haveIndexes || m.indexesChecked.IsZero() {
+		return ""
+	}
+	age := time.Since(m.indexesChecked)
+	if age < charts.StaleAfter {
+		return ""
+	}
+	days := int(age / (24 * time.Hour))
+	unit := "days"
+	if days == 1 {
+		unit = "day"
+	}
+	return fmt.Sprintf(" · indexes %d %s old (? for how)", days, unit)
 }
