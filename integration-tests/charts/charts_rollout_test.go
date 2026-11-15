@@ -59,9 +59,8 @@ func rolloutStack(rev int, services ...string) string {
 
 // revTaskCreated is when swarm created the service's task running REV=rev.
 //
-// Not the service's UpdateStatus: every later stage of a sequential rollout
-// re-sends the services already rolled, unchanged, and that no-op update clears
-// their UpdateStatus. Only the last service's survives to be read afterwards.
+// Not the service's UpdateStatus, which records only the service's most recent
+// update: the task's creation is when that revision actually started to run.
 func revTaskCreated(t *testing.T, ctx context.Context, service string, rev int) time.Time {
 	t.Helper()
 	cli, err := docker.GetClient()
@@ -124,6 +123,15 @@ func TestUpgradeRollsSequentialServicesOneAtATime(t *testing.T) {
 		"b's update started at %s, before a's new task (created %s) was past its monitor window", b.UpdateStatus.StartedAt, aNew)
 	require.True(t, revTaskCreated(t, ctx, release+"_plain", 2).Before(aNew),
 		"the unmarked service is updated by the first deploy, before any marked one")
+	// And no later step re-sends a service (#728): a re-send of an unchanged service
+	// overwrites its PreviousSpec with the current spec, so each one still holding
+	// REV=1 there was updated exactly once, by this upgrade.
+	for _, name := range []string{"a", "plain"} {
+		prev := inspectService(t, ctx, release+"_"+name).PreviousSpec
+		require.NotNil(t, prev, "service %s has no previous spec", name)
+		require.Contains(t, prev.TaskTemplate.ContainerSpec.Env, "REV=1",
+			"service %s was deployed again after its own update", name)
+	}
 }
 
 // A stack of marked services and nothing else, as the mariadb-galera chart

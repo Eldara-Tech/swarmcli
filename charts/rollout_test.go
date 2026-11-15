@@ -70,8 +70,32 @@ func TestSequentialServicesReadsBothLabelForms(t *testing.T) {
 	require.Empty(t, none, "only the value sequential marks a service")
 }
 
+// A service left out may carry an anchor another one aliases; the result must still
+// parse and mean the same.
+func TestWithoutServicesExpandsAliasesItWouldStrand(t *testing.T) {
+	m := "services:\n  web:\n    image: nginx\n    environment: &env\n      A: \"1\"\n  peer-1:\n    image: mariadb\n    environment: *env\n    deploy:\n      labels: &l\n        - \"x=y\"\n  peer-2:\n    image: mariadb\n    deploy:\n      labels: *l\n"
+	for _, keep := range []string{"peer-1", "peer-2"} {
+		out, kept, err := withoutServices(m, func(k string) bool { return k != keep })
+		require.NoError(t, err)
+		require.Equal(t, 1, kept)
+		var doc struct {
+			Services map[string]struct {
+				Environment map[string]string `yaml:"environment"`
+				Deploy      struct {
+					Labels []string `yaml:"labels"`
+				} `yaml:"deploy"`
+			} `yaml:"services"`
+		}
+		require.NoError(t, yaml.Unmarshal([]byte(out), &doc), "the %s step:\n%s", keep, out)
+		require.Equal(t, []string{"x=y"}, doc.Services[keep].Deploy.Labels)
+		if keep == "peer-1" {
+			require.Equal(t, map[string]string{"A": "1"}, doc.Services[keep].Environment)
+		}
+	}
+}
+
 func TestWithoutServicesKeepsEverythingElse(t *testing.T) {
-	out, kept, err := withoutServices(rolloutManifest, map[string]bool{"peer-1": true, "peer-3": true})
+	out, kept, err := withoutServices(rolloutManifest, func(k string) bool { return k == "peer-1" || k == "peer-3" })
 	require.NoError(t, err)
 	require.Equal(t, 2, kept)
 	require.Equal(t, []string{"peer-2", "web"}, manifestKeys(t, out))
@@ -236,17 +260,16 @@ func TestUpgradeRollsMarkedServicesOneAtATime(t *testing.T) {
 	require.Equal(t, 4, b.pollsAtDeploy[4], "peer-3 deployed before peer-2 had converged")
 }
 
-// Every step deploys its peer alone: a service an earlier deploy updated is still
-// settling for a few seconds, and docker stack deploy re-sends every service it is
-// handed, which swarm refuses mid-update ("update out of sequence", #728) and which,
-// for a service that did not change, overwrites the PreviousSpec the next wait reads.
-// So across the whole rollout every service is deployed exactly once.
+// Every step deploys its peer alone: docker stack deploy re-sends every service it
+// is handed, and swarm refuses one an earlier deploy is still recording an update
+// for ("update out of sequence", #728). So across the whole rollout every service
+// is deployed exactly once, and every step keeps the stack's top-level keys.
 func TestRolloutDeploysEveryServiceOnce(t *testing.T) {
 	fastPolls(t)
 	b := newRollBackend()
 	e := installRolling(t, b)
-	// Bounded: a step that re-sends a peer leaves this backend waiting on an update
-	// that never starts, so the regression shows as an error, not a hung test.
+	// Bounded: a step that sends a peer before its own step leaves this backend
+	// waiting on an update that never starts, so that shows as an error, not a hang.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -261,7 +284,11 @@ func TestRolloutDeploysEveryServiceOnce(t *testing.T) {
 	}
 	require.Equal(t, map[string]int{"web": 1, "peer-1": 1, "peer-2": 1, "peer-3": 1}, seen)
 	for i, m := range b.manifests[b.upgradeFrom:] {
-		require.Contains(t, m, "networks:", "deploy %d dropped the stack's top-level definitions", i)
+		var doc map[string]any
+		require.NoError(t, yaml.Unmarshal([]byte(m), &doc))
+		for _, k := range []string{"version", "networks", "volumes"} {
+			require.Contains(t, doc, k, "deploy %d dropped the stack's top-level %s", i, k)
+		}
 	}
 }
 
