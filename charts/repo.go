@@ -51,13 +51,14 @@ var pullBackoff = []time.Duration{500 * time.Millisecond, 2 * time.Second}
 // being pulled: the versions a pinned release has moved past.
 const chartCacheTTL = 30 * 24 * time.Hour
 
-// staleAfter is how long a cached index may go unverified before reads of it
+// StaleAfter is how long a cached index may go unverified before reads of it
 // warn. Under RefreshAlways nothing gets that far — the index is refreshed
 // before it is read — so this is what is left for the cases where it was not:
 // a refresh that failed, and a RefreshExplicit or RefreshNever store. There, an
 // unrefreshed cache answers "latest" with whatever was newest when it was
-// written, silently and for good.
-const staleAfter = 24 * time.Hour
+// written, silently and for good. It is exported so a caller reporting an
+// index's age (see IndexTimes) draws the line where these warnings do.
+const StaleAfter = 24 * time.Hour
 
 // AllowPlaintextEnv is the environment variable a host program may honour to set
 // AllowPlaintext. The name lives here so the refusal message and whatever reads
@@ -490,7 +491,7 @@ func (s *RepoStore) markRefreshed(name string) {
 	s.refreshed[name] = true
 }
 
-// warnStale reports a cached index that has not been verified for staleAfter.
+// warnStale reports a cached index that has not been verified for StaleAfter.
 // It is the fallback for when the refresh policy is not RefreshAlways or its
 // fetch failed: those are
 // the only paths left on which resolution answers out of a cache nobody has
@@ -502,7 +503,7 @@ func (s *RepoStore) warnStale(path, name string) {
 		return
 	}
 	age := time.Since(fi.ModTime())
-	if age < staleAfter || s.warnedStale[name] {
+	if age < StaleAfter || s.warnedStale[name] {
 		return
 	}
 	if s.warnedStale == nil {
@@ -532,6 +533,34 @@ func (s *RepoStore) Indexes() (map[string]*Index, error) {
 			continue
 		}
 		out[r.Name] = idx
+	}
+	return out, nil
+}
+
+// IndexTimes returns when each configured repository's cached index was last
+// verified, keyed by repository name: the cache file's modification time, which
+// Update touches even when the index is unchanged. Repositories with no cached
+// index are absent, as in Indexes.
+//
+// It parses nothing, so a long-lived caller can poll it to learn that Indexes
+// would now answer differently — another process refreshed the cache — without
+// re-reading every index to find out.
+func (s *RepoStore) IndexTimes() (map[string]time.Time, error) {
+	repos, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]time.Time, len(repos))
+	for _, r := range repos {
+		path, err := s.indexFile(r.Name)
+		if err != nil {
+			continue
+		}
+		fi, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		out[r.Name] = fi.ModTime()
 	}
 	return out, nil
 }

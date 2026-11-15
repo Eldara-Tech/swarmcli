@@ -900,6 +900,44 @@ func TestIndexesSkipsRepositoriesWithNoCachedIndex(t *testing.T) {
 	require.NotContains(t, idxs, "stale")
 }
 
+// IndexTimes is how a long-lived reader learns that another process refreshed
+// the cache, so it has to move on every refresh — including one that found the
+// index unchanged — and stay quiet about everything Indexes would skip.
+func TestIndexTimesReportsWhenEachCachedIndexWasVerified(t *testing.T) {
+	body := "apiVersion: v1\nentries: {}\n"
+	up := true
+	srv := newIndexServer(t, &body, &up)
+
+	s := newTestStore(t)
+	require.NoError(t, s.Add("good", srv.URL))
+	age(t, s, "good", 3*24*time.Hour)
+	// A repository with no cached index, and a name indexFile will not vouch for.
+	require.NoError(t, os.WriteFile(s.reposFile(), []byte(`[
+		{"name":"good","url":"`+srv.URL+`"},
+		{"name":"uncached","url":"`+srv.URL+`"},
+		{"name":"../escape","url":"`+srv.URL+`"}]`), 0o600))
+
+	times, err := s.IndexTimes()
+	require.NoError(t, err)
+	require.Len(t, times, 1)
+	require.WithinDuration(t, time.Now().Add(-3*24*time.Hour), times["good"], time.Minute)
+
+	_, unchanged, err := s.Update("good")
+	require.NoError(t, err)
+	require.Equal(t, []string{"good"}, unchanged, "the fixture must be the no-change refresh")
+	after, err := s.IndexTimes()
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now(), after["good"], time.Minute)
+}
+
+func TestIndexTimesFailsOnAnUnreadableRepositoryList(t *testing.T) {
+	s := newTestStore(t)
+	require.NoError(t, os.WriteFile(s.reposFile(), []byte("not json"), 0o600))
+
+	_, err := s.IndexTimes()
+	require.Error(t, err)
+}
+
 // A repository in the manifest that cannot be reached must fail the apply loudly,
 // not be silently skipped — every chart it provides would otherwise fail to
 // resolve with a far more confusing error.

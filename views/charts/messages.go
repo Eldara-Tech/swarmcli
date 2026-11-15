@@ -47,7 +47,10 @@ type ReleasesLoadedMsg struct {
 	// compare versions against. Without them the LATEST column is empty for every
 	// release, which must not read as "everything is up to date".
 	HaveIndexes bool
-	Err         error
+	// IndexesChecked is when the least recently verified of those indexes was
+	// last verified; zero without HaveIndexes.
+	IndexesChecked time.Time
+	Err            error
 }
 
 // spinnerTickInterval is a var, not a const, so tests can shrink it: a tea.Tick
@@ -64,45 +67,51 @@ func spinnerTickCmd() tea.Cmd {
 
 func (m *Model) loadReleasesCmd() tea.Cmd {
 	ops := m.ops
-	return func() tea.Msg {
-		items, haveIndexes, err := readReleases(ops)
-		if err != nil {
-			return ReleasesLoadedMsg{Err: err}
-		}
-		return ReleasesLoadedMsg{Releases: items, HaveIndexes: haveIndexes}
-	}
+	return func() tea.Msg { return readReleases(ops) }
 }
 
 // checkReleasesCmd reloads only when something a reader would notice changed.
 func (m *Model) checkReleasesCmd(lastHash uint64) tea.Cmd {
 	ops := m.ops
 	return func() tea.Msg {
-		items, haveIndexes, err := readReleases(ops)
-		if err != nil {
-			return ReleasesLoadedMsg{Err: err}
+		msg := readReleases(ops)
+		if msg.Err != nil {
+			return msg
 		}
-		newHash, hErr := hash.Compute(stableReleases(items))
+		newHash, hErr := snapshotHash(msg)
 		if hErr != nil {
 			l().Errorf("Error computing hash: %v", hErr)
 			return PollRetryMsg{}
 		}
 		if newHash != lastHash {
-			return ReleasesLoadedMsg{Releases: items, HaveIndexes: haveIndexes}
+			return msg
 		}
 		return PollRetryMsg{}
 	}
 }
 
+// snapshotHash is what the poll compares: the rows, plus the index facts the
+// LATEST column and the footer render from. A refreshed cache can leave every
+// row as it was — the "?" of no index becoming the "—" of a local chart, or an
+// age note going away — and that must still reach the screen.
+func snapshotHash(msg ReleasesLoadedMsg) (uint64, error) {
+	return hash.Compute(struct {
+		Releases    []stableRelease
+		HaveIndexes bool
+		Checked     time.Time
+	}{stableReleases(msg.Releases), msg.HaveIndexes, msg.IndexesChecked})
+}
+
 // readReleases builds the rows: one config listing for every record, then one
 // cached-snapshot read per release for the live half, then an offline join
 // against the cached repository indexes.
-func readReleases(ops releaseOps) ([]releaseItem, bool, error) {
+func readReleases(ops releaseOps) ReleasesLoadedMsg {
 	ctx, cancel := context.WithTimeout(context.Background(), loadTimeout)
 	defer cancel()
 
 	all, err := ops.AllRevisions(ctx)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to read chart releases: %w", err)
+		return ReleasesLoadedMsg{Err: fmt.Errorf("failed to read chart releases: %w", err)}
 	}
 
 	items := make([]releaseItem, 0, len(all))
@@ -133,12 +142,12 @@ func readReleases(ops releaseOps) ([]releaseItem, bool, error) {
 	for _, it := range items {
 		currents = append(currents, it.current())
 	}
-	avail, haveIndexes := ops.Available(currents)
+	avail, haveIndexes, checked := ops.Available(currents)
 	for i := range items {
 		a := avail[items[i].Name]
 		items[i].Latest, items[i].Newer = a.Latest, a.Newer
 	}
-	return items, haveIndexes, nil
+	return ReleasesLoadedMsg{Releases: items, HaveIndexes: haveIndexes, IndexesChecked: checked}
 }
 
 // parseCreated returns the zero time for a record whose timestamp is missing or

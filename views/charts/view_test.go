@@ -216,6 +216,40 @@ func TestFooterStaysWithinThreeLines(t *testing.T) {
 	require.LessOrEqual(t, strings.Count(m.renderFooter(), "\n")+1, 3)
 }
 
+// The view never refreshes the indexes, so ✓ is only as current as the cache.
+// Past the age the CLI warns at, the footer says how old — and the note has to
+// come and go on the poll, though no row changes when only the age does.
+func TestFooterSaysHowOldTheIndexesAre(t *testing.T) {
+	m := sized(testModel(), 90, 24)
+	loadReleases(t, m, map[string][]charts.Release{"app": deployed("app", "c", "1.0.0")}, nil,
+		map[string]string{"c": "1.0.0"})
+	ops := m.ops.(*mockOps)
+	poll := func(checked time.Time) {
+		t.Helper()
+		ops.checked = checked
+		msg := runCmd(m.checkReleasesCmd(m.lastSnapshot))
+		require.IsType(t, ReleasesLoadedMsg{}, msg, "the age moved, so the poll must deliver it")
+		m.Update(msg)
+	}
+
+	poll(time.Now().Add(-73 * time.Hour))
+	require.Contains(t, m.renderFooter(), "indexes 3 days old (? for how)")
+	var keys []string
+	for _, c := range GetChartsHelpContent() {
+		for _, it := range c.Items {
+			keys = append(keys, it.Keys)
+		}
+	}
+	require.Contains(t, keys, "N days old", "the help sheet is where the note says how")
+	require.LessOrEqual(t, strings.Count(m.renderFooter(), "\n")+1, 3)
+
+	poll(time.Now().Add(-25 * time.Hour))
+	require.Contains(t, m.renderFooter(), "indexes 1 day old")
+
+	poll(time.Now().Add(-time.Hour))
+	require.NotContains(t, m.renderFooter(), "indexes")
+}
+
 func TestUpdColumnShowsTheNewerVersion(t *testing.T) {
 	m := sized(testModel(), 150, 24)
 	loadReleases(t, m,

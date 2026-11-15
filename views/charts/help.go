@@ -43,6 +43,7 @@ func GetChartsHelpContent() []helpview.HelpCategory {
 				{Keys: "✓", Description: "Up to date: the chart is in a cached index and nothing newer is published"},
 				{Keys: "—", Description: "Nothing to compare against — the chart is in no cached index, which is what a local chart looks like"},
 				{Keys: "?", Description: "No cached index at all — run `swarmcli charts repo update`"},
+				{Keys: "N days old", Description: "In the footer: the cached indexes were last refreshed that long ago — run `swarmcli charts repo update`"},
 			},
 		},
 		{
