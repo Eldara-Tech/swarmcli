@@ -91,25 +91,26 @@ func (e *Engine) heldForRollout(ctx context.Context, rel *Release) ([]string, er
 	return held, nil
 }
 
-// rollOneAtATime deploys each held service on its own, each deploy carrying the
-// manifest minus the held services still to come, and waits for it before the
-// next. The first deploy, without any of them, has already happened.
+// rollOneAtATime deploys each held service on its own, each deploy carrying that
+// service and no other, and waits for it before the next. The first deploy,
+// without any of them, has already happened.
+//
+// No other, because `docker stack deploy` updates every service it is handed,
+// changed or not, and re-sending one an earlier deploy updated goes wrong two
+// ways. Swarm bumps a service's version again when it records an update complete,
+// once the monitor window after its last task closes (5s by default), so a deploy
+// that read the version before that is refused: "update out of sequence" (#728).
+// And a re-sent service that did not change has its PreviousSpec overwritten with
+// its current spec, so it reads as an update that changed nothing. What a deploy
+// leaves out stays as it is, since it never prunes (stackDeployArgs).
 //
 // It waits whether or not --wait was asked for: one at a time is the point, and
 // without a wait between them the deploys would overlap just as before.
 func (e *Engine) rollOneAtATime(ctx context.Context, rel *Release, opts InstallOptions, held []string) error {
-	pending := make(map[string]bool, len(held))
 	for _, key := range held {
-		pending[key] = true
-	}
-	for _, key := range held {
-		delete(pending, key)
-		manifest := rel.Manifest
-		if len(pending) > 0 {
-			var err error
-			if manifest, _, err = withoutServices(rel.Manifest, pending); err != nil {
-				return err
-			}
+		manifest, _, err := withoutServices(rel.Manifest, func(k string) bool { return k != key })
+		if err != nil {
+			return err
 		}
 		name := rel.Name + "_" + key
 		before, _ := e.serviceState(ctx, rel.Name, name)
@@ -242,10 +243,13 @@ func sequentialServices(manifest string) ([]string, error) {
 	return out, nil
 }
 
-// withoutServices returns the manifest with the named services left out and
+// withoutServices returns the manifest with the services drop names left out and
 // everything else, networks, volumes, configs and secrets included, as it was,
 // and how many services it still has.
-func withoutServices(manifest string, drop map[string]bool) (string, int, error) {
+//
+// Aliases are expanded first: one whose anchor sits in a service left out would
+// otherwise name an anchor the result no longer has, which no YAML parser reads.
+func withoutServices(manifest string, drop func(key string) bool) (string, int, error) {
 	root, services, err := manifestServices(manifest)
 	if err != nil {
 		return "", 0, err
@@ -253,9 +257,10 @@ func withoutServices(manifest string, drop map[string]bool) (string, int, error)
 	if services == nil || services.Kind != yaml.MappingNode {
 		return manifest, 0, nil
 	}
+	expandAliases(root)
 	kept := make([]*yaml.Node, 0, len(services.Content))
 	for i := 0; i+1 < len(services.Content); i += 2 {
-		if !drop[services.Content[i].Value] {
+		if !drop(services.Content[i].Value) {
 			kept = append(kept, services.Content[i], services.Content[i+1])
 		}
 	}
@@ -265,4 +270,27 @@ func withoutServices(manifest string, drop map[string]bool) (string, int, error)
 		return "", 0, fmt.Errorf("write manifest: %w", err)
 	}
 	return string(out), len(kept) / 2, nil
+}
+
+// expandAliases replaces every alias under n with a copy of the node it names, so
+// the document means the same once the node carrying the anchor is gone.
+func expandAliases(n *yaml.Node) {
+	for i, c := range n.Content {
+		if c.Kind == yaml.AliasNode && c.Alias != nil {
+			c = copyNode(c.Alias)
+			n.Content[i] = c
+		}
+		expandAliases(c)
+	}
+}
+
+// copyNode is a deep copy of n without its anchor, which stays with the original.
+func copyNode(n *yaml.Node) *yaml.Node {
+	c := *n
+	c.Anchor = ""
+	c.Content = make([]*yaml.Node, len(n.Content))
+	for i, k := range n.Content {
+		c.Content[i] = copyNode(k)
+	}
+	return &c
 }

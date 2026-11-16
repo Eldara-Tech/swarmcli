@@ -70,8 +70,32 @@ func TestSequentialServicesReadsBothLabelForms(t *testing.T) {
 	require.Empty(t, none, "only the value sequential marks a service")
 }
 
+// A service left out may carry an anchor another one aliases; the result must still
+// parse and mean the same.
+func TestWithoutServicesExpandsAliasesItWouldStrand(t *testing.T) {
+	m := "services:\n  web:\n    image: nginx\n    environment: &env\n      A: \"1\"\n  peer-1:\n    image: mariadb\n    environment: *env\n    deploy:\n      labels: &l\n        - \"x=y\"\n  peer-2:\n    image: mariadb\n    deploy:\n      labels: *l\n"
+	for _, keep := range []string{"peer-1", "peer-2"} {
+		out, kept, err := withoutServices(m, func(k string) bool { return k != keep })
+		require.NoError(t, err)
+		require.Equal(t, 1, kept)
+		var doc struct {
+			Services map[string]struct {
+				Environment map[string]string `yaml:"environment"`
+				Deploy      struct {
+					Labels []string `yaml:"labels"`
+				} `yaml:"deploy"`
+			} `yaml:"services"`
+		}
+		require.NoError(t, yaml.Unmarshal([]byte(out), &doc), "the %s step:\n%s", keep, out)
+		require.Equal(t, []string{"x=y"}, doc.Services[keep].Deploy.Labels)
+		if keep == "peer-1" {
+			require.Equal(t, map[string]string{"A": "1"}, doc.Services[keep].Environment)
+		}
+	}
+}
+
 func TestWithoutServicesKeepsEverythingElse(t *testing.T) {
-	out, kept, err := withoutServices(rolloutManifest, map[string]bool{"peer-1": true, "peer-3": true})
+	out, kept, err := withoutServices(rolloutManifest, func(k string) bool { return k == "peer-1" || k == "peer-3" })
 	require.NoError(t, err)
 	require.Equal(t, 2, kept)
 	require.Equal(t, []string{"peer-2", "web"}, manifestKeys(t, out))
@@ -226,14 +250,46 @@ func TestUpgradeRollsMarkedServicesOneAtATime(t *testing.T) {
 
 	require.Len(t, b.manifests, 5, "one deploy without the peers, then one per peer")
 	require.Equal(t, []string{"web"}, manifestKeys(t, b.manifests[1]))
-	require.Equal(t, []string{"peer-1", "web"}, manifestKeys(t, b.manifests[2]))
-	require.Equal(t, []string{"peer-1", "peer-2", "web"}, manifestKeys(t, b.manifests[3]))
-	require.Equal(t, []string{"peer-1", "peer-2", "peer-3", "web"}, manifestKeys(t, b.manifests[4]))
+	require.Equal(t, []string{"peer-1"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, []string{"peer-2"}, manifestKeys(t, b.manifests[3]))
+	require.Equal(t, []string{"peer-3"}, manifestKeys(t, b.manifests[4]))
 	// The next peer is deployed only after the previous one's update started and
 	// converged: the stale poll, the in-flight one and the converged one, plus the
 	// next step's own read of the state before its deploy.
 	require.Equal(t, 4, b.pollsAtDeploy[3], "peer-2 deployed before peer-1 had converged")
 	require.Equal(t, 4, b.pollsAtDeploy[4], "peer-3 deployed before peer-2 had converged")
+}
+
+// Every step deploys its peer alone: docker stack deploy re-sends every service it
+// is handed, and swarm refuses one an earlier deploy is still recording an update
+// for ("update out of sequence", #728). So across the whole rollout every service
+// is deployed exactly once, and every step keeps the stack's top-level keys.
+func TestRolloutDeploysEveryServiceOnce(t *testing.T) {
+	fastPolls(t)
+	b := newRollBackend()
+	e := installRolling(t, b)
+	// Bounded: a step that sends a peer before its own step leaves this backend
+	// waiting on an update that never starts, so that shows as an error, not a hang.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := e.Upgrade(ctx, "db", ReleaseChart{Name: "galera", Version: "2"}, nil, rolloutManifest, InstallOptions{})
+	require.NoError(t, err)
+
+	seen := map[string]int{}
+	for _, m := range b.manifests[b.upgradeFrom:] {
+		for _, k := range manifestKeys(t, m) {
+			seen[k]++
+		}
+	}
+	require.Equal(t, map[string]int{"web": 1, "peer-1": 1, "peer-2": 1, "peer-3": 1}, seen)
+	for i, m := range b.manifests[b.upgradeFrom:] {
+		var doc map[string]any
+		require.NoError(t, yaml.Unmarshal([]byte(m), &doc))
+		for _, k := range []string{"version", "networks", "volumes"} {
+			require.Contains(t, doc, k, "deploy %d dropped the stack's top-level %s", i, k)
+		}
+	}
 }
 
 func TestRolloutDoesNotWaitForAServiceThatDidNotChange(t *testing.T) {
@@ -342,7 +398,7 @@ func TestRolloutWhenEveryServiceIsMarked(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, b.manifests, 3, "the install, then one deploy per peer")
 	require.Equal(t, []string{"peer-1"}, manifestKeys(t, b.manifests[1]), "a first deploy must carry a service; the first held one goes in it")
-	require.Equal(t, []string{"peer-1", "peer-2"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, []string{"peer-2"}, manifestKeys(t, b.manifests[2]))
 	require.Equal(t, 4, b.pollsAtDeploy[2], "peer-2 deployed before peer-1 had converged")
 }
 
@@ -356,8 +412,8 @@ func TestRolloutDeploysADownServiceWithTheFirstStage(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, b.manifests, 4, "the first deploy, then one per peer that is up")
 	require.Equal(t, []string{"peer-2", "web"}, manifestKeys(t, b.manifests[1]), "a peer that is down has nothing to protect")
-	require.Equal(t, []string{"peer-1", "peer-2", "web"}, manifestKeys(t, b.manifests[2]))
-	require.Equal(t, []string{"peer-1", "peer-2", "peer-3", "web"}, manifestKeys(t, b.manifests[3]))
+	require.Equal(t, []string{"peer-1"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, []string{"peer-3"}, manifestKeys(t, b.manifests[3]))
 }
 
 // After a full stop every peer waits for its cluster. The upgrade that forces one
@@ -396,7 +452,7 @@ func TestRolloutHoldsAStartingServiceWhileOthersAreUp(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, b.manifests, 5, "one deploy without the peers, then one per peer")
 	require.Equal(t, []string{"web"}, manifestKeys(t, b.manifests[1]), "a starting peer is not down")
-	require.Equal(t, []string{"peer-1", "web"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, []string{"peer-1"}, manifestKeys(t, b.manifests[2]))
 	require.Equal(t, 4, b.pollsAtDeploy[3], "peer-2 deployed before peer-1 had converged")
 }
 

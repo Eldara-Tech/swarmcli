@@ -413,12 +413,12 @@ func (e *Engine) deployAndRecord(ctx context.Context, rel *Release, opts Install
 			drop[key] = true
 		}
 		var kept int
-		if first, kept, err = withoutServices(rel.Manifest, drop); err == nil && kept == 0 {
+		if first, kept, err = withoutServices(rel.Manifest, func(k string) bool { return drop[k] }); err == nil && kept == 0 {
 			leading, held = held[0], held[1:]
 			st, _ := e.serviceState(ctx, rel.Name, rel.Name+"_"+leading)
 			leadingBefore = st.UpdateStartedAt
 			delete(drop, leading)
-			first, _, err = withoutServices(rel.Manifest, drop)
+			first, _, err = withoutServices(rel.Manifest, func(k string) bool { return drop[k] })
 		}
 	}
 	if err != nil {
