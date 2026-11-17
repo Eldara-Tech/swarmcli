@@ -1039,6 +1039,8 @@ func TestChangesNameEveryReasonForAnUpgrade(t *testing.T) {
 		{"the owner", func(r *Release) { r.Owner = "apply/prod:release/pg" }, values, nil, "cd/edge",
 			[]string{"owner 'apply/prod:release/pg' → 'cd/edge:release/pg'"}},
 		{"an uninstalled release", func(r *Release) { r.Status = StatusUninstalled }, values, nil, "", []string{"reinstall"}},
+		{"a rollout that did not finish, whatever else matches", func(r *Release) { r.Status = StatusFailed }, values, nil, "",
+			[]string{"the last rollout did not finish"}},
 		{"several at once, in a stable order", func(r *Release) { r.Chart.Version = "0.1.2"; r.Manifest = "x: 1\n" },
 			map[string]any{"image": map[string]any{"tag": "19"}, "replicas": 3}, nil, "",
 			[]string{"chart 0.1.2 → 0.1.3", "manifest", "values (image.tag)"}},

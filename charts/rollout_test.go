@@ -330,10 +330,9 @@ func TestRolloutStopsAtAServiceThatWedges(t *testing.T) {
 	require.Equal(t, "db_peer-2", re.Service)
 	require.False(t, re.TimedOut)
 	require.Equal(t, []string{"db_peer-3"}, re.Pending)
-	// The revision is recorded, as after a --wait that fails, so a re-run rolls on from it.
-	rels, err := e.History(context.Background(), "db")
-	require.NoError(t, err)
-	require.Len(t, rels, 2)
+	// The revision is recorded before its rollout, and a failed copy on top says
+	// the rollout did not finish (#730), so a re-run upgrade or apply rolls on.
+	requireUnfinished(t, e, 2)
 }
 
 func TestRolloutTimesOutPerService(t *testing.T) {
@@ -353,6 +352,106 @@ func TestRolloutTimesOutPerService(t *testing.T) {
 	require.True(t, re.TimedOut)
 	require.Equal(t, 3*time.Minute, re.Timeout)
 	require.Equal(t, []string{"db_peer-2", "db_peer-3"}, re.Pending)
+	requireUnfinished(t, e, 2)
+}
+
+// requireUnfinished asserts that revision rev was recorded and that a failed
+// copy of it sits on top: what a rollout that stopped leaves behind.
+func requireUnfinished(t *testing.T, e *Engine, rev int) {
+	t.Helper()
+	rels, err := e.History(context.Background(), "db")
+	require.NoError(t, err)
+	require.Len(t, rels, rev+1)
+	require.Equal(t, StatusSuperseded, rels[rev-1].Status)
+	top := rels[rev]
+	require.Equal(t, StatusFailed, top.Status)
+	require.Equal(t, rels[rev-1].Manifest, top.Manifest, "the failed revision is a copy of the one whose rollout stopped")
+	require.Equal(t, rels[rev-1].Chart, top.Chart)
+
+	// What `charts ls` shows, and what a plan compares against.
+	cur, err := e.List(context.Background())
+	require.NoError(t, err)
+	require.Len(t, cur, 1)
+	require.Equal(t, StatusFailed, cur[0].Status, "charts ls must not say deployed for a rollout that stopped")
+	diff, err := changes(&cur[0], top.Chart, top.Values, top.Manifest, "", top.Files)
+	require.NoError(t, err)
+	require.Equal(t, []Change{{Kind: ChangeUnfinished}}, diff, "a plan must call it unfinished, not unchanged")
+}
+
+// #730: a controller stopped mid-rollout cancels the context the rollout waits
+// on. That interruption is the one nothing else would remember, so it is
+// recorded too — on a context of its own, since the caller's is gone.
+func TestARolloutCutShortByItsContextIsRecordedUnfinished(t *testing.T) {
+	fastPolls(t)
+	b := newRollBackend()
+	e := installRolling(t, b)
+	e.Backend = &stuckRollBackend{rollBackend: b}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := e.Upgrade(ctx, "db", ReleaseChart{Name: "galera", Version: "2"}, nil, rolloutManifest, InstallOptions{Timeout: time.Hour})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	requireUnfinished(t, e, 2)
+}
+
+// The way forward from a failed revision is the next upgrade, which rolls on
+// and records a deployed one on top.
+func TestAnUpgradeAfterAnUnfinishedRolloutFinishesIt(t *testing.T) {
+	fastPolls(t)
+	b := newRollBackend()
+	e := installRolling(t, b)
+	b.newPaused["peer-2"] = true
+	_, err := e.Upgrade(context.Background(), "db", ReleaseChart{Name: "galera", Version: "2"}, nil, rolloutManifest, InstallOptions{})
+	require.Error(t, err)
+	requireUnfinished(t, e, 2)
+
+	b.newPaused["peer-2"] = false
+	// The fake reads each peer's update off the first deploy after upgradeFrom,
+	// so a second upgrade has to start a fresh window to be seen at all.
+	b.upgradeFrom = len(b.manifests)
+	_, err = e.Upgrade(context.Background(), "db", ReleaseChart{Name: "galera", Version: "2"}, nil, rolloutManifest, InstallOptions{})
+	require.NoError(t, err)
+	cur, err := e.List(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, StatusDeployed, cur[0].Status)
+	require.Equal(t, 4, cur[0].Revision)
+}
+
+// Eldara-Tech/swarmcli-cd#361: a controller correcting drift redeployed a whole
+// manifest in one call, restarting every drifted peer together. Redeploy rolls
+// them one at a time as an upgrade does, and records nothing.
+func TestRedeployRollsMarkedServicesOneAtATimeAndRecordsNothing(t *testing.T) {
+	fastPolls(t)
+	b := newRollBackend()
+	e := installRolling(t, b)
+
+	require.NoError(t, e.Redeploy(context.Background(), "db", rolloutManifest, nil, InstallOptions{}))
+
+	require.Len(t, b.manifests, 5, "one deploy without the peers, then one per peer")
+	require.Equal(t, []string{"web"}, manifestKeys(t, b.manifests[1]))
+	require.Equal(t, []string{"peer-1"}, manifestKeys(t, b.manifests[2]))
+	require.Equal(t, []string{"peer-2"}, manifestKeys(t, b.manifests[3]))
+	require.Equal(t, []string{"peer-3"}, manifestKeys(t, b.manifests[4]))
+	require.Equal(t, 4, b.pollsAtDeploy[3], "peer-2 deployed before peer-1 had converged")
+	rels, err := e.History(context.Background(), "db")
+	require.NoError(t, err)
+	require.Len(t, rels, 1, "a correction puts the swarm back to a revision; it records no new one")
+}
+
+func TestRedeployStopsAtAServiceThatWedgesAndRecordsNothing(t *testing.T) {
+	fastPolls(t)
+	b := newRollBackend()
+	e := installRolling(t, b)
+	b.newPaused["peer-2"] = true
+
+	err := e.Redeploy(context.Background(), "db", rolloutManifest, nil, InstallOptions{})
+	var re *RolloutError
+	require.ErrorAs(t, err, &re)
+	require.Equal(t, []string{"db_peer-3"}, re.Pending)
+	require.Len(t, b.manifests, 4, "peer-3 must not be redeployed after peer-2 wedged")
+	rels, err := e.History(context.Background(), "db")
+	require.NoError(t, err)
+	require.Len(t, rels, 1)
 }
 
 // stuckRollBackend never lets peer-1's update start.

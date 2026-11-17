@@ -487,13 +487,18 @@ services:
 - The wait between marked services happens with or without `--wait`. `--timeout`
   bounds each service, on top of its own monitor window.
 - If a service wedges or times out, the services after it are not updated and the
-  command fails. The revision is recorded, so re-running the upgrade carries on.
+  command fails. The revision was recorded before the rollout began, and a
+  `failed` copy of it is recorded on top — also when the command is interrupted —
+  so `charts ls` shows the release as `failed`, and re-running the upgrade or the
+  `apply` carries on from where it stopped.
 - The label travels in the stored manifest, so a rollback rolls the same way. A
   swarmcli that predates it ignores it and updates everything at once; declare a
   `swarmcliVersion` floor (below) to require one that does not.
 - The `swarmcli charts` CLI applies it. A tool driving the engine through its own
   backend gets it only if that backend leaves the services a deploy omits running
   (`charts.OmittedServicesPreserver`); otherwise every service updates at once.
+  `Engine.Redeploy` deploys a release's manifest the same way without recording a
+  revision, for a tool putting services changed by hand back to the current one.
 
 ### Declaring the swarmcli a chart needs
 
@@ -698,7 +703,8 @@ from, not that the bytes are the ones the repository index vouched for.
 Each release revision is stored as an immutable, gzipped Docker Config named
 `swarmcli.release.<release>.v<N>`, labeled `com.swarmcli.*`. The log is
 append-only: the highest revision is the current state; lower deployed revisions
-display as `superseded`. This gives HA (Swarm Raft) and rollback with no
+display as `superseded`. A rollout that stops after its revision was recorded
+appends a `failed` copy of it, which the next `apply` reads as unfinished. This gives HA (Swarm Raft) and rollback with no
 external database.
 
 Those names and labels are swarmcli's own. A chart may not declare a config or
