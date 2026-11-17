@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/Eldara-Tech/swarmcli/v2/charts"
 	"github.com/Eldara-Tech/swarmcli/v2/utils/textdiff"
@@ -149,6 +150,25 @@ func printPlan(plan *charts.Plan, withDiff bool) {
 		headers = append(headers, "WAVE")
 	}
 	table(headers, rows)
+
+	// Why each upgrade is one, because the table cannot say and the diff below
+	// shows only the manifest: a chart bump that renders the same manifest is
+	// an upgrade whose diff has nothing in it (Eldara-Tech/swarmcli-cd#356).
+	first := true
+	for _, r := range plan.Releases {
+		if len(r.Changes) == 0 {
+			continue
+		}
+		if first {
+			outln("")
+			first = false
+		}
+		why := make([]string, 0, len(r.Changes))
+		for _, c := range r.Changes {
+			why = append(why, c.String())
+		}
+		outf("%s: %s\n", r.Name, strings.Join(why, "; "))
+	}
 
 	if withDiff {
 		for _, r := range plan.Releases {

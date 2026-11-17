@@ -5,6 +5,7 @@ package charts
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -107,7 +108,7 @@ func (e *Engine) heldForRollout(ctx context.Context, rel *Release) ([]string, er
 // It waits whether or not --wait was asked for: one at a time is the point, and
 // without a wait between them the deploys would overlap just as before.
 func (e *Engine) rollOneAtATime(ctx context.Context, rel *Release, opts InstallOptions, held []string) error {
-	for _, key := range held {
+	for i, key := range held {
 		manifest, _, err := withoutServices(rel.Manifest, func(k string) bool { return k != key })
 		if err != nil {
 			return err
@@ -121,10 +122,51 @@ func (e *Engine) rollOneAtATime(ctx context.Context, rel *Release, opts InstallO
 		}
 		_ = e.Backend.RefreshSnapshot(ctx)
 		if err := e.waitRolled(ctx, rel.Name, name, before.UpdateStartedAt, opts.Timeout); err != nil {
-			return err
+			return withPending(err, rel.Name, held[i+1:])
 		}
 	}
 	return nil
+}
+
+// RolloutError is a sequential rollout that stopped at one service: it
+// stalled, or the wait for it ran out. The release's revision is recorded by
+// then, so Pending — the marked services after it, which were not updated — is
+// what an operator, or a controller resuming the rollout, needs to know.
+//
+// Its text is what these errors always read as; the fields are for a caller
+// that wants to say more than the sentence does (Eldara-Tech/swarmcli-cd#357).
+type RolloutError struct {
+	// Service is the swarm name of the service the rollout stopped at.
+	Service string
+	// Pending are the swarm names of the marked services after it, in rollout
+	// order. Empty when it was the last.
+	Pending []string
+	// TimedOut is a wait that ran out; otherwise the service stalled, and
+	// Reason says how.
+	TimedOut bool
+	Reason   string
+	// Timeout is the per-service wait in force, the default when none was set.
+	Timeout time.Duration
+}
+
+func (e *RolloutError) Error() string {
+	if e.TimedOut {
+		return fmt.Sprintf("timed out waiting for service '%s' to roll out; the services after it were not updated", e.Service)
+	}
+	return fmt.Sprintf("service '%s': %s; the services after it were not updated", e.Service, e.Reason)
+}
+
+// withPending adds the services after the stopped one to a RolloutError, by
+// swarm name. Any other error — a cancelled context — passes through.
+func withPending(err error, release string, keys []string) error {
+	var re *RolloutError
+	if !errors.As(err, &re) {
+		return err
+	}
+	for _, key := range keys {
+		re.Pending = append(re.Pending, release+"_"+key)
+	}
+	return re
 }
 
 // waitRolled waits for one service's update to finish converging.
@@ -156,14 +198,14 @@ func (e *Engine) waitRolled(ctx context.Context, release, name string, before ti
 			if st.UpdateStartedAt.After(before) {
 				switch c := st.Convergence(); c.Phase {
 				case PhaseWedged:
-					return fmt.Errorf("service '%s': %s; the services after it were not updated", name, c.Reason)
+					return &RolloutError{Service: name, Reason: c.Reason, Timeout: timeout}
 				case PhaseConverged:
 					return nil
 				}
 			}
 		}
 		if !e.now().Before(deadline) {
-			return fmt.Errorf("timed out waiting for service '%s' to roll out; the services after it were not updated", name)
+			return &RolloutError{Service: name, TimedOut: true, Timeout: timeout}
 		}
 		select {
 		case <-ctx.Done():

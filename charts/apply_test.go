@@ -1001,3 +1001,63 @@ func TestPlanApplyReaderErrorFailsBeforeDeploying(t *testing.T) {
 	require.ErrorContains(t, err, "hello")
 	require.Empty(t, fb.deployed)
 }
+
+// Every reason an upgrade is planned, kept (Eldara-Tech/swarmcli-cd#356): the
+// manifest is only one of them, and a plan that said only "upgrade" left a
+// reader with a diff that had nothing in it.
+func TestChangesNameEveryReasonForAnUpgrade(t *testing.T) {
+	const manifest = "services: {}\n"
+	chart := ReleaseChart{Name: "postgres-patroni", Version: "0.1.3"}
+	base := func() *Release {
+		return &Release{Name: "pg", Status: StatusDeployed, Chart: chart, Manifest: manifest,
+			Values: map[string]any{"image": map[string]any{"tag": "18"}, "replicas": 3}}
+	}
+	values := map[string]any{"image": map[string]any{"tag": "18"}, "replicas": 3}
+
+	for _, tc := range []struct {
+		name   string
+		cur    func(*Release)
+		values map[string]any
+		files  map[string][]byte
+		owner  string
+		want   []string
+	}{
+		{"nothing", nil, values, nil, "", nil},
+		{"a chart bump that renders the same manifest", func(r *Release) { r.Chart.Version = "0.1.2" }, values, nil, "",
+			[]string{"chart 0.1.2 → 0.1.3"}},
+		{"a chart renamed", func(r *Release) { r.Chart.Name = "postgres" }, values, nil, "",
+			[]string{"chart postgres 0.1.3 → postgres-patroni 0.1.3"}},
+		{"the manifest", func(r *Release) { r.Manifest = "services: {db: {}}\n" }, values, nil, "", []string{"manifest"}},
+		{"values, by key and never by value", nil,
+			map[string]any{"image": map[string]any{"tag": "19"}, "replicas": 3, "password": "s3cret"}, nil, "",
+			[]string{"values (image.tag, password)"}},
+		{"a value written as a float that is the same number", nil,
+			map[string]any{"image": map[string]any{"tag": "18"}, "replicas": 3.0}, nil, "", nil},
+		{"files", func(r *Release) { r.Files = releaseFiles{"files/a.conf": []byte("x"), "files/b.conf": []byte("y")} },
+			values, map[string][]byte{"files/a.conf": []byte("z"), "files/c.conf": []byte("y")}, "",
+			[]string{"files (files/a.conf, files/b.conf, files/c.conf)"}},
+		{"the owner", func(r *Release) { r.Owner = "apply/prod:release/pg" }, values, nil, "cd/edge",
+			[]string{"owner 'apply/prod:release/pg' → 'cd/edge:release/pg'"}},
+		{"an uninstalled release", func(r *Release) { r.Status = StatusUninstalled }, values, nil, "", []string{"reinstall"}},
+		{"several at once, in a stable order", func(r *Release) { r.Chart.Version = "0.1.2"; r.Manifest = "x: 1\n" },
+			map[string]any{"image": map[string]any{"tag": "19"}, "replicas": 3}, nil, "",
+			[]string{"chart 0.1.2 → 0.1.3", "manifest", "values (image.tag)"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cur := base()
+			if tc.cur != nil {
+				tc.cur(cur)
+			}
+			got, err := changes(cur, chart, tc.values, manifest, tc.owner, tc.files)
+			require.NoError(t, err)
+			var said []string
+			for _, c := range got {
+				said = append(said, c.String())
+			}
+			require.Equal(t, tc.want, said)
+			same, err := unchanged(cur, chart, tc.values, manifest, tc.owner, tc.files)
+			require.NoError(t, err)
+			require.Equal(t, len(tc.want) == 0, same, "unchanged and changes must agree")
+		})
+	}
+}
