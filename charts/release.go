@@ -400,40 +400,8 @@ func (e *Engine) deployAndRecord(ctx context.Context, rel *Release, opts Install
 	}
 	// Services marked for a sequential rollout that already run are left out of
 	// this first deploy and updated one at a time after it (see rollout.go).
-	held, err := e.heldForRollout(ctx, rel)
-	first := rel.Manifest
-	// When every service is held, the first deploy carries the first of them:
-	// a manifest without services is not one docker stack deploy accepts. That
-	// service is then waited for like the ones after it.
-	leading := ""
-	var leadingBefore time.Time
-	if err == nil && len(held) > 0 {
-		drop := make(map[string]bool, len(held))
-		for _, key := range held {
-			drop[key] = true
-		}
-		var kept int
-		if first, kept, err = withoutServices(rel.Manifest, func(k string) bool { return drop[k] }); err == nil && kept == 0 {
-			leading, held = held[0], held[1:]
-			st, _ := e.serviceState(ctx, rel.Name, rel.Name+"_"+leading)
-			leadingBefore = st.UpdateStartedAt
-			delete(drop, leading)
-			first, _, err = withoutServices(rel.Manifest, func(k string) bool { return drop[k] })
-		}
-	}
+	roll, err := e.deployFirst(ctx, rel, opts)
 	if err != nil {
-		rel.Status = StatusFailed
-		for _, n := range created {
-			_ = e.Backend.RemoveOverlayNetwork(ctx, n)
-		}
-		return rel, err
-	}
-	// rel.Files rather than opts.Files: the revision is the one thing every entry
-	// point has already agreed on, and on a rollback it is the only one that
-	// carries files at all.
-	if err := e.Backend.DeployStack(ctx, DeployRequest{
-		Name: rel.Name, Manifest: first, Resolve: opts.ResolveImage, Files: rel.Files,
-	}); err != nil {
 		rel.Status = StatusFailed
 		// Roll back networks we auto-created for this install so a failed deploy
 		// leaves no trace; pre-existing networks are untouched.
@@ -442,11 +410,8 @@ func (e *Engine) deployAndRecord(ctx context.Context, rel *Release, opts Install
 		}
 		// Do not record on failure: a failed deploy must leave no release Config
 		// behind, so the release stays retryable (no orphaned "already exists").
-		return rel, fmt.Errorf("deploy failed: %w", err)
+		return rel, err
 	}
-	// The deploy mutated swarm state; invalidate the shared cache so the
-	// convergence poll and any follow-up status read see fresh data.
-	_ = e.Backend.RefreshSnapshot(ctx)
 	// Persist the networks we auto-created this revision so uninstall can report
 	// what it leaves behind (see Uninstall). Networks already present from an
 	// earlier revision are not re-created here, so uninstall unions across all
@@ -456,26 +421,144 @@ func (e *Engine) deployAndRecord(ctx context.Context, rel *Release, opts Install
 		return rel, fmt.Errorf("stack '%s' was deployed but recording its release history failed: %w; re-run install/upgrade to reconcile", rel.Name, err)
 	}
 	// Recorded first: the revision is what the swarm now runs or is converging
-	// on, as after a --wait that fails, and a re-run upgrade rolls on from it.
-	if leading != "" {
-		if err := e.waitRolled(ctx, rel.Name, rel.Name+"_"+leading, leadingBefore, opts.Timeout); err != nil {
-			return rel, withPending(err, rel.Name, held)
-		}
-	}
-	if len(held) > 0 {
-		if err := e.rollOneAtATime(ctx, rel, opts, held); err != nil {
-			return rel, err
-		}
+	// on. If what follows does not finish, recordUnfinished says so on top of it,
+	// and the next upgrade or apply rolls on from it.
+	if err := e.rollHeld(ctx, rel, opts, roll); err != nil {
+		return rel, e.recordUnfinished(ctx, rel, err)
 	}
 	if opts.Wait {
 		if err := e.waitReady(ctx, rel.Name, opts.Timeout); err != nil {
-			return rel, err
+			return rel, e.recordUnfinished(ctx, rel, err)
 		}
 	}
 	if opts.HistoryMax > 0 {
 		e.pruneHistory(ctx, rel.Name, opts.HistoryMax)
 	}
 	return rel, nil
+}
+
+// heldRollout is what a deploy held back for a sequential rollout: the services
+// still to be rolled one at a time after the first deploy, and — when every
+// service was held — the one that first deploy carried, with the update it
+// replaces.
+type heldRollout struct {
+	leading       string
+	leadingBefore time.Time
+	held          []string
+}
+
+// deployFirst deploys a release's manifest minus the marked services that are
+// up, which rollHeld then rolls one at a time. When every service is held, the
+// first deploy carries the first of them: a manifest without services is not
+// one docker stack deploy accepts. That service is then waited for like the
+// ones after it.
+func (e *Engine) deployFirst(ctx context.Context, rel *Release, opts InstallOptions) (heldRollout, error) {
+	var roll heldRollout
+	held, err := e.heldForRollout(ctx, rel)
+	if err != nil {
+		return roll, err
+	}
+	first := rel.Manifest
+	if len(held) > 0 {
+		drop := make(map[string]bool, len(held))
+		for _, key := range held {
+			drop[key] = true
+		}
+		var kept int
+		if first, kept, err = withoutServices(rel.Manifest, func(k string) bool { return drop[k] }); err != nil {
+			return roll, err
+		}
+		if kept == 0 {
+			roll.leading, held = held[0], held[1:]
+			st, _ := e.serviceState(ctx, rel.Name, rel.Name+"_"+roll.leading)
+			roll.leadingBefore = st.UpdateStartedAt
+			delete(drop, roll.leading)
+			if first, _, err = withoutServices(rel.Manifest, func(k string) bool { return drop[k] }); err != nil {
+				return roll, err
+			}
+		}
+	}
+	roll.held = held
+	// rel.Files rather than opts.Files: the revision is the one thing every entry
+	// point has already agreed on, and on a rollback it is the only one that
+	// carries files at all.
+	if err := e.Backend.DeployStack(ctx, DeployRequest{
+		Name: rel.Name, Manifest: first, Resolve: opts.ResolveImage, Files: rel.Files,
+	}); err != nil {
+		return roll, fmt.Errorf("deploy failed: %w", err)
+	}
+	// The deploy mutated swarm state; invalidate the shared cache so the
+	// convergence poll and any follow-up status read see fresh data.
+	_ = e.Backend.RefreshSnapshot(ctx)
+	return roll, nil
+}
+
+// rollHeld finishes what deployFirst started: it waits for the service the first
+// deploy carried, if it carried one, and rolls the held services one at a time.
+func (e *Engine) rollHeld(ctx context.Context, rel *Release, opts InstallOptions, roll heldRollout) error {
+	if roll.leading != "" {
+		if err := e.waitRolled(ctx, rel.Name, rel.Name+"_"+roll.leading, roll.leadingBefore, opts.Timeout); err != nil {
+			return withPending(err, rel.Name, roll.held)
+		}
+	}
+	if len(roll.held) > 0 {
+		return e.rollOneAtATime(ctx, rel, opts, roll.held)
+	}
+	return nil
+}
+
+// unfinishedRecordTimeout bounds the write recordUnfinished makes after its
+// caller's context may already be gone.
+const unfinishedRecordTimeout = 30 * time.Second
+
+// recordUnfinished records that a revision's rollout stopped, by appending a
+// copy of it with status failed, and returns cause.
+//
+// The revision is recorded before its rollout, because it is what the swarm now
+// runs or is converging on. Without this, the newest record said deployed while
+// the services a stopped sequential rollout never reached still ran the previous
+// spec: `charts ls` showed no error, and a plan compared against the record found
+// nothing to do, so `charts apply` never finished the rollout (#730). A failed
+// revision on top is what the plan reads as unfinished; see ChangeUnfinished.
+//
+// A copy rather than the same revision rewritten, because records are Docker
+// Configs and cannot be changed. A cancelled context is recorded too, on a
+// context of its own: a controller stopped mid-rollout is the interruption
+// nothing else would remember.
+func (e *Engine) recordUnfinished(ctx context.Context, rel *Release, cause error) error {
+	failed := *rel
+	failed.Status = StatusFailed
+	failed.Revision = rel.Revision + 1
+	failed.Created = e.now().UTC().Format(time.RFC3339)
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), unfinishedRecordTimeout)
+	defer cancel()
+	if err := e.record(rctx, &failed); err != nil {
+		return fmt.Errorf("%w (recording the rollout as unfinished failed as well: %v)", cause, err)
+	}
+	return cause
+}
+
+// Redeploy deploys a release's manifest again without recording a revision,
+// holding back the services marked for a sequential rollout and rolling them
+// one at a time, as an upgrade does.
+//
+// It is for putting the swarm back to what the current revision already records
+// — a controller correcting services changed by hand — where a new revision
+// would record nothing new, and deploying the whole manifest in one call would
+// restart every drifted peer of a clustered database together
+// (Eldara-Tech/swarmcli-cd#361). Nothing is pre-flighted: the requirements were
+// checked when the revision was deployed. opts.Wait is not read; the caller
+// waits for what it corrected.
+func (e *Engine) Redeploy(ctx context.Context, release, manifest string, files map[string][]byte, opts InstallOptions) error {
+	if err := validateReleaseName(release); err != nil {
+		return err
+	}
+	rel := &Release{Name: release, Manifest: manifest, Files: files}
+	roll, err := e.deployFirst(ctx, rel, opts)
+	if err != nil {
+		return err
+	}
+	return e.rollHeld(ctx, rel, opts, roll)
 }
 
 // ensureExternalNetworks makes sure every network the manifest declares

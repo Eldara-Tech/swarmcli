@@ -476,6 +476,11 @@ type ChangeKind string
 const (
 	// ChangeReinstall: the release was uninstalled, so there is nothing to keep.
 	ChangeReinstall ChangeKind = "reinstall"
+	// ChangeUnfinished: the newest revision is a failed one, which is how the
+	// engine records a rollout that stopped after the revision was written —
+	// services it never reached may still run the previous spec. See
+	// recordUnfinished.
+	ChangeUnfinished ChangeKind = "unfinished"
 	// ChangeChart: the chart's name or version moves. From and To say how.
 	ChangeChart ChangeKind = "chart"
 	// ChangeManifest: the rendered manifest differs.
@@ -503,6 +508,8 @@ type Change struct {
 // String names a change for a reader: "chart 0.1.2 → 0.1.3", "values (image.tag)".
 func (c Change) String() string {
 	switch c.Kind {
+	case ChangeUnfinished:
+		return "the last rollout did not finish"
 	case ChangeChart:
 		return "chart " + c.From + " → " + c.To
 	case ChangeOwner:
@@ -523,6 +530,12 @@ func changes(cur *Release, chart ReleaseChart, values map[string]any, manifest, 
 		return []Change{{Kind: ChangeReinstall}}, nil
 	}
 	var out []Change
+	// First, because it is the one reason that holds whatever the file says: the
+	// swarm is not at the revision on record, so nothing else here can be
+	// trusted to describe it.
+	if cur.Status == StatusFailed {
+		out = append(out, Change{Kind: ChangeUnfinished})
+	}
 	if cur.Chart.Name != chart.Name || cur.Chart.Version != chart.Version {
 		c := Change{Kind: ChangeChart, From: cur.Chart.Version, To: chart.Version}
 		if cur.Chart.Name != chart.Name {
