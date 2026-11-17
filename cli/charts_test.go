@@ -547,6 +547,29 @@ func TestPrintPlanWithDiff(t *testing.T) {
 	require.NotContains(t, o, "--- cache", "an unchanged release has nothing to diff")
 }
 
+// An upgrade's reasons are printed, because the table says only "upgrade" and a
+// chart bump that renders the same manifest has a diff with nothing in it
+// (Eldara-Tech/swarmcli-cd#356).
+func TestPrintPlanSaysWhyEachUpgradeIsOne(t *testing.T) {
+	plan := &charts.Plan{Releases: []charts.ReleasePlan{
+		{
+			Name: "postgres-patroni", Ref: "r/postgres-patroni", Action: charts.ActionUpgrade,
+			FromVersion: "0.1.2", ToVersion: "0.1.3",
+			Changes: []charts.Change{{Kind: charts.ChangeChart, From: "0.1.2", To: "0.1.3"}},
+		},
+		{
+			Name: "edge", Ref: "r/traefik", Action: charts.ActionUpgrade, ToVersion: "0.1.1",
+			Changes: []charts.Change{{Kind: charts.ChangeManifest}, {Kind: charts.ChangeValues, Paths: []string{"image.tag"}}},
+		},
+		{Name: "cache", Ref: "r/redis", Action: charts.ActionUnchanged, ToVersion: "0.1.1"},
+	}}
+	o, _ := capture(t, func() { printPlan(plan, false) })
+
+	require.Contains(t, o, "postgres-patroni: chart 0.1.2 → 0.1.3\n")
+	require.Contains(t, o, "edge: manifest; values (image.tag)\n")
+	require.NotContains(t, o, "cache:", "an unchanged release has no reasons")
+}
+
 // apply never deletes; it reports what it left alone, with the command to remove it.
 func TestReportUnmanaged(t *testing.T) {
 	o, _ := capture(t, func() {

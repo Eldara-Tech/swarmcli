@@ -325,6 +325,11 @@ func TestRolloutStopsAtAServiceThatWedges(t *testing.T) {
 	require.ErrorContains(t, err, "service 'db_peer-2'")
 	require.ErrorContains(t, err, "the services after it were not updated")
 	require.Len(t, b.manifests, 4, "peer-3 must not be updated after peer-2 wedged")
+	var re *RolloutError
+	require.ErrorAs(t, err, &re, "a caller has to be able to say which services were left behind")
+	require.Equal(t, "db_peer-2", re.Service)
+	require.False(t, re.TimedOut)
+	require.Equal(t, []string{"db_peer-3"}, re.Pending)
 	// The revision is recorded, as after a --wait that fails, so a re-run rolls on from it.
 	rels, err := e.History(context.Background(), "db")
 	require.NoError(t, err)
@@ -343,6 +348,11 @@ func TestRolloutTimesOutPerService(t *testing.T) {
 	_, err := e.Upgrade(context.Background(), "db", ReleaseChart{Name: "galera", Version: "2"}, nil, rolloutManifest, InstallOptions{Timeout: 3 * time.Minute})
 	require.ErrorContains(t, err, "timed out waiting for service 'db_peer-1' to roll out")
 	require.Len(t, b.manifests, 3, "no peer after the stuck one is updated")
+	var re *RolloutError
+	require.ErrorAs(t, err, &re)
+	require.True(t, re.TimedOut)
+	require.Equal(t, 3*time.Minute, re.Timeout)
+	require.Equal(t, []string{"db_peer-2", "db_peer-3"}, re.Pending)
 }
 
 // stuckRollBackend never lets peer-1's update start.

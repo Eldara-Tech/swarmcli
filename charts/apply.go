@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"reflect"
 	"slices"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -57,6 +59,15 @@ type ReleasePlan struct {
 	Files map[string][]byte `json:"-"`
 	// CurrentManifest is the deployed manifest, for diffing. Empty for an install.
 	CurrentManifest string `json:"currentManifest,omitempty"`
+	// Changes says why an upgrade is planned: every way the deployed revision
+	// differs from what this plan would record. Empty for an install and for an
+	// unchanged release.
+	//
+	// The manifest is only one of them. A chart bump whose template renders the
+	// same manifest is still an upgrade, and so is a values or files change
+	// the manifest does not show — a diff of CurrentManifest against Manifest
+	// says nothing about any of those (Eldara-Tech/swarmcli-cd#356).
+	Changes []Change `json:"changes,omitempty"`
 	// Compat is the chart's engine requirement checked against this build.
 	// Planning records it but never acts on it: apply's contract is to plan
 	// every release before converging any, so the whole plan is gated at once
@@ -290,14 +301,15 @@ func (e *Engine) planRelease(rf *ReleaseFile, spec ReleaseSpec, src ChartSource,
 	default:
 		rp.FromVersion = cur.Chart.Version
 		rp.CurrentManifest = cur.Manifest
-		same, err := unchanged(&cur, rc, values, manifest, owner, chartFiles)
+		diff, err := changes(&cur, rc, values, manifest, owner, chartFiles)
 		if err != nil {
 			return ReleasePlan{}, fmt.Errorf("%s: release '%s': %w", rf.Path, spec.Name, err)
 		}
-		if same {
+		if len(diff) == 0 {
 			rp.Action = ActionUnchanged
 		} else {
 			rp.Action = ActionUpgrade
+			rp.Changes = diff
 		}
 	}
 	return rp, nil
@@ -454,22 +466,169 @@ func waveGroups(releases []ReleasePlan) [][]ReleasePlan {
 // healed. An empty plan owner never forces: an apply that claims nothing must
 // not strip a stamp somebody else wrote.
 func unchanged(cur *Release, chart ReleaseChart, values map[string]any, manifest, owner string, files map[string][]byte) (bool, error) {
-	if cur == nil || cur.Status == StatusUninstalled {
-		return false, nil
+	diff, err := changes(cur, chart, values, manifest, owner, files)
+	return len(diff) == 0, err
+}
+
+// ChangeKind is one of the ways a deployed revision can differ from a plan.
+type ChangeKind string
+
+const (
+	// ChangeReinstall: the release was uninstalled, so there is nothing to keep.
+	ChangeReinstall ChangeKind = "reinstall"
+	// ChangeChart: the chart's name or version moves. From and To say how.
+	ChangeChart ChangeKind = "chart"
+	// ChangeManifest: the rendered manifest differs.
+	ChangeManifest ChangeKind = "manifest"
+	// ChangeFiles: the chart files the manifest references differ. Paths names
+	// them.
+	ChangeFiles ChangeKind = "files"
+	// ChangeValues: the merged values differ. Paths names the keys, never the
+	// values — they carry passwords as often as anything else, and a plan is
+	// shown to whoever may read it.
+	ChangeValues ChangeKind = "values"
+	// ChangeOwner: the release moves to another owner. From and To are the
+	// stamps.
+	ChangeOwner ChangeKind = "owner"
+)
+
+// Change is one reason an upgrade is planned.
+type Change struct {
+	Kind  ChangeKind `json:"kind"`
+	From  string     `json:"from,omitempty"`
+	To    string     `json:"to,omitempty"`
+	Paths []string   `json:"paths,omitempty"`
+}
+
+// String names a change for a reader: "chart 0.1.2 → 0.1.3", "values (image.tag)".
+func (c Change) String() string {
+	switch c.Kind {
+	case ChangeChart:
+		return "chart " + c.From + " → " + c.To
+	case ChangeOwner:
+		return "owner '" + c.From + "' → '" + c.To + "'"
+	case ChangeFiles, ChangeValues:
+		if len(c.Paths) > 0 {
+			return string(c.Kind) + " (" + strings.Join(c.Paths, ", ") + ")"
+		}
 	}
+	return string(c.Kind)
+}
+
+// changes is unchanged with its reasons kept: every way the current revision
+// differs from the desired state, in the order unchanged used to test them. See
+// unchanged for what is compared and why.
+func changes(cur *Release, chart ReleaseChart, values map[string]any, manifest, owner string, files map[string][]byte) ([]Change, error) {
+	if cur == nil || cur.Status == StatusUninstalled {
+		return []Change{{Kind: ChangeReinstall}}, nil
+	}
+	var out []Change
 	if cur.Chart.Name != chart.Name || cur.Chart.Version != chart.Version {
-		return false, nil
+		c := Change{Kind: ChangeChart, From: cur.Chart.Version, To: chart.Version}
+		if cur.Chart.Name != chart.Name {
+			c.From, c.To = cur.Chart.Name+" "+cur.Chart.Version, chart.Name+" "+chart.Version
+		}
+		out = append(out, c)
 	}
 	if cur.Manifest != manifest {
-		return false, nil
+		out = append(out, Change{Kind: ChangeManifest})
 	}
 	if !maps.EqualFunc(cur.Files, files, bytes.Equal) {
-		return false, nil
+		out = append(out, Change{Kind: ChangeFiles, Paths: changedFiles(cur.Files, files)})
 	}
 	if owner != "" && cur.Owner != "" && !ownedBy(*cur, owner) {
-		return false, nil
+		out = append(out, Change{Kind: ChangeOwner, From: cur.Owner,
+			To: OwnerRef{ID: owner, Kind: OwnerKindRelease, Name: cur.Name}.String()})
 	}
-	return sameValues(cur.Values, values)
+	paths, err := changedValues(cur.Values, values)
+	if err != nil {
+		return nil, err
+	}
+	if len(paths) > 0 {
+		out = append(out, Change{Kind: ChangeValues, Paths: paths})
+	}
+	return out, nil
+}
+
+// changedFiles names every file added, removed or changed, sorted.
+func changedFiles(a, b map[string][]byte) []string {
+	var out []string
+	for name, data := range a {
+		if other, ok := b[name]; !ok || !bytes.Equal(data, other) {
+			out = append(out, name)
+		}
+	}
+	for name := range b {
+		if _, ok := a[name]; !ok {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// changedValues names the keys whose values differ, as dotted paths, sorted. A
+// key whose value is a map is descended into; anything else, a list included,
+// is compared whole and named as one path.
+//
+// Both sides go through canonicalValues first, for the reason sameValues gives:
+// the stored side came back through YAML, and comparing it raw against an
+// in-memory merge would call 1.0 and 1 different.
+func changedValues(a, b map[string]any) ([]string, error) {
+	same, err := sameValues(a, b)
+	if err != nil || same {
+		return nil, err
+	}
+	ca, err := canonicalMap(a)
+	if err != nil {
+		return nil, err
+	}
+	cb, err := canonicalMap(b)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	diffPaths("", ca, cb, &out)
+	slices.Sort(out)
+	return out, nil
+}
+
+func canonicalMap(v map[string]any) (map[string]any, error) {
+	text, err := canonicalValues(v)
+	if err != nil {
+		return nil, err
+	}
+	var back map[string]any
+	if err := yaml.Unmarshal([]byte(text), &back); err != nil {
+		return nil, err
+	}
+	return back, nil
+}
+
+func diffPaths(prefix string, a, b map[string]any, out *[]string) {
+	keys := make(map[string]struct{}, len(a)+len(b))
+	for k := range a {
+		keys[k] = struct{}{}
+	}
+	for k := range b {
+		keys[k] = struct{}{}
+	}
+	for k := range keys {
+		path := k
+		if prefix != "" {
+			path = prefix + "." + k
+		}
+		av, aok := a[k]
+		bv, bok := b[k]
+		am, aIsMap := av.(map[string]any)
+		bm, bIsMap := bv.(map[string]any)
+		switch {
+		case aok && bok && aIsMap && bIsMap:
+			diffPaths(path, am, bm, out)
+		case !aok || !bok || !reflect.DeepEqual(av, bv):
+			*out = append(*out, path)
+		}
+	}
 }
 
 // sameValues compares a freshly merged values map against one decoded from a

@@ -459,7 +459,7 @@ func (e *Engine) deployAndRecord(ctx context.Context, rel *Release, opts Install
 	// on, as after a --wait that fails, and a re-run upgrade rolls on from it.
 	if leading != "" {
 		if err := e.waitRolled(ctx, rel.Name, rel.Name+"_"+leading, leadingBefore, opts.Timeout); err != nil {
-			return rel, err
+			return rel, withPending(err, rel.Name, held)
 		}
 	}
 	if len(held) > 0 {
