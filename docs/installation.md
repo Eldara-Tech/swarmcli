@@ -33,6 +33,19 @@ It conflicts with the `swarmcli-oss` cask and with the retired `swarmcli-be`
 one; brew will refuse to install two at once and will offer to remove the
 other.
 
+### Install script (Linux / macOS)
+
+```bash
+curl -fsSL https://swarmcli.io/install.sh | sh -s -- ~/.local/bin
+```
+
+The script downloads the latest release's archive for your OS and architecture
+and moves the `swarmcli` binary into the directory you pass (default
+`~/.local/bin`, created if missing); make sure it is on your `PATH`. Put `ce`
+before the directory for the [Apache-2.0 build](editions.md), and a tag after it
+to pin a release: `sh -s -- ce ~/.local/bin v2.5.0`. It does not verify
+checksums; use the [raw binary](#raw-binary) steps if you need that.
+
 ### Scoop (Windows)
 
 ```powershell
@@ -189,6 +202,7 @@ product changed, only the names it is published under.
 
 ```bash
 brew upgrade swarmcli             # Homebrew
+curl -fsSL https://swarmcli.io/install.sh | sh -s -- ~/.local/bin  # install script
 scoop update swarmcli             # Scoop
 docker pull eldaratech/swarmcli:latest      # Docker
 ```
