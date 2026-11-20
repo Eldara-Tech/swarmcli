@@ -20,10 +20,12 @@
 
   <p>
     <a href="#why-swarmcli">Why SwarmCLI?</a> •
+    <a href="#the-swarmcli-family">The family</a> •
     <a href="#quickstart">Quickstart</a> •
     <a href="#features">Features</a> •
     <a href="#installation">Installation</a> •
     <a href="CONTRIBUTING.md">Contributing</a> •
+    <a href="docs/">Docs</a> •
     <a href="https://swarmcli.io/">Homepage</a>
   </p>
 </div>
@@ -32,7 +34,7 @@
 
 ## Visual Feast
 
-![alt text](assets/swarmcli.gif)
+![SwarmCLI terminal UI for Docker Swarm](assets/swarmcli.gif)
 
 ## Why SwarmCLI?
 
@@ -42,23 +44,48 @@ In the Kubernetes world, **k9s** is the gold standard for cluster management. We
 
 SwarmCLI translates the complexity of Docker Swarm into a sleek, keyboard-centric terminal UI. It’s built for developers who want to manage their clusters without leaving the terminal or waiting for heavy Web UIs to load.
 
+## The SwarmCLI family
+
+SwarmCLI started as a terminal UI and grew into the toolset a Swarm team otherwise borrows from Kubernetes:
+
+| Tool | What it is | Kubernetes counterpart |
+| :--- | :--- | :--- |
+| **SwarmCLI** (this repo) | Keyboard-driven terminal UI for Docker Swarm: stacks, services, tasks, nodes, configs, secrets, volumes, live logs, scale, rollback, exec | k9s |
+| **[SwarmCLI Charts](https://github.com/Eldara-Tech/swarmcli-charts)** | Packages for Swarm stacks, installed and upgraded with [`swarmcli charts`](#charts-cli) | Helm |
+| **[SwarmCLI CD](https://github.com/Eldara-Tech/swarmcli-cd)** | GitOps continuous delivery: reconciles a swarm from Git, with drift detection, sync waves and a web UI | Argo CD |
+| **[RBAC proxy](#business-edition)** (Business Edition) | mTLS identity, per-user roles and an audit log in front of the Docker API | Kubernetes RBAC |
+| **[SwarmCLI app](docs/mobile-app.md)** | Free phone app: health, services, nodes and logs; restart, scale and roll back | — |
+
+The Community Edition is free and needs no license. The [Business Edition](#business-edition) is free on a swarm of up to three nodes.
+
 ## Quickstart
 
 Get up and running in seconds:
 
 ```bash
-# macOS/Linux via Homebrew
+# macOS / Linux via Homebrew
 brew install Eldara-Tech/tap/swarmcli
+
+# Linux / macOS via the install script
+curl -fsSL https://swarmcli.io/install.sh | sh -s -- ~/.local/bin
 
 # Run it
 swarmcli
 ```
+
+Windows (Scoop), Docker and raw-binary installs are under [Installation](#installation).
 
 `swarmcli` is the full build: everything below, plus Business Edition's
 features, which stay inert until a license verifies. For the wholly Apache-2.0
 build, install `swarmcli-oss` instead — same executable name, same commands. See
 [docs/editions.md](docs/editions.md), and `swarmcli version` to check which one
 you have.
+
+To turn on the Business Edition features on a swarm of up to three nodes, free:
+
+```bash
+swarmcli license activate
+```
 
 ## Features
 
@@ -68,8 +95,10 @@ you have.
 - **Secrets & Configs**: Manage, rotate, and — with [Business Edition](#business-edition) — **reveal** secrets for debugging.
 - **Management Actions**: Scale, restart, remove, and update services with single keystrokes.
 - **Chart Package Manager**: Helm-like packaging for Swarm — install, upgrade, roll back, and diff releases from chart repositories via `swarmcli charts`, or converge the swarm to a committed release file with `swarmcli charts apply`.
+- **Your Swarm on Your Phone**: Press `c` for a QR code that connects the free [SwarmCLI app](#the-swarmcli-app) to your swarm.
+- **Keyboard First, Mouse Too**: Every action has a key; the wheel, clicks and breadcrumbs work as well.
 - **Zero Config**: Works out-of-the-box with your local Docker engine or remote via SSH/Contexts.
-- **Lightweight**: Built with Go. Single static binary (< 20MB). Zero dependencies.
+- **Lightweight**: Built with Go. A single static binary with no runtime dependencies, for Linux, macOS, Windows and FreeBSD.
 
 ## Charts (CLI)
 
@@ -142,6 +171,20 @@ proceeds anyway. See [charts/README.md](charts/README.md#declaring-the-swarmcli-
 
 Run `swarmcli charts --help` for the full command and option reference.
 
+## The SwarmCLI app
+
+The free SwarmCLI app shows a swarm's health, its services, nodes and logs, and
+restarts, scales and rolls back services. It is on the
+[App Store](https://apps.apple.com/app/id6819033008) and coming to Google Play.
+
+Press `c` in SwarmCLI, or type `:connect`, for a one-time QR code that adds the
+phone as a user on your swarm's RBAC proxy. The phone talks to the proxy directly
+over mutual TLS; Eldara runs no relay. Connecting needs the proxy (installed by
+`:bootstrap`) and a license on the swarm, the free one included. The app also has
+a built-in demo swarm, so it can be tried without connecting anything. Details in
+[docs/mobile-app.md](docs/mobile-app.md); screenshots at
+[swarmcli.io/app](https://swarmcli.io/app).
+
 ## Business Edition
 
 The Community Edition is the full open-source TUI. **Business Edition** is a
@@ -182,80 +225,28 @@ Documentation lives in [`docs/`](docs/) — [installation](docs/installation.md)
 
 ## Installation
 
-<!-- ### Docker (No Installation)
+| Channel | Command |
+| :--- | :--- |
+| Homebrew (macOS / Linux) | `brew install Eldara-Tech/tap/swarmcli` |
+| Install script (Linux / macOS) | `curl -fsSL https://swarmcli.io/install.sh \| sh -s -- ~/.local/bin` |
+| Scoop (Windows) | `scoop bucket add eldara-tech https://github.com/Eldara-Tech/scoop-bucket` then `scoop install swarmcli` |
+| Docker | `eldaratech/swarmcli:latest` (`linux/amd64`, `linux/arm64`) |
+| Raw binary | archives and checksums on the [Releases page](https://github.com/Eldara-Tech/swarmcli/releases) |
+
+Running it from Docker needs the socket mounted; mount your contexts and config
+too, so they persist between runs:
 
 ```bash
 docker run --rm -it \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  ghcr.io/eldara-tech/swarmcli:latest
-``` -->
-
-### Build from Source
-
-```bash
-git clone https://github.com/Eldara-Tech/swarmcli.git
-cd swarmcli
-go install
+  -v "$HOME/.docker/contexts:/root/.docker/contexts" \
+  -v "$HOME/.config/swarmcli:/root/.config/swarmcli" \
+  eldaratech/swarmcli:latest
 ```
 
-## Using Docker container to build and run locally
-
-```
-docker build -t swarmcli-dev .
-docker run --rm -it -v "$PWD":/app -v /var/run/docker.sock:/var/run/docker.sock  -w /app swarmcli-dev
-```
-
-or with docker compose:
-
-```
-docker compose run --build --rm swarmcli
-```
-
-Then run:
-
-```
-go run .
-```
-
-## Logging
-
-```bash
-# Production (default)
-$ go run .
-# → writes JSON logs to  ~/.local/state/swarmcli/app.log
-
-# Development
-$ SWARMCLI_ENV=dev go run .
-# → writes pretty logs to ~/.local/state/swarmcli/app-debug.log
-
-# Optional: control verbosity
-$ LOG_LEVEL=debug SWARMCLI_ENV=dev go run .
-```
-
-### Environment variables
-
-Every environment variable and on-disk path, for both editions, is documented in
-[docs/configuration.md](docs/configuration.md) — `SWARMCLI_ENV` and `LOG_LEVEL`
-above among them.
-
-On startup, SwarmCLI makes one request. It checks whether a newer release is available, and reports that swarmcli was started — a random install id, the version and edition, your OS and architecture, how swarmcli was installed, and the shape of your swarm as counts (nodes, managers, services, Docker version). It does not send the *names* of anything: no services, images, stacks, nodes, hostnames, command arguments or IP address. Your country is derived from the connection and the address is never stored. The first run says so on screen before anything is sent — one line on the status bar, naming `:telemetry`, which prints all of the above on any run.
-
-`SWARMCLI_TELEMETRY=off` stops the usage report and keeps the update check. `SWARMCLI_TELEMETRY=none` makes no outbound request at all. `telemetry: off` or `telemetry: none` in [`~/.config/swarmcli/config.yaml`](docs/configuration.md#configyaml) does the same without the variable. Full detail in [docs/license.md](docs/license.md#usage-reporting).
-
-Colorize log tails. Not perfect but simple:
-
-```bash
-sudo apt install ccze
-tail -f ~/.local/state/swarmcli/app-debug.log | ccze -A
-```
-
-### Integration tests
-
-The logs for the integration tests can be enabled with:
-
-```bash
-TEST_LOG=1 ./test-setup/testenv.sh test
-```
+Every channel also carries the Apache-2.0 build as `swarmcli-oss` (image tag
+`vX.Y.Z-oss`). Checksum verification, the full build matrix, upgrades and the
+retired `swarmcli-be` names are in [docs/installation.md](docs/installation.md).
 
 ## Key Bindings
 
@@ -285,6 +276,86 @@ help — leave the mouse to the terminal, so text selects and copies as usual; s
 what each terminal does with the wheel there. `:mouse` switches it off and
 remembers that in [`config.yaml`](docs/configuration.md#configyaml), and
 `SWARMCLI_MOUSE=off` starts without it whatever the file says.
+
+## Configuration and telemetry
+
+Every environment variable and on-disk path, for both editions, is documented in
+[docs/configuration.md](docs/configuration.md) — `SWARMCLI_ENV` and `LOG_LEVEL`
+under [Logging](#logging) among them.
+
+On startup, SwarmCLI makes one request. It checks whether a newer release is available, and reports that swarmcli was started — a random install id, the version and edition, your OS and architecture, how swarmcli was installed, and the shape of your swarm as counts (nodes, managers, services, Docker version). It does not send the *names* of anything: no services, images, stacks, nodes, hostnames, command arguments or IP address. Your country is derived from the connection and the address is never stored. The first run says so on screen before anything is sent — one line on the status bar, naming `:telemetry`, which prints all of the above on any run.
+
+`SWARMCLI_TELEMETRY=off` stops the usage report and keeps the update check. `SWARMCLI_TELEMETRY=none` makes no outbound request at all. `telemetry: off` or `telemetry: none` in [`~/.config/swarmcli/config.yaml`](docs/configuration.md#configyaml) does the same without the variable. Full detail in [docs/license.md](docs/license.md#usage-reporting).
+
+## Development
+
+### Build from Source
+
+```bash
+git clone https://github.com/Eldara-Tech/swarmcli.git
+cd swarmcli
+go install
+```
+
+### Build and run in a container
+
+```bash
+docker build -t swarmcli-dev .
+docker run --rm -it -v "$PWD":/app -v /var/run/docker.sock:/var/run/docker.sock -w /app swarmcli-dev
+```
+
+or with docker compose:
+
+```bash
+docker compose run --build --rm swarmcli
+```
+
+Then run:
+
+```bash
+go run .
+```
+
+### Logging
+
+```bash
+# Production (default)
+$ go run .
+# → writes JSON logs to  ~/.local/state/swarmcli/app.log
+
+# Development
+$ SWARMCLI_ENV=dev go run .
+# → writes pretty logs to ~/.local/state/swarmcli/app-debug.log
+
+# Optional: control verbosity
+$ LOG_LEVEL=debug SWARMCLI_ENV=dev go run .
+```
+
+Colorize log tails. Not perfect but simple:
+
+```bash
+sudo apt install ccze
+tail -f ~/.local/state/swarmcli/app-debug.log | ccze -A
+```
+
+### Integration tests
+
+The logs for the integration tests can be enabled with:
+
+```bash
+TEST_LOG=1 ./test-setup/testenv.sh test
+```
+
+## Learn Docker Swarm
+
+Guides from the SwarmCLI team at [swarmcli.io/blog](https://swarmcli.io/blog):
+
+- [The Definitive Docker Swarm Guide for 2026](https://swarmcli.io/blog/The-Definitive-Docker-Swarm-Guide-for-2026) — architecture, high availability, networking, monitoring and troubleshooting
+- [Is Docker Swarm still supported in 2026?](https://swarmcli.io/blog/is-docker-swarm-maintained-and-supported-in-2026) — the dated evidence
+- [Docker Swarm secrets](https://swarmcli.io/blog/Secure-by-Design-Managing-Docker-Swarm-Secrets-the-SwarmCLI-Way) — create, rotate, lock and inspect
+- [Local AI models on Docker Swarm](https://swarmcli.io/blog/how-to-run-local-ai-models-on-docker-swarm-in-2026) and [GPUs on Docker Swarm](https://swarmcli.io/blog/docker-swarm-gpu-nvidia-generic-resources)
+- [High-availability databases on Docker Swarm](https://swarmcli.io/blog/high-availability-databases-on-docker-swarm-in-2026) — PostgreSQL, MySQL and Redis
+- [SwarmCLI changelog](https://swarmcli.io/blog/swarmcli-changelog) — every release of SwarmCLI, the proxy and the charts
 
 ## Project Hygiene
 
