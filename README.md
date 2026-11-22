@@ -244,8 +244,10 @@ docker run --rm -it \
   eldaratech/swarmcli:latest
 ```
 
-Every channel also carries the Apache-2.0 build as `swarmcli-oss` (image tag
-`vX.Y.Z-oss`). Checksum verification, the full build matrix, upgrades and the
+Every channel also carries the Apache-2.0 build: `swarmcli-oss` on Homebrew
+and Scoop, `ce` before the directory for the install script
+(`sh -s -- ce ~/.local/bin`), the `vX.Y.Z-oss` image tag, and the `_oss`
+archives. Checksum verification, the full build matrix, upgrades and the
 retired `swarmcli-be` names are in [docs/installation.md](docs/installation.md).
 
 ## Key Bindings
