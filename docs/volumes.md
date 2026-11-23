@@ -182,6 +182,59 @@ volumes:
   db-data:
 ```
 
+## Volumes that stay on one node
+
+A named volume with the `local` driver — what a stack file's `volumes:` section
+creates unless it names another driver — lives on the node whose task created
+it. When Swarm moves the task to another node, because its node failed, was
+drained or restarted, the new task gets a fresh, empty volume of the same name
+there. The data stays behind on the old node: a database comes back empty, and
+finds its old data again only if a later move takes it back.
+
+The Services view shows such volumes in an **UNPINNED VOL** column, which
+appears only when a service has one. A service is listed when it mounts a named
+volume on node-local storage and its placement constraints let it run on more
+than one node:
+
+| Cell | Meaning |
+|---|---|
+| `db-data` | A volume the stack declares, with the `local` driver. |
+| `db-data?` | An external volume, or one a service outside any stack mounts. The service spec does not say which driver it uses; on shared storage, it is not at risk. |
+
+Not listed: global services, which run one task per node and never move one;
+volumes whose `driver_opts` mount network storage (`type: nfs`, `nfs4`, `cifs`,
+`smb3` or `ceph`) or `tmpfs`; volumes of any other driver; bind mounts; and every
+service on a single-node swarm. Drained and down nodes count, because a node
+comes back from maintenance.
+
+To fix it, pin the service to the node that holds its data, which is the node
+its task runs on now (`docker service ps <service>` names it). Label that one
+node, constrain the service to the label, and redeploy:
+
+```bash
+docker node update --label-add db-data=true <node>
+```
+
+```yaml
+services:
+  db:
+    deploy:
+      placement:
+        constraints:
+          - node.labels.db-data == true
+```
+
+The label must be on exactly one node. `node.role == manager` does not pin a
+service on a swarm with more than one manager, and neither does a label several
+nodes carry. A service with several replicas gets a separate volume on each node
+it runs on, so pinning them all to one node makes them share one volume, which a
+database cannot do safely: run each member as its own service, pinned to its
+own node.
+
+With the `volumes-all-nodes` entitlement on a managed context, the Volumes view
+lists a volume on every node it exists on, so the same name on two hosts means a
+move has already split the data.
+
 ## How cross-node access works
 
 Volume operations travel over the same authenticated, authorized path as the

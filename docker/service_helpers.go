@@ -47,6 +47,64 @@ func getServiceAnonVolumes(svc swarm.Service) []AnonVolume {
 	return out
 }
 
+// sharedLocalTypes are the driver_opts `type`s with which the local driver mounts
+// storage every node can reach, or none keeps (tmpfs): a task that moves either
+// finds the same data or never had any to lose.
+var sharedLocalTypes = map[string]bool{"nfs": true, "nfs4": true, "cifs": true, "smb3": true, "ceph": true, "tmpfs": true}
+
+// getServiceUnpinnedVolumes returns the named volumes, sorted, that svc's tasks
+// keep on the node running them while its placement constraints admit more than
+// one of the given nodes. Every node counts, drained and down ones included: a
+// constraint that only holds while a node is out of service does not pin
+// anything. A global service runs one task per node and never moves one, so it
+// has none.
+func getServiceUnpinnedVolumes(svc swarm.Service, nodes []swarm.Node) []UnpinnedVolume {
+	cs := svc.Spec.TaskTemplate.ContainerSpec
+	if cs == nil || svc.Spec.Mode.Global != nil || svc.Spec.Mode.GlobalJob != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []UnpinnedVolume
+	for _, m := range cs.Mounts {
+		if m.Type != mount.TypeVolume || m.Source == "" || seen[m.Source] {
+			continue
+		}
+		seen[m.Source] = true
+		if v, ok := nodeLocalVolume(m); ok {
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 || eligibleNodeCount(svc, nodes) <= 1 {
+		return nil
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// nodeLocalVolume returns the named volume m mounts, and whether that volume
+// keeps its data on the node that created it. `docker stack deploy` labels a
+// volume the stack declares and names its driver only when the stack file does,
+// so an unnamed driver there is the local one; a volume without the label
+// (external, or mounted by a service outside any stack) may already exist with
+// any driver.
+func nodeLocalVolume(m mount.Mount) (UnpinnedVolume, bool) {
+	var vo mount.VolumeOptions
+	if m.VolumeOptions != nil {
+		vo = *m.VolumeOptions
+	}
+	stack := vo.Labels["com.docker.stack.namespace"]
+	v := UnpinnedVolume{Name: m.Source}
+	if stack != "" {
+		v.Name = stripStackPrefix(stack, m.Source)
+	}
+	if dc := vo.DriverConfig; dc != nil {
+		local := dc.Name == "" || dc.Name == "local"
+		return v, local && !sharedLocalTypes[dc.Options["type"]]
+	}
+	v.DriverUnknown = stack == ""
+	return v, true
+}
+
 // getServiceImage returns the image name without the digest
 func getServiceImage(svc swarm.Service) string {
 	if svc.Spec.TaskTemplate.ContainerSpec == nil {

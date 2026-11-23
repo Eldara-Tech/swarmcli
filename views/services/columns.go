@@ -14,12 +14,13 @@ import (
 // serviceColumn pairs a shared-layout column with its sort metadata. The set is
 // the single source of truth for the header, widths, sort indices, and rows.
 type serviceColumn struct {
-	col       filterlist.Column[docker.ServiceEntry]
-	sort      SortField
-	hasSort   bool
-	isStack   bool
-	isHealth  bool
-	isAnonVol bool
+	col           filterlist.Column[docker.ServiceEntry]
+	sort          SortField
+	hasSort       bool
+	isStack       bool
+	isHealth      bool
+	isAnonVol     bool
+	isUnpinnedVol bool
 }
 
 // serviceColumns returns the columns for the current scope. The STACK column is
@@ -29,7 +30,8 @@ type serviceColumn struct {
 // ServiceEntry.Health; when there is none but a footer note explains why (CE
 // upsell, or a non-managed context — see healthFooterHint) it stays visible with
 // a "*" placeholder tying rows to that footnote, and is dropped only when there
-// is neither. ANON VOL appears only while some row has an anonymous volume.
+// is neither. ANON VOL and UNPINNED VOL each appear only while some row has
+// what they list.
 // Cell closures capture the model so the ERROR column can read the
 // per-service error text.
 func (m *Model) serviceColumns() []serviceColumn {
@@ -98,6 +100,9 @@ func (m *Model) serviceColumns() []serviceColumn {
 		{isAnonVol: true, col: filterlist.Column[docker.ServiceEntry]{
 			Label: "ANON VOL", MinWidth: 8, Flex: true,
 			Cell: anonVolumesCell}},
+		{isUnpinnedVol: true, col: filterlist.Column[docker.ServiceEntry]{
+			Label: "UNPINNED VOL", MinWidth: 12, Flex: true,
+			Cell: unpinnedVolumesCell}},
 		{sort: SortByError, hasSort: true, col: filterlist.Column[docker.ServiceEntry]{
 			Label: "ERROR", MinWidth: 6, Flex: true,
 			Cell: func(e docker.ServiceEntry) string { return m.serviceErrorText[e.ServiceID] }}},
@@ -105,7 +110,8 @@ func (m *Model) serviceColumns() []serviceColumn {
 	dropStack := m.filterType != AllFilter
 	dropHealth := !m.anyServiceHealth() && !footnoted
 	dropAnonVol := !m.anyAnonVolumes()
-	if !dropStack && !dropHealth && !dropAnonVol {
+	dropUnpinnedVol := !m.anyUnpinnedVolumes()
+	if !dropStack && !dropHealth && !dropAnonVol && !dropUnpinnedVol {
 		return all
 	}
 	out := make([]serviceColumn, 0, len(all))
@@ -117,6 +123,9 @@ func (m *Model) serviceColumns() []serviceColumn {
 			continue
 		}
 		if c.isAnonVol && dropAnonVol {
+			continue
+		}
+		if c.isUnpinnedVol && dropUnpinnedVol {
 			continue
 		}
 		out = append(out, c)
@@ -159,6 +168,30 @@ func anonVolumesCell(e docker.ServiceEntry) string {
 		}
 	}
 	return strings.Join(paths, ", ")
+}
+
+// anyUnpinnedVolumes reports whether any loaded service row has a volume it can
+// be moved away from, the only thing that shows the UNPINNED VOL column.
+func (m *Model) anyUnpinnedVolumes() bool {
+	for _, e := range m.List.Items {
+		if len(e.UnpinnedVolumes) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// unpinnedVolumesCell lists a service's unpinned volumes. A "?" marks one whose
+// driver the spec does not name: on shared storage it is not at risk.
+func unpinnedVolumesCell(e docker.ServiceEntry) string {
+	names := make([]string, len(e.UnpinnedVolumes))
+	for i, v := range e.UnpinnedVolumes {
+		names[i] = v.Name
+		if v.DriverUnknown {
+			names[i] += "?"
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 // layoutColumns extracts the shared-layout column set for the current scope.
