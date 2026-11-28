@@ -346,14 +346,14 @@ func TestKey_Enter_SwitchContext_Filtered(t *testing.T) {
 	require.Equal(t, "charlie", switched)
 }
 
-func TestKey_Enter_CurrentContext_NoOp(t *testing.T) {
+func TestKey_Enter_CurrentContext_GoesToStacks(t *testing.T) {
 	m := testModel()
 	ctxs := fakeContexts("current")
 	ctxs[0].Current = true
 	loadContexts(m, ctxs)
 	cmd := m.Update(key("enter"))
-	require.Nil(t, cmd)
 	require.False(t, m.IsSwitchPending())
+	require.Equal(t, view.NavigateToMsg{ViewName: view.NameStacks, Replace: true}, runCmd(cmd))
 }
 
 func TestKey_Inspect(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"github.com/Eldara-Tech/swarmcli/v2/ui/dialog"
 	"github.com/Eldara-Tech/swarmcli/v2/views/confirmdialog"
 	helpview "github.com/Eldara-Tech/swarmcli/v2/views/help"
+	"github.com/Eldara-Tech/swarmcli/v2/views/view"
 	"os"
 	"path/filepath"
 	"sort"
@@ -740,9 +741,11 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			if !ok {
 				return nil
 			}
-			// Don't switch if already current
+			// Already current: land where a switch would, without reloading.
 			if ctx.Current {
-				return nil
+				return func() tea.Msg {
+					return view.NavigateToMsg{ViewName: view.NameStacks, Replace: true}
+				}
 			}
 			m.SetSwitchPending(true)
 			m.SetError("")
