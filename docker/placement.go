@@ -138,8 +138,9 @@ func hasPrefixFold(key, prefix string) bool {
 	return len(key) > len(prefix) && strings.EqualFold(key[:len(prefix)], prefix)
 }
 
-// eligibleNodeCount is how many of the given nodes swarm would place a global
-// service's task on.
+// eligibleNodeCount is how many of the given nodes svc's placement constraints
+// admit: where swarm would place a global service's tasks, or could move a
+// replicated one's.
 func eligibleNodeCount(svc swarm.Service, nodes []swarm.Node) int {
 	pl := svc.Spec.TaskTemplate.Placement
 	if pl == nil || len(pl.Constraints) == 0 {

@@ -392,8 +392,18 @@ type ServiceEntry struct {
 	// that can see a node's running containers completes, marking a path
 	// Confirmed and adding the ones the image created.
 	AnonVolumes []AnonVolume
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// UnpinnedVolumes are the named volumes, sorted, that this service's tasks
+	// keep on the node running them while its placement constraints admit more
+	// than one node. A task swarm moves starts on an empty volume of the same
+	// name on its new node, and the data stays on the one it left. The default
+	// loaders read the spec, which names the driver only of a volume the stack
+	// declares, so an external volume, or one a service outside any stack
+	// mounts, is listed with DriverUnknown set. This is an extension point: a
+	// ServiceOps decorator that can see the nodes' volumes may resolve such an
+	// entry, dropping it when the volume is on storage every node reaches.
+	UnpinnedVolumes []UnpinnedVolume
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // AnonVolume is one path at which a service's tasks get an anonymous volume.
@@ -402,6 +412,16 @@ type AnonVolume struct {
 	// Confirmed reports that a running task's container was seen with an
 	// anonymous volume at Path, rather than only the spec declaring one.
 	Confirmed bool
+}
+
+// UnpinnedVolume is one named volume a service's tasks keep on their own node.
+type UnpinnedVolume struct {
+	// Name is the volume's name as the stack file writes it, without the
+	// stack's prefix.
+	Name string
+	// DriverUnknown reports that the spec does not say which driver the volume
+	// uses: on storage every node reaches, a moved task loses nothing.
+	DriverUnknown bool
 }
 
 func LoadNodeServices(nodeID string) []ServiceEntry {
@@ -429,20 +449,21 @@ func LoadNodeServices(nodeID string) []ServiceEntry {
 		}
 
 		entries = append(entries, ServiceEntry{
-			StackName:      stack,
-			ServiceName:    svc.Spec.Name,
-			ServiceID:      svc.ID,
-			ReplicasOnNode: onNode,
-			ReplicasTotal:  desired,
-			UpToDate:       countUpToDateTasks(svc, snap),
-			RollingOut:     isRollingOut(svc),
-			Status:         getServiceStatus(svc),
-			Mode:           getServiceMode(svc),
-			Image:          getServiceImage(svc),
-			Ports:          getServicePorts(svc),
-			AnonVolumes:    getServiceAnonVolumes(svc),
-			CreatedAt:      svc.CreatedAt,
-			UpdatedAt:      svc.UpdatedAt,
+			StackName:       stack,
+			ServiceName:     svc.Spec.Name,
+			ServiceID:       svc.ID,
+			ReplicasOnNode:  onNode,
+			ReplicasTotal:   desired,
+			UpToDate:        countUpToDateTasks(svc, snap),
+			RollingOut:      isRollingOut(svc),
+			Status:          getServiceStatus(svc),
+			Mode:            getServiceMode(svc),
+			Image:           getServiceImage(svc),
+			Ports:           getServicePorts(svc),
+			AnonVolumes:     getServiceAnonVolumes(svc),
+			UnpinnedVolumes: getServiceUnpinnedVolumes(svc, snap.Nodes),
+			CreatedAt:       svc.CreatedAt,
+			UpdatedAt:       svc.UpdatedAt,
 		})
 	}
 
@@ -476,20 +497,21 @@ func (snap *SwarmSnapshot) StackServices(stackName string) []ServiceEntry {
 		onNode := countTasksForNode(svc.ID, "", snap)
 
 		entries = append(entries, ServiceEntry{
-			StackName:      stack,
-			ServiceName:    svc.Spec.Name,
-			ServiceID:      svc.ID,
-			ReplicasOnNode: onNode,
-			ReplicasTotal:  desired,
-			UpToDate:       countUpToDateTasks(svc, snap),
-			RollingOut:     isRollingOut(svc),
-			Status:         getServiceStatus(svc),
-			Mode:           getServiceMode(svc),
-			Image:          getServiceImage(svc),
-			Ports:          getServicePorts(svc),
-			AnonVolumes:    getServiceAnonVolumes(svc),
-			CreatedAt:      svc.CreatedAt,
-			UpdatedAt:      svc.UpdatedAt,
+			StackName:       stack,
+			ServiceName:     svc.Spec.Name,
+			ServiceID:       svc.ID,
+			ReplicasOnNode:  onNode,
+			ReplicasTotal:   desired,
+			UpToDate:        countUpToDateTasks(svc, snap),
+			RollingOut:      isRollingOut(svc),
+			Status:          getServiceStatus(svc),
+			Mode:            getServiceMode(svc),
+			Image:           getServiceImage(svc),
+			Ports:           getServicePorts(svc),
+			AnonVolumes:     getServiceAnonVolumes(svc),
+			UnpinnedVolumes: getServiceUnpinnedVolumes(svc, snap.Nodes),
+			CreatedAt:       svc.CreatedAt,
+			UpdatedAt:       svc.UpdatedAt,
 		})
 	}
 
@@ -516,20 +538,21 @@ func LoadAllServices() []ServiceEntry {
 		onNode := countTasksForNode(svc.ID, "", snap)
 
 		entries = append(entries, ServiceEntry{
-			StackName:      stack,
-			ServiceName:    svc.Spec.Name,
-			ServiceID:      svc.ID,
-			ReplicasOnNode: onNode,
-			ReplicasTotal:  desired,
-			UpToDate:       countUpToDateTasks(svc, snap),
-			RollingOut:     isRollingOut(svc),
-			Status:         getServiceStatus(svc),
-			Mode:           getServiceMode(svc),
-			Image:          getServiceImage(svc),
-			Ports:          getServicePorts(svc),
-			AnonVolumes:    getServiceAnonVolumes(svc),
-			CreatedAt:      svc.CreatedAt,
-			UpdatedAt:      svc.UpdatedAt,
+			StackName:       stack,
+			ServiceName:     svc.Spec.Name,
+			ServiceID:       svc.ID,
+			ReplicasOnNode:  onNode,
+			ReplicasTotal:   desired,
+			UpToDate:        countUpToDateTasks(svc, snap),
+			RollingOut:      isRollingOut(svc),
+			Status:          getServiceStatus(svc),
+			Mode:            getServiceMode(svc),
+			Image:           getServiceImage(svc),
+			Ports:           getServicePorts(svc),
+			AnonVolumes:     getServiceAnonVolumes(svc),
+			UnpinnedVolumes: getServiceUnpinnedVolumes(svc, snap.Nodes),
+			CreatedAt:       svc.CreatedAt,
+			UpdatedAt:       svc.UpdatedAt,
 		})
 	}
 

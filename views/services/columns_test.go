@@ -126,6 +126,30 @@ func TestColumns_AnonVolColumnOnlyWhenARowHasOne(t *testing.T) {
 	require.Equal(t, "", anonVolumesCell(docker.ServiceEntry{}))
 }
 
+// UNPINNED VOL costs a column only on a swarm where some service can move away
+// from its volume's data, sits between ANON VOL and ERROR, and marks a volume
+// whose driver the spec does not name with "?".
+func TestColumns_UnpinnedVolColumnOnlyWhenARowHasOne(t *testing.T) {
+	m := testModel()
+	loadWithFilter(m, AllFilter, fakeEntries("web", "api"))
+	require.False(t, hasColumn(m, "UNPINNED VOL"), "no unpinned volume, no column")
+
+	entries := fakeEntries("web", "db")
+	entries[0].AnonVolumes = []docker.AnonVolume{{Path: "/tmp"}}
+	entries[1].UnpinnedVolumes = []docker.UnpinnedVolume{{Name: "data"}}
+	m2 := testModel()
+	loadWithFilter(m2, AllFilter, entries)
+	require.True(t, hasColumn(m2, "UNPINNED VOL"))
+	require.Equal(t, colLabelIndex(m2, "ANON VOL")+1, colLabelIndex(m2, "UNPINNED VOL"),
+		"UNPINNED VOL sits just after ANON VOL")
+	require.Equal(t, colLabelIndex(m2, "ERROR")-1, colLabelIndex(m2, "UNPINNED VOL"),
+		"UNPINNED VOL sits just before ERROR")
+	require.Equal(t, "data, pgdata?", unpinnedVolumesCell(docker.ServiceEntry{
+		UnpinnedVolumes: []docker.UnpinnedVolume{{Name: "data"}, {Name: "pgdata", DriverUnknown: true}},
+	}))
+	require.Equal(t, "", unpinnedVolumesCell(docker.ServiceEntry{}))
+}
+
 // statusCell returns the rendered STATUS cell for e.
 func statusCell(m *Model, e docker.ServiceEntry) string {
 	for _, c := range m.serviceColumns() {
